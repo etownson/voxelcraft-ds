@@ -454,3 +454,57 @@ The game must run without errors in modern Chrome and Firefox. Implementation Pr
 
 
 Build the entire game in one continuous pass. Do not stop to ask questions or wait for confirmation between sections — deliver the complete, working single-file game.
+
+
+Milestone 11 Addendum - Tools, Furnaces and Farming
+
+Recorded after the fact. The brief above describes the first pass of the game. Milestone 10 added world persistence; milestone 11 adds the survival layer the brief never had: a tech tree that has to be climbed in order, gear that wears out, and a stomach that empties while you work. Everything below lives in the same single HTML file, with the same procedural textures, icons and sounds, and no new files or build step.
+
+The progression chain
+
+* A bare hand and wooden tools gather dirt, grass, wood, coal and stone, but stone is slow by hand and iron ore yields nothing at all to a wooden pickaxe.
+* Eight cobblestone plus some coal makes a furnace, and the furnace turns raw iron into ingots. The furnace is now mandatory rather than convenient.
+* Diamond ore only drops for an iron pickaxe or better, and sits in veins between y=4 and y=26, so the diamond tier comes after the furnace rather than around it.
+* A hoe turns grass or dirt into farmland, seeds sown on it grow into wheat, and three wheat make a loaf at the crafting table.
+
+Mining speed and tool wear
+
+* Break time is hardness * 1.5 / speed with the right tool at the right tier, hardness * 5 / speed with anything else, with a floor of 0.05 seconds.
+* Mining speeds are 2 for wood, 4 for stone, 6 for iron, 8 for diamond, and 1 for anything that is not the right tool. Tiers are wood 1, stone 2, iron 3, diamond 4.
+* A block whose tier outranks the tool in hand still breaks, but drops nothing - which is how diamond ore refuses a stone pickaxe.
+* Hardnesses are Minecraft's own: dirt 0.5, grass 0.6, stone 1.5, cobblestone 2.0, iron and diamond ore 3.0.
+* Tool durability is 60 uses for wood, 132 for stone, 251 for iron, 1561 for diamond. Only swings that break something, and blows that land, spend it. A broken tool vanishes with a toast.
+
+Furnaces and smelting
+
+* Ten seconds per item: raw iron to iron ingot, raw beef to steak, sand to glass, cobblestone to stone, logs to charcoal.
+* Fuel buys heat - coal and charcoal 80 seconds (eight items each), planks, logs and crafting tables 15, sticks 5.
+* A burning furnace is a second block id and gives off light level 13, which is what makes a mine shaft readable.
+* Contents and the direction a furnace faces live in a block entity keyed by position. Only furnaces within 32 blocks of the player, plus the one on screen, tick.
+
+Armour
+
+* Leather, iron and diamond sets, one piece per slot. Defence for helmet, chestplate, leggings and boots is 1/3/2/1, 2/6/5/2 and 3/8/6/3, and durability 55/80/75/65, 165/240/225/195 and 363/528/495/429.
+* Damage absorbed is amount * min(20, max(defence / 5, defence - amount / 2)) / 25. Each hit costs one random worn piece four durability per point absorbed, so a set wears unevenly, and a piece that runs out un-equips itself.
+* The HUD draws the set as ten shields above the hunger bar.
+
+Hunger
+
+* Twenty points, no saturation. Every exhaustion point costs one bite.
+* Costs: walking 0.004 per block, sprinting 0.02, jumping 0.1, mining a block 0.05, attacking 0.1, taking a hit 0.1, regenerating health 0.1.
+* Health only regenerates at hunger 18 or above. An empty bar costs half a heart every four seconds and will kill you.
+* A bite takes 0.6 seconds. Wheat 2 points, bread 5, raw beef 3, steak 8.
+
+Wheat
+
+* Seeds come from breaking grass: 25% chance of one or two. Farmland is made by hoeing grass or dirt.
+* Eight growth stages, drawn as two crossed quads that grow taller, leaf out, and turn gold at the tip.
+* One growth attempt per crop per second at a 1.2% chance, and only where sky or lamp light reaches 9, so an unlit field never ripens. Roughly ten real minutes in the open.
+* Ripe wheat drops one wheat and one or two seeds; an unripe crop gives back its seed and leaves the furrow tilled. Digging the farmland out from under a crop kills the crop.
+
+Notes for whoever picks this up next
+
+* The save format is schema 3 under the key voxelcraft:world:v3. v1 and v2 saves are deliberately not migrated: the game starts a fresh world and says so on screen.
+* New block ids are appended from 16 upwards and never renumbered, enforced by a runtime assertion. The eight wheat stages are block ids 21-28 rather than block entities, so crop stage survives chunk unloads with no change to the save format.
+* window.__voxelcraft gained breakTime, mine, give, durability, hunger, setHunger, eat, armour, equip, openFurnace, furnace, furnaceList, setFurnaceSlots, smelting, tillDirt, plantSeed, crops and growCrops. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
+* Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, and any world saved before this milestone resets.
