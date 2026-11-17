@@ -6926,6 +6926,11 @@ window.addEventListener('keydown', (event) => {
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();
+  } else if (isEscape && fallbackControls && !player.dead &&
+      overlayEl.classList.contains('hidden')) {
+    // No pointer lock to release in fallback mode, so Esc opens the pause menu.
+    event.preventDefault();
+    overlayEl.classList.remove('hidden');
   }
 });
 
@@ -8896,22 +8901,28 @@ function animate(now) {
   const dt = Math.min(Math.max(rawDt, 0), 0.1);
 
   updateGamepad(dt);
-  updatePlayer(dt, readPlayerInput());
+
+  // The pause overlay freezes the whole world, Minecraft-style. Rendering,
+  // chunk streaming, pad menu navigation, ambience and autosave keep running.
+  if (overlayEl.classList.contains('hidden')) {
+    updatePlayer(dt, readPlayerInput());
+    updateTarget();
+    updateMobTarget();
+    const canMine = isMiningHeld() && !player.dead && isPlayable();
+    updateMining(dt, canMine && !currentMobTarget);
+    updateCombat(dt);
+    updateMobs(dt);
+    updateHeldItem(dt);
+    updateHealth(dt);
+    updateItemEntities(dt);
+    updateBreakParticles(dt);
+    updateTorchEmbers(dt);
+    updateDayNight(dt);
+    updateExplosionEffects(dt);
+  }
+
   world.updateStreaming(player.pos.x, player.pos.z);
-  updateTarget();
-  updateMobTarget();
-  const canMine = isMiningHeld() && !player.dead && isPlayable();
-  updateMining(dt, canMine && !currentMobTarget);
-  updateCombat(dt);
-  updateMobs(dt);
-  updateHeldItem(dt);
-  updateHealth(dt);
-  updateItemEntities(dt);
-  updateBreakParticles(dt);
   updateAudio(dt);
-  updateTorchEmbers(dt);
-  updateDayNight(dt);
-  updateExplosionEffects(dt);
   updateSaveLoop(dt);
   skyDome.position.copy(camera.position);
   renderGame();
