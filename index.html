@@ -187,6 +187,19 @@
     border-radius: 3px; cursor: pointer;
   }
   #overlay .pad-settings button:hover { background: rgba(255,255,255,0.16); }
+  #overlay .save-settings {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin: -4px 0 16px; font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
+  }
+  #overlay .save-settings .save-state { color: #7d90a2; }
+  #overlay .save-settings .save-state.found { color: #7ee08a; }
+  #overlay .save-settings button {
+    font: inherit; font-size: 11px; line-height: 1; padding: 4px 9px;
+    color: #eaf3fb; background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
+    border-radius: 3px; cursor: pointer;
+  }
+  #overlay .save-settings button:hover { background: rgba(255,255,255,0.16); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
   /* ---------- Inventory and crafting screens ---------- */
@@ -362,7 +375,7 @@
 <div id="overlay">
   <div class="panel">
     <h1>VOXELCRAFT</h1>
-    <p class="subtitle">Milestone 9 &middot; Sound &amp; Polish</p>
+    <p class="subtitle">Milestone 10 &middot; World Persistence</p>
     <div class="controls">
       <div><kbd>Mouse</kbd><span>Look around</span></div>
       <div><kbd>W A S D</kbd><span>Walk</span></div>
@@ -393,6 +406,12 @@
       <button id="pad-sens-down" type="button" title="Lower gamepad sensitivity">&minus;</button>
       <span id="pad-sens-value">1.0&times;</span>
       <button id="pad-sens-up" type="button" title="Raise gamepad sensitivity">+</button>
+    </div>
+    <div class="save-settings">
+      <span id="save-status" class="save-state">No saved world yet</span>
+      <span>&middot;</span>
+      <span>Progress saves automatically</span>
+      <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
     </div>
     <button id="start-button" class="cta" type="button">CLICK TO START</button>
     <p class="fineprint">Explore forests, jungles, deserts, mountains, rivers, and caves. Torches light the dark, animals roam the grass, and hostile things stir at night. Stone, coal, and iron wait underground.</p>
@@ -1596,6 +1615,29 @@ class World {
     const lx = gx - cx * CHUNK_SIZE;
     const lz = gz - cz * CHUNK_SIZE;
     chunkOverrides.set(blockIndex(lx, gy, lz), id);
+    markSaveDirty();
+  }
+
+  /**
+   * Re-insert one saved block edit during load. Chunks are not generated yet
+   * at this point, so this only refills the override tables and torch set.
+   */
+  loadSavedOverride(cx, cz, index, id) {
+    const lx = index % CHUNK_SIZE;
+    const row = (index - lx) / CHUNK_SIZE;
+    const lz = row % CHUNK_SIZE;
+    const y = (row - lz) / CHUNK_SIZE;
+    const key = chunkKey(cx, cz);
+    let chunkOverrides = this.overridesByChunk.get(key);
+    if (!chunkOverrides) {
+      chunkOverrides = new Map();
+      this.overridesByChunk.set(key, chunkOverrides);
+    }
+    chunkOverrides.set(index, id);
+    const gx = cx * CHUNK_SIZE + lx;
+    const gz = cz * CHUNK_SIZE + lz;
+    this.overrides.set(gx + ',' + y + ',' + gz, id);
+    this.trackTorch(gx, y, gz, B.AIR, id);
   }
 
   /**
@@ -7915,10 +7957,219 @@ function updateAudio(dt) {
 }
 
 /* ============================================================
-   20. MAIN ANIMATION LOOP AND DEBUG HOOKS
+   20. WORLD PERSISTENCE (SAVE & LOAD)
+   ============================================================ */
+
+/**
+ * The world is saved as a diff: only blocks the player has changed are stored,
+ * as flat [blockIndex, blockId] pairs per chunk key. Player position, health,
+ * inventory, selected slot and time of day ride along. localStorage keeps the
+ * write synchronous, so the save fired on page hide is guaranteed to land.
+ */
+const SAVE_KEY = 'voxelcraft:world:v1';
+const SAVE_SCHEMA = 1;
+const AUTOSAVE_SECONDS = 25;
+
+const saveStatusEl = document.getElementById('save-status');
+const newWorldButton = document.getElementById('new-world-button');
+const startButton = document.getElementById('start-button');
+
+let lastSaveAt = 0;
+let lastSaveBytes = 0;
+let lastSaveError = null;
+let saveDirty = false;
+let saveDisabled = false;
+let autosaveTimer = AUTOSAVE_SECONDS;
+
+function markSaveDirty() {
+  saveDirty = true;
+}
+
+function serializeWorldSave() {
+  const edits = {};
+  for (const [key, map] of world.overridesByChunk) {
+    if (!map.size) continue;
+    const flat = [];
+    for (const [index, id] of map) flat.push(index, id);
+    edits[key] = flat;
+  }
+  return {
+    v: SAVE_SCHEMA,
+    seed: WORLD_SEED,
+    savedAt: Date.now(),
+    player: {
+      x: player.pos.x,
+      y: player.pos.y,
+      z: player.pos.z,
+      yaw,
+      pitch,
+      health: player.health
+    },
+    slot: selectedSlot,
+    time: dayTime,
+    inventory: inventory.map((slot) => (slot ? [slot.id, slot.count] : null)),
+    edits
+  };
+}
+
+function saveWorld() {
+  if (saveDisabled) return false;
+  try {
+    const json = JSON.stringify(serializeWorldSave());
+    localStorage.setItem(SAVE_KEY, json);
+    lastSaveAt = Date.now();
+    lastSaveBytes = new Blob([json]).size;
+    lastSaveError = null;
+    saveDirty = false;
+    refreshSaveStatus();
+    return true;
+  } catch (err) {
+    lastSaveError = err && err.name === 'QuotaExceededError'
+      ? 'Saved world too large for browser storage'
+      : 'Browser storage unavailable';
+    console.warn('World save failed:', err);
+    refreshSaveStatus();
+    return false;
+  }
+}
+
+/** Reads and validates the stored save, or returns null when absent or stale. */
+function readSavedWorld() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(SAVE_KEY);
+  } catch (err) {
+    console.warn('World save is unreadable:', err);
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw);
+    if (!data || data.v !== SAVE_SCHEMA || data.seed !== WORLD_SEED) return null;
+    return data;
+  } catch (err) {
+    console.warn('Discarding corrupt world save:', err);
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch (unavailable) {}
+    return null;
+  }
+}
+
+function applySavedEdits(world, save) {
+  if (!save.edits || typeof save.edits !== 'object') return;
+  const maxIndex = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
+  for (const key in save.edits) {
+    const flat = save.edits[key];
+    if (!Array.isArray(flat)) continue;
+    const comma = key.indexOf(',');
+    if (comma < 0) continue;
+    const cx = Number(key.slice(0, comma));
+    const cz = Number(key.slice(comma + 1));
+    if (!Number.isFinite(cx) || !Number.isFinite(cz)) continue;
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      const index = Math.trunc(Number(flat[i]));
+      const id = Math.trunc(Number(flat[i + 1]));
+      if (index < 0 || index >= maxIndex) continue;
+      if (id < 0 || id >= BLOCKS.length) continue;
+      world.loadSavedOverride(cx, cz, index, id);
+    }
+  }
+}
+
+function restoreSavedPlayer(save) {
+  const p = save.player;
+  if (!p) return false;
+  player.pos.set(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0);
+  player.vel.set(0, 0, 0);
+  player.onGround = false;
+  if (Number.isFinite(p.yaw)) yaw = p.yaw;
+  if (Number.isFinite(p.pitch)) pitch = clamp(p.pitch, -1.55, 1.55);
+  player.health = clamp(Number(p.health) || player.maxHealth, 1, player.maxHealth);
+  applyLook();
+  syncCamera();
+  heldLastYaw = yaw;
+  heldLastPitch = pitch;
+  return true;
+}
+
+function restoreSavedInventory(save) {
+  if (!Array.isArray(save.inventory)) return;
+  for (let i = 0; i < INVENTORY_SIZE; i++) {
+    const slot = save.inventory[i];
+    if (!Array.isArray(slot) || !ITEMS.has(slot[0])) continue;
+    const count = Math.trunc(Number(slot[1]) || 0);
+    if (count <= 0) continue;
+    inventory[i] = { id: slot[0], count: Math.min(count, ITEMS.get(slot[0]).stack) };
+  }
+}
+
+function formatSavedAt(timestamp) {
+  if (!timestamp) return 'never';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return seconds + 's ago';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return minutes + ' min ago';
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + ' h ago';
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function refreshSaveStatus() {
+  if (!saveStatusEl) return;
+  if (lastSaveError) {
+    saveStatusEl.textContent = lastSaveError;
+    saveStatusEl.classList.remove('found');
+  } else if (lastSaveAt) {
+    saveStatusEl.textContent = 'World saved ' + formatSavedAt(lastSaveAt);
+    saveStatusEl.classList.add('found');
+  } else {
+    saveStatusEl.textContent = 'No saved world yet';
+    saveStatusEl.classList.remove('found');
+  }
+}
+
+function initSaveUi(hasSavedWorld) {
+  newWorldButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!window.confirm('Erase this world and start a fresh one?')) return;
+    // Stop the unload-triggered saves from resurrecting the wiped world.
+    saveDisabled = true;
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch (unavailable) {}
+    window.location.reload();
+  });
+  if (hasSavedWorld) {
+    saveStatusEl.textContent = 'Saved world found';
+    saveStatusEl.classList.add('found');
+    startButton.textContent = 'CLICK TO CONTINUE';
+  } else {
+    refreshSaveStatus();
+  }
+}
+
+function updateSaveLoop(dt) {
+  autosaveTimer -= dt;
+  if (autosaveTimer > 0) return;
+  autosaveTimer = AUTOSAVE_SECONDS;
+  saveWorld();
+}
+
+window.addEventListener('pagehide', () => saveWorld());
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveWorld();
+});
+
+/* ============================================================
+   21. MAIN ANIMATION LOOP AND DEBUG HOOKS
    ============================================================ */
 
 const world = new World(WORLD_SEED);
+
+const loadedSave = readSavedWorld();
+if (loadedSave) applySavedEdits(world, loadedSave);
 
 // Pick a dry spawn column, then prepare a 3x3 patch synchronously so the spawn
 // chunk can mesh with correct borders.
@@ -7936,15 +8187,23 @@ spawnChunk.lightSettled = true;
 buildChunkMesh(world, spawnChunk);
 spawnChunk.group.visible = true;
 
-spawnPlayer(spawnColumn);
+if (loadedSave && restoreSavedPlayer(loadedSave)) {
+  restoreSavedInventory(loadedSave);
+  if (Number.isFinite(loadedSave.time)) dayTime = ((loadedSave.time % 1) + 1) % 1;
+} else {
+  spawnPlayer(spawnColumn);
+}
 world.updateStreaming(player.pos.x, player.pos.z);
-selectHotbarSlot(0);
+selectHotbarSlot(loadedSave ? clamp(Math.trunc(Number(loadedSave.slot) || 0), 0, HOTBAR_SIZE - 1) : 0);
 renderHotbar();
 applyDayNight();
 updateDebug();
 
+lastSaveAt = (loadedSave && loadedSave.savedAt) || 0;
+initSaveUi(Boolean(loadedSave));
+
 window.__voxelcraft = {
-  version: '0.1.0-milestone-9',
+  version: '0.1.0-milestone-10',
   seed: WORLD_SEED,
   world,
   camera,
@@ -7960,6 +8219,31 @@ window.__voxelcraft = {
   heldRoot,
   heldScene,
   heldCamera,
+  save() {
+    saveWorld();
+    return this.saveInfo();
+  },
+  saveInfo() {
+    return {
+      key: SAVE_KEY,
+      schema: SAVE_SCHEMA,
+      savedAt: lastSaveAt || null,
+      bytes: lastSaveBytes,
+      edits: world.overrides.size,
+      dirty: saveDirty,
+      error: lastSaveError
+    };
+  },
+  wipeSave() {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch (unavailable) {}
+    lastSaveAt = 0;
+    lastSaveBytes = 0;
+    lastSaveError = null;
+    refreshSaveStatus();
+    return false;
+  },
   render() {
     renderGame();
     return renderer.info.render.triangles;
@@ -8397,7 +8681,7 @@ window.__voxelcraft = {
     const selected = getSelectedStack();
     const craftRecipe = currentCraftRecipe();
     return {
-      version: '0.1.0-milestone-9',
+      version: '0.1.0-milestone-10',
       seed: WORLD_SEED,
       position: [camera.position.x, camera.position.y, camera.position.z],
       feet: [pos.x, pos.y, pos.z],
@@ -8465,6 +8749,7 @@ window.__voxelcraft = {
         } : null
       },
       overrides: world.overrides.size,
+      save: this.saveInfo(),
       itemDrops: itemEntities.map((entity) => ({
         id: entity.itemId,
         count: entity.count,
@@ -8529,6 +8814,7 @@ function animate(now) {
   updateTorchEmbers(dt);
   updateDayNight(dt);
   updateExplosionEffects(dt);
+  updateSaveLoop(dt);
   skyDome.position.copy(camera.position);
   renderGame();
 
