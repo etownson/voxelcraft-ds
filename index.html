@@ -1159,54 +1159,112 @@ function paintIconLine(px, x0, y0, x1, y1, color) {
   }
 }
 
-const TOOL_ICON_PALETTES = {
-  wood: { main: '#a77c49', light: '#c79c62', dark: '#6d4f2f' },
-  stone: { main: '#8b8b90', light: '#b9b9be', dark: '#5c5c61' },
-  iron: { main: '#c9c9d1', light: '#f0f0f4', dark: '#8b8b95' }
+/**
+ * Authentic Minecraft tool sprites at 16x16, replicated from the vanilla
+ * textures. Legend: H/M/L/S are the wooden handle's dark, mid, light and
+ * shadow tones; 1-6 are the head's shades from outline up to highlight,
+ * recolored per material tier.
+ */
+const TOOL_SPRITES = {
+  pickaxe: [
+    '................',
+    '................',
+    '......22222.....',
+    '.....2665562HM..',
+    '......211155LS..',
+    '..........H651..',
+    '.........HMS561.',
+    '........HLS.151.',
+    '.......HMS..151.',
+    '......HLS...161.',
+    '.....HMS....161.',
+    '....HLS......1..',
+    '...HMS..........',
+    '..HLS...........',
+    '..SS............',
+    '................'
+  ],
+  axe: [
+    '................',
+    '.........22.....',
+    '........2662....',
+    '.......26562....',
+    '......26555HM...',
+    '......166545S...',
+    '.......11H5451..',
+    '........HMS551..',
+    '.......HLS.11...',
+    '......HMS.......',
+    '.....HMS........',
+    '....HLS.........',
+    '...HMS..........',
+    '..HLS...........',
+    '..SS............',
+    '................'
+  ],
+  shovel: [
+    '................',
+    '................',
+    '...........221..',
+    '..........26651.',
+    '.........266561.',
+    '........2665661.',
+    '.........H5661..',
+    '........HLS61...',
+    '.......HLS.1....',
+    '......HMS.......',
+    '.....HLS........',
+    '....HMS.........',
+    '..HHLS..........',
+    '..HLS...........',
+    '...SS...........',
+    '................'
+  ],
+  sword: [
+    '.............222',
+    '............2661',
+    '...........26561',
+    '..........26561.',
+    '.........26561..',
+    '........26561...',
+    '..22...26561....',
+    '..232.26561.....',
+    '...2416461......',
+    '...244361.......',
+    '....2321........',
+    '...HM1221.......',
+    '..HLS.1121......',
+    '22MS....11......',
+    '231.............',
+    '111.............'
+  ]
+};
+
+const TOOL_HANDLE_COLORS = ['#493615', '#684e1e', '#896727', '#281e0b'];
+
+const TOOL_HEAD_PALETTES = {
+  wood: ['#20180a', '#372910', '#594319', '#6b511f', '#755821', '#866526'],
+  stone: ['#181818', '#494949', '#6c6c6c', '#7f7f7f', '#898989', '#9a9a9a'],
+  iron: ['#181818', '#444444', '#969696', '#c1c1c1', '#d8d8d8', '#ffffff']
 };
 
 function makeToolIcon(item) {
-  const palette = TOOL_ICON_PALETTES[item.tier] || TOOL_ICON_PALETTES.wood;
+  const heads = TOOL_HEAD_PALETTES[item.tier] || TOOL_HEAD_PALETTES.wood;
+  const sprite = TOOL_SPRITES[item.tool] || TOOL_SPRITES.pickaxe;
   const canvas = createCanvas(16);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  const px = (x, y, color, w = 1, h = 1) => {
-    ctx.fillStyle = color;
-    ctx.fillRect(x | 0, y | 0, w, h);
-  };
-  const line = (x0, y0, x1, y1, color) => paintIconLine(px, x0, y0, x1, y1, color);
 
-  if (item.tool === 'sword') {
-    line(3, 12, 11, 4, palette.dark);
-    line(4, 12, 12, 4, palette.main);
-    line(5, 11, 12, 4, palette.light);
-    line(4, 7, 8, 11, palette.dark);
-    line(3, 12, 5, 14, palette.dark);
-    px(11, 2, palette.light, 2, 2);
-  } else {
-    line(5, 14, 10, 9, palette.dark);
-    line(6, 14, 11, 9, '#8a6439');
-
-    if (item.tool === 'pickaxe') {
-      line(2, 5, 7, 2, palette.main);
-      line(3, 6, 8, 3, palette.light);
-      line(1, 6, 4, 4, palette.dark);
-      line(7, 2, 10, 4, palette.dark);
-      px(1, 5, palette.light); px(8, 2, palette.light);
-    } else if (item.tool === 'axe') {
-      px(3, 2, palette.light, 2, 1);
-      px(2, 3, palette.main, 4, 3);
-      px(5, 2, palette.main, 2, 2);
-      px(6, 3, palette.dark, 1, 2);
-      px(3, 6, palette.dark, 2, 1);
-      px(2, 4, palette.light, 1, 1);
-    } else if (item.tool === 'shovel') {
-      line(5, 14, 9, 5, palette.dark);
-      line(6, 14, 10, 5, '#8a6439');
-      px(7, 1, palette.light, 3, 1);
-      px(6, 2, palette.main, 4, 3);
-      px(7, 5, palette.dark, 2, 1);
-      px(6, 2, palette.dark, 1, 3);
+  for (let y = 0; y < sprite.length; y++) {
+    const row = sprite[y];
+    for (let x = 0; x < row.length; x++) {
+      const sym = row[x];
+      if (sym === '.') continue;
+      const handleIndex = 'HMLS'.indexOf(sym);
+      ctx.fillStyle = handleIndex >= 0
+        ? TOOL_HANDLE_COLORS[handleIndex]
+        : heads[Number(sym) - 1];
+      ctx.fillRect(x, y, 1, 1);
     }
   }
 
