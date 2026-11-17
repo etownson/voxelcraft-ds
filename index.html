@@ -637,6 +637,60 @@ defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64 });
 defineItem({ id: 'feather', name: 'Feather', kind: 'material', stack: 64 });
 
+/* ---------- Item stacks ---------- */
+
+/**
+ * Stacks are plain { id, count } objects, plus an optional `dur` on tools and
+ * armour holding the durability left in that specific item. Keeping `dur`
+ * optional means every material stack stays exactly as compact as it was.
+ */
+function makeStack(id, count, dur) {
+  const stack = { id, count };
+  if (dur != null) stack.dur = dur;
+  return stack;
+}
+
+function cloneStack(stack) {
+  return stack ? makeStack(stack.id, stack.count, stack.dur) : null;
+}
+
+/** A damaged tool never merges with a fresh one, so slots must agree on `dur`. */
+function stacksMergeable(a, b) {
+  return a.id === b.id && (a.dur == null ? b.dur == null : b.dur === a.dur);
+}
+
+/** Maximum durability of an item definition, or 0 when it cannot wear down. */
+function maxDurability(itemId) {
+  const def = ITEMS.get(itemId);
+  return def && def.durability ? def.durability : 0;
+}
+
+/** A brand new stack of an item id, at full durability. */
+function freshStack(id, count = 1) {
+  const max = maxDurability(id);
+  return makeStack(id, count, max || undefined);
+}
+
+/** Current/max durability for a stack, or null when the item never wears out. */
+function stackDurability(stack) {
+  if (!stack) return null;
+  const max = maxDurability(stack.id);
+  if (!max) return null;
+  const current = stack.dur == null ? max : clamp(stack.dur, 0, max);
+  return { current, max, ratio: clamp(current / max, 0, 1) };
+}
+
+/**
+ * Spend durability on a stack and report whether it just broke. Callers own the
+ * job of clearing the slot it lived in, because stacks are referenced all over.
+ */
+function consumeDurability(stack, amount = 1) {
+  const info = stackDurability(stack);
+  if (!info) return false;
+  stack.dur = Math.max(0, info.current - amount);
+  return stack.dur <= 0;
+}
+
 const TOOL_TIERS = {
   wood:  { level: 1, speed: 2.0, durability: 60,  damage: 2.5 },
   stone: { level: 2, speed: 4.0, durability: 132, damage: 3.5 },
@@ -3291,25 +3345,26 @@ function craftCurrent(intoInventory = false) {
 
   const result = recipe.result;
   const def = ITEMS.get(result.id);
+  const produced = freshStack(result.id, result.count);
 
   if (intoInventory) {
     if (!inventoryHasRoom(result.id, result.count)) {
       showToast('Inventory full');
       return false;
     }
-    addItemToInventory(result.id, result.count);
+    addItemToInventory(produced.id, produced.count, produced.dur);
   } else if (cursorStack) {
-    if (cursorStack.id !== result.id) {
+    if (cursorStack.id !== produced.id || !stacksMergeable(cursorStack, produced)) {
       showToast('Clear the cursor to craft');
       return false;
     }
-    if (cursorStack.count + result.count > def.stack) {
+    if (cursorStack.count + produced.count > def.stack) {
       showToast('Not enough room on cursor');
       return false;
     }
-    cursorStack.count += result.count;
+    cursorStack.count += produced.count;
   } else {
-    cursorStack = { id: result.id, count: result.count };
+    cursorStack = produced;
   }
 
   consumeCraftIngredients(context.grid);
@@ -3322,9 +3377,14 @@ function craftCurrent(intoInventory = false) {
 
 function returnCursorStack() {
   if (!cursorStack) return;
-  const leftover = addItemToInventory(cursorStack.id, cursorStack.count);
+  const leftover = addItemToInventory(
+    cursorStack.id, cursorStack.count, cursorStack.dur
+  );
   if (leftover > 0) {
-    spawnItemDrop(cursorStack.id, leftover, player.pos.x, player.pos.y + 1.2, player.pos.z, false);
+    spawnItemDrop(
+      cursorStack.id, leftover,
+      player.pos.x, player.pos.y + 1.2, player.pos.z, false, cursorStack.dur
+    );
   }
   cursorStack = null;
   updateCursorVisual();
@@ -3337,7 +3397,7 @@ function mergeStackInto(source, targetArray, start, end) {
 
   for (let i = start; i < end && remaining > 0; i++) {
     const slot = targetArray[i];
-    if (!slot || slot.id !== source.id || slot.count >= maxStack) continue;
+    if (!slot || !stacksMergeable(source, slot) || slot.count >= maxStack) continue;
     const moved = Math.min(remaining, maxStack - slot.count);
     slot.count += moved;
     remaining -= moved;
@@ -3346,7 +3406,7 @@ function mergeStackInto(source, targetArray, start, end) {
   for (let i = start; i < end && remaining > 0; i++) {
     if (targetArray[i]) continue;
     const moved = Math.min(remaining, maxStack);
-    targetArray[i] = { id: source.id, count: moved };
+    targetArray[i] = makeStack(source.id, moved, source.dur);
     remaining -= moved;
   }
 
@@ -3362,15 +3422,16 @@ function countInventoryItem(itemId) {
   return total;
 }
 
-function addItemToInventory(itemId, count) {
+function addItemToInventory(itemId, count, dur) {
   const def = ITEMS.get(itemId);
   if (!def || count <= 0) return count;
   const maxStack = def.stack;
+  const probe = makeStack(itemId, count, dur);
   let remaining = count;
 
   for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
     const slot = inventory[i];
-    if (!slot || slot.id !== itemId || slot.count >= maxStack) continue;
+    if (!slot || !stacksMergeable(probe, slot) || slot.count >= maxStack) continue;
     const moved = Math.min(remaining, maxStack - slot.count);
     slot.count += moved;
     remaining -= moved;
@@ -3379,7 +3440,7 @@ function addItemToInventory(itemId, count) {
   for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
     if (inventory[i]) continue;
     const moved = Math.min(remaining, maxStack);
-    inventory[i] = { id: itemId, count: moved };
+    inventory[i] = makeStack(itemId, moved, dur);
     remaining -= moved;
   }
 
@@ -3401,6 +3462,17 @@ function consumeSelectedItem(count = 1) {
   if (stack.count <= 0) inventory[selectedSlot] = null;
   renderHotbar();
   return true;
+}
+
+/** Plain readable snapshot of a stack, used by the debug hooks. */
+function slotInfo(stack) {
+  if (!stack) return null;
+  return {
+    id: stack.id,
+    count: stack.count,
+    dur: stack.dur == null ? null : stack.dur,
+    max: maxDurability(stack.id) || null
+  };
 }
 
 function blockIntersectsPlayer(bx, by, bz) {
@@ -3511,7 +3583,7 @@ function createItemDropMesh(itemId) {
   return sprite;
 }
 
-function spawnItemDrop(itemId, count, x, y, z, scatter = true) {
+function spawnItemDrop(itemId, count, x, y, z, scatter = true, dur) {
   if (!ITEMS.has(itemId) || count <= 0) return null;
   const mesh = createItemDropMesh(itemId);
   if (!mesh) return null;
@@ -3520,6 +3592,7 @@ function spawnItemDrop(itemId, count, x, y, z, scatter = true) {
     serial: itemEntitySerial++,
     itemId,
     count,
+    dur,
     pos: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(
       scatter ? (Math.random() - 0.5) * 1.8 : 0,
@@ -3576,7 +3649,7 @@ function updateItemEntities(dt) {
       entity.vel.set(0, 0, 0);
 
       if (distance <= 0.6) {
-        const leftover = addItemToInventory(entity.itemId, entity.count);
+        const leftover = addItemToInventory(entity.itemId, entity.count, entity.dur);
         if (leftover <= 0) {
           removeItemEntity(i);
           continue;
@@ -6868,9 +6941,9 @@ function handleScreenSlotClick(container, index, button, shift) {
     // Right click: split a stack, or place a single item.
     if (cursorStack) {
       if (!slot) {
-        grid[index] = { id: cursorStack.id, count: 1 };
+        grid[index] = makeStack(cursorStack.id, 1, cursorStack.dur);
         cursorStack.count -= 1;
-      } else if (slot.id === cursorStack.id) {
+      } else if (stacksMergeable(slot, cursorStack)) {
         const def = ITEMS.get(slot.id);
         if (slot.count < def.stack) {
           slot.count += 1;
@@ -6880,7 +6953,7 @@ function handleScreenSlotClick(container, index, button, shift) {
       if (cursorStack.count <= 0) cursorStack = null;
     } else if (slot) {
       const take = Math.ceil(slot.count / 2);
-      cursorStack = { id: slot.id, count: take };
+      cursorStack = makeStack(slot.id, take, slot.dur);
       slot.count -= take;
       if (slot.count <= 0) grid[index] = null;
     }
@@ -6889,7 +6962,7 @@ function handleScreenSlotClick(container, index, button, shift) {
     if (!slot) {
       grid[index] = cursorStack;
       cursorStack = null;
-    } else if (slot.id === cursorStack.id) {
+    } else if (stacksMergeable(slot, cursorStack)) {
       const def = ITEMS.get(slot.id);
       const moved = Math.min(cursorStack.count, def.stack - slot.count);
       slot.count += moved;
@@ -8125,9 +8198,13 @@ function updateAudio(dt) {
  * as flat [blockIndex, blockId] pairs per chunk key. Player position, health,
  * inventory, selected slot and time of day ride along. localStorage keeps the
  * write synchronous, so the save fired on page hide is guaranteed to land.
+ *
+ * Schema 2 added the `dur` third element to inventory slots (tools and armour
+ * now wear out), so schema 1 worlds are no longer readable.
  */
-const SAVE_KEY = 'voxelcraft:world:v1';
-const SAVE_SCHEMA = 1;
+const SAVE_KEY = 'voxelcraft:world:v2';
+const LEGACY_SAVE_KEY = 'voxelcraft:world:v1';
+const SAVE_SCHEMA = 2;
 const AUTOSAVE_SECONDS = 25;
 
 const saveStatusEl = document.getElementById('save-status');
@@ -8167,7 +8244,12 @@ function serializeWorldSave() {
     },
     slot: selectedSlot,
     time: dayTime,
-    inventory: inventory.map((slot) => (slot ? [slot.id, slot.count] : null)),
+    inventory: inventory.map((slot) => {
+      if (!slot) return null;
+      return slot.dur == null
+        ? [slot.id, slot.count]
+        : [slot.id, slot.count, slot.dur];
+    }),
     edits
   };
 }
@@ -8260,7 +8342,12 @@ function restoreSavedInventory(save) {
     if (!Array.isArray(slot) || !ITEMS.has(slot[0])) continue;
     const count = Math.trunc(Number(slot[1]) || 0);
     if (count <= 0) continue;
-    inventory[i] = { id: slot[0], count: Math.min(count, ITEMS.get(slot[0]).stack) };
+    const def = ITEMS.get(slot[0]);
+    const restored = makeStack(slot[0], Math.min(count, def.stack));
+    if (def.durability && slot[2] != null) {
+      restored.dur = clamp(Math.trunc(Number(slot[2]) || 0), 0, def.durability);
+    }
+    inventory[i] = restored;
   }
 }
 
@@ -8284,9 +8371,21 @@ function refreshSaveStatus() {
   } else if (lastSaveAt) {
     saveStatusEl.textContent = 'World saved ' + formatSavedAt(lastSaveAt);
     saveStatusEl.classList.add('found');
+  } else if (hasLegacySave()) {
+    saveStatusEl.textContent = 'A world from an older version exists and can\u2019t be loaded';
+    saveStatusEl.classList.remove('found');
   } else {
     saveStatusEl.textContent = 'No saved world yet';
     saveStatusEl.classList.remove('found');
+  }
+}
+
+/** True when an unreadable schema 1 world is still sitting in storage. */
+function hasLegacySave() {
+  try {
+    return localStorage.getItem(LEGACY_SAVE_KEY) != null;
+  } catch (unavailable) {
+    return false;
   }
 }
 
@@ -8298,6 +8397,7 @@ function initSaveUi(hasSavedWorld) {
     saveDisabled = true;
     try {
       localStorage.removeItem(SAVE_KEY);
+      localStorage.removeItem(LEGACY_SAVE_KEY);
     } catch (unavailable) {}
     window.location.reload();
   });
@@ -8489,6 +8589,7 @@ window.__voxelcraft = {
     return {
       id: stack ? stack.id : null,
       count: stack ? stack.count : 0,
+      dur: stack ? stack.dur ?? null : null,
       model: heldModelKey,
       visible: heldRoot.visible
     };
@@ -8543,13 +8644,17 @@ window.__voxelcraft = {
   treeAt(x, z) {
     return treeAt(x, z);
   },
-  give(itemId, count = 1) {
-    const leftover = addItemToInventory(itemId, count);
+  give(itemId, count = 1, dur) {
+    const leftover = addItemToInventory(itemId, count, dur);
     renderHotbar();
     return { added: count - leftover, leftover };
   },
   itemCount(itemId) {
     return countInventoryItem(itemId);
+  },
+  /** Durability of the stack in an inventory slot, or null if it never wears. */
+  durability(slotIndex = selectedSlot) {
+    return stackDurability(inventory[Number(slotIndex)] || null);
   },
   openInventory() {
     openScreen('inventory');
@@ -8567,13 +8672,13 @@ window.__voxelcraft = {
     return activeScreen;
   },
   cursor() {
-    return cursorStack ? { id: cursorStack.id, count: cursorStack.count } : null;
+    return slotInfo(cursorStack);
   },
   setCraftingGrid(kind, itemIds = []) {
     const grid = kind === '3x3' ? craft3 : craft2;
     for (let i = 0; i < grid.length; i++) {
       const id = itemIds[i] || null;
-      grid[i] = id ? { id, count: 1 } : null;
+      grid[i] = id ? freshStack(id, 1) : null;
     }
     if (activeScreen) renderScreen();
     return this.craftPreview(kind);
@@ -8593,15 +8698,18 @@ window.__voxelcraft = {
     const size = kind === '3x3' ? CRAFT3_SIZE : CRAFT2_SIZE;
     const recipe = matchRecipe(grid, size);
     if (!recipe) return null;
-    const result = { ...recipe.result };
+    const produced = freshStack(recipe.result.id, recipe.result.count);
     consumeCraftIngredients(grid);
-    const leftover = addItemToInventory(result.id, result.count);
+    const leftover = addItemToInventory(produced.id, produced.count, produced.dur);
     if (leftover > 0) {
-      spawnItemDrop(result.id, leftover, player.pos.x, player.pos.y + 1.2, player.pos.z, false);
+      spawnItemDrop(
+        produced.id, leftover,
+        player.pos.x, player.pos.y + 1.2, player.pos.z, false, produced.dur
+      );
     }
     renderHotbar();
     if (activeScreen) renderScreen();
-    return result;
+    return { id: produced.id, count: produced.count, recipe: recipe.id };
   },
   recipes() {
     return RECIPES.map((recipe) => ({
@@ -8891,17 +8999,18 @@ window.__voxelcraft = {
         return {
           id: stack ? stack.id : null,
           count: stack ? stack.count : 0,
+          dur: stack ? stack.dur ?? null : null,
           model: heldModelKey
         };
       })(),
       selectedSlot,
       selected: selected ? { id: selected.id, count: selected.count } : null,
-      inventory: inventory.map((slot) => slot ? { id: slot.id, count: slot.count } : null),
+      inventory: inventory.map((slot) => slotInfo(slot)),
       crafting: {
         screen: activeScreen,
-        cursor: cursorStack ? { id: cursorStack.id, count: cursorStack.count } : null,
-        grid2: craft2.map((slot) => slot ? { id: slot.id, count: slot.count } : null),
-        grid3: craft3.map((slot) => slot ? { id: slot.id, count: slot.count } : null),
+        cursor: slotInfo(cursorStack),
+        grid2: craft2.map((slot) => slotInfo(slot)),
+        grid3: craft3.map((slot) => slotInfo(slot)),
         preview: craftRecipe ? {
           id: craftRecipe.result.id,
           count: craftRecipe.result.count,
@@ -8913,6 +9022,7 @@ window.__voxelcraft = {
       itemDrops: itemEntities.map((entity) => ({
         id: entity.itemId,
         count: entity.count,
+        dur: entity.dur == null ? null : entity.dur,
         pos: [entity.pos.x, entity.pos.y, entity.pos.z]
       })),
       target: currentTarget ? {
