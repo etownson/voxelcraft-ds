@@ -80,6 +80,28 @@
   .shield.half {
     background: linear-gradient(90deg, #c2d2e2 50%, #2b3440 50%);
   }
+  /* Hearts on the left, armour and food stacked on the right, stretched to the
+     width of the hotbar so all three rows line up the way Minecraft does. */
+  #vitals {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%;
+  }
+  .vitals-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  }
+  #hunger {
+    display: flex; gap: 3px; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.55));
+  }
+  .haunch {
+    width: 15px; height: 14px;
+    clip-path: polygon(20% 0, 80% 0, 100% 36%, 76% 74%, 48% 100%, 12% 76%, 0 38%);
+    background: #d98a4a;
+    transition: background 0.15s linear;
+  }
+  .haunch.dark { background: #33200f; }
+  .haunch.half {
+    background: linear-gradient(90deg, #d98a4a 50%, #33200f 50%);
+  }
 
   #hotbar {
     display: flex; gap: 2px; padding: 3px;
@@ -419,8 +441,13 @@
   <div id="control-hint" class="hidden">Mouse lock unavailable &middot; Right-drag to look &middot; Arrow keys also look</div>
 
   <div id="bottom-hud">
-    <div id="armor" class="hidden"></div>
-    <div id="health"></div>
+    <div id="vitals">
+      <div id="health"></div>
+      <div class="vitals-right">
+        <div id="armor" class="hidden"></div>
+        <div id="hunger"></div>
+      </div>
+    </div>
     <div id="hotbar"></div>
   </div>
 </div>
@@ -4638,6 +4665,7 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   if (block.blockEntity) spillFurnaceContents(x, y, z);
 
   world.setBlock(x, y, z, B.AIR);
+  addExhaustion(EXHAUSTION.mine);
   if (canHarvest) {
     for (const drop of block.drops ?? []) {
       const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
@@ -4986,6 +5014,10 @@ const player = {
   sprinting: false,
   health: 20,
   maxHealth: 20,
+  /** Food points, 0 to 20. Half a point is never shown, just like Minecraft. */
+  hunger: 20,
+  /** Invisible 0..1 counter that spends itself on one point of hunger. */
+  exhaustion: 0,
   dead: false,
   hurtCooldown: 0,
   regenDelay: 0,
@@ -5170,11 +5202,13 @@ function updatePlayer(dt, input) {
   player.vel.x += (wishX * moveSpeed - player.vel.x) * blend;
   player.vel.z += (wishZ * moveSpeed - player.vel.z) * blend;
 
+  let jumped = false;
   if (player.inWater) {
     player.vel.y -= GRAVITY * WATER_GRAVITY_SCALE * dt;
     if (input.jump) {
       player.vel.y += WATER_SWIM_ACCEL * dt;
       if (player.onGround) player.vel.y = JUMP_SPEED * 0.65;
+      jumped = player.onGround;
     }
     player.vel.y = clamp(player.vel.y, -WATER_TERMINAL_VELOCITY, WATER_MAX_SWIM_SPEED);
   } else {
@@ -5182,6 +5216,7 @@ function updatePlayer(dt, input) {
     if (input.jump && player.onGround) {
       player.vel.y = JUMP_SPEED;
       player.onGround = false;
+      jumped = true;
     }
   }
 
@@ -5223,6 +5258,9 @@ function updatePlayer(dt, input) {
 
   if (hitX) player.vel.x = 0;
   if (hitZ) player.vel.z = 0;
+
+  // Travel and jumping are what eat through food while exploring.
+  exhaustForMovement(Math.hypot(player.pos.x - startX, player.pos.z - startZ), jumped);
 
   // Keep the player out of the void if a chunk somehow fails to generate.
   if (player.pos.y < -4) {
@@ -5449,7 +5487,7 @@ document.addEventListener('mousedown', (event) => {
       lastFallbackMouseX = event.clientX;
       lastFallbackMouseY = event.clientY;
     } else {
-      tryPlaceSelectedBlock();
+      tryUseSelectedItem();
     }
   }
 });
@@ -5462,7 +5500,7 @@ document.addEventListener('mouseup', (event) => {
   } else if (event.button === 2 && fallbackControls && fallbackRightDrag) {
     fallbackRightDrag = false;
     fallbackLooking = false;
-    if (!fallbackDragMoved) tryPlaceSelectedBlock();
+    if (!fallbackDragMoved) tryUseSelectedItem();
   }
 });
 
@@ -5763,7 +5801,7 @@ function handlePadTap(name) {
       selectHotbarSlot(selectedSlot + 1, true);
       break;
     case 'lt':
-      tryPlaceSelectedBlock();
+      tryUseSelectedItem();
       break;
     case 'rt':
       beginPadMining();
@@ -5836,7 +5874,7 @@ function updateGamepad(dt) {
   if (gamepadState.pressed[PAD_BUTTON.rb]) {
     selectHotbarSlot(selectedSlot + 1, true);
   }
-  if (gamepadState.pressed[PAD_BUTTON.lt]) tryPlaceSelectedBlock();
+  if (gamepadState.pressed[PAD_BUTTON.lt]) tryUseSelectedItem();
   if (gamepadState.pressed[PAD_BUTTON.rt]) beginPadMining();
 }
 
@@ -7138,6 +7176,7 @@ function damagePlayer(amount, cause = 'unknown') {
   const defense = armorDefense();
   const absorbed = armorAbsorbed(defense, amount);
   if (absorbed > 0) wearArmour(absorbed);
+  addExhaustion(EXHAUSTION.hurt);
 
   player.health = Math.max(0, player.health - (amount - absorbed));
   player.hurtCooldown = 0.35;
@@ -7178,7 +7217,8 @@ function playerDie(cause) {
   const messages = {
     fall: 'You fell too far.',
     zombie: 'A zombie got you.',
-    creeper: 'A creeper found you.'
+    creeper: 'A creeper found you.',
+    starving: 'You starved with nothing to eat.'
   };
   deathCauseEl.textContent = messages[cause] || 'The world got the better of you.';
   deathScreenEl.classList.remove('hidden');
@@ -7192,6 +7232,7 @@ function respawnPlayer() {
   player.hurtCooldown = 0;
   player.regenDelay = 0;
   player.fallPeakY = 0;
+  starveTimer = 0;
   damageFlashTimer = 0;
   damageFlashEl.style.opacity = '0';
   deathScreenEl.classList.add('hidden');
@@ -7214,6 +7255,116 @@ respawnButton.addEventListener('click', (event) => {
   event.preventDefault();
   respawnPlayer();
 });
+
+/* ---------- Hunger ---------- */
+
+/**
+ * Food on Minecraft's 0-20 scale. There is no saturation counter: hunger falls
+ * as the player works, and only a full-ish stomach lets wounds close.
+ */
+const HUNGER_MAX = 20;
+const HUNGER_REGEN_MIN = 18;
+/** Seconds between starvation hits once the stomach is empty. */
+const STARVE_INTERVAL = 4;
+
+/** What each activity costs, in exhaustion points. */
+const EXHAUSTION = {
+  walk: 0.004, sprint: 0.02, jump: 0.1,
+  mine: 0.05, attack: 0.1, hurt: 0.1, regen: 0.1
+};
+
+let starveTimer = 0;
+/** Seconds left before another bite can be taken. */
+let eatTimer = 0;
+const EAT_SECONDS = 0.6;
+
+/**
+ * Eats one bite of whatever food is held. Food is the only way back up to a
+ * full stomach, so a night of fighting and mining has to end at a cooker.
+ */
+function tryEatSelectedItem() {
+  const stack = getSelectedStack();
+  if (!stack) return false;
+
+  const item = ITEMS.get(stack.id);
+  if (!item || item.kind !== 'food' || !item.hunger) return false;
+
+  if (player.hunger >= HUNGER_MAX) {
+    showToast("You're already full");
+    return false;
+  }
+  if (eatTimer > 0) return false;
+
+  eatTimer = EAT_SECONDS;
+  consumeSelectedItem();
+  player.hunger = Math.min(HUNGER_MAX, player.hunger + item.hunger);
+  renderHunger();
+  triggerHeldSwing();
+  playEatSound();
+  markSaveDirty();
+  return true;
+}
+
+/** Right-click with something held: eat first, then use it on the world. */
+function tryUseSelectedItem() {
+  if (tryEatSelectedItem()) return true;
+  return tryPlaceSelectedBlock();
+}
+
+/**
+ * Spends exhaustion. Every full point of it takes one point of hunger, which is
+ * how walking, mining, swinging a sword and taking a hit all eat away at food.
+ */
+function addExhaustion(amount) {
+  if (player.dead || !Number.isFinite(amount) || amount <= 0) return;
+  player.exhaustion += amount;
+  while (player.exhaustion >= 1) {
+    player.exhaustion -= 1;
+    if (player.hunger > 0) {
+      player.hunger -= 1;
+      renderHunger();
+    }
+  }
+}
+
+/** Tracks how far the player has travelled and charges food for it. */
+function exhaustForMovement(distance, jumping) {
+  if (distance > 0) {
+    addExhaustion(distance * (player.sprinting ? EXHAUSTION.sprint : EXHAUSTION.walk));
+  }
+  // A jump spent its energy even when the player was shoved up against a wall.
+  if (jumping) addExhaustion(EXHAUSTION.jump);
+}
+
+/** Starvation bites once food is gone; a full stomach closes wounds. */
+function updateHunger(dt) {
+  if (dt <= 0 || player.dead) return;
+
+  if (eatTimer > 0) eatTimer = Math.max(0, eatTimer - dt);
+
+  if (player.hunger <= 0) {
+    starveTimer += dt;
+    if (starveTimer >= STARVE_INTERVAL) {
+      starveTimer = 0;
+      damagePlayer(1, 'starving');
+    }
+    return;
+  }
+  starveTimer = 0;
+}
+
+function renderHunger() {
+  const points = clamp(player.hunger, 0, HUNGER_MAX);
+  const haunches = hungerBarEl.children;
+  const full = Math.floor(points / 2);
+  const half = points % 2 >= 1;
+
+  for (let i = 0; i < haunches.length; i++) {
+    const haunch = haunches[i];
+    haunch.classList.toggle('dark', i >= full + (half ? 1 : 0));
+    haunch.classList.toggle('half', half && i === full);
+  }
+}
 
 function updateHealth(dt) {
   if (dt <= 0) return;
@@ -7238,11 +7389,14 @@ function updateHealth(dt) {
     return;
   }
 
-  if (player.health < player.maxHealth) {
+  // Healing costs food: only a nearly full stomach closes wounds, and every
+  // point it mends spends a little more of it.
+  if (player.health < player.maxHealth && player.hunger >= HUNGER_REGEN_MIN) {
     regenTimer += dt;
     if (regenTimer >= 3.6) {
       regenTimer = 0;
       healPlayer(1);
+      addExhaustion(EXHAUSTION.regen);
     }
   } else {
     regenTimer = 0;
@@ -7341,6 +7495,7 @@ function attackMob(mob) {
   const knockX = (dx / length) * 4.5;
   const knockZ = (dz / length) * 4.5;
   damageMob(mob, heldAttackDamage(), knockX, knockZ);
+  addExhaustion(EXHAUSTION.attack);
 
   // A sword costs 1 durability per swing, any other improvised weapon costs 2.
   const stack = getSelectedStack();
@@ -7369,6 +7524,7 @@ const chunklineEl = document.getElementById('chunkline');
 const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
 const armorEl = document.getElementById('armor');
+const hungerBarEl = document.getElementById('hunger');
 const toastEl = document.getElementById('item-toast');
 const screenLayer = document.getElementById('screen-layer');
 const screenTitle = document.getElementById('screen-title');
@@ -7398,6 +7554,14 @@ for (let i = 0; i < ARMOR_BAR_SHIELDS; i++) {
   armorEl.appendChild(shield);
 }
 renderArmorBar();
+
+/** Ten haunches, one per two food points, eaten from the right. */
+for (let i = 0; i < HUNGER_MAX / 2; i++) {
+  const haunch = document.createElement('span');
+  haunch.className = 'haunch';
+  hungerBarEl.appendChild(haunch);
+}
+renderHunger();
 
 const hotbarSlots = [];
 const hotbarIcons = [];
@@ -9087,6 +9251,38 @@ function playCraftSound() {
   return true;
 }
 
+/** A bite of food: two dry crunches, then a short swallow. */
+function playEatSound() {
+  const ctx = ensureAudio();
+  if (!ctx) return false;
+  if (!audioBeginVoice(0.42)) return false;
+
+  const now = ctx.currentTime;
+  const bites = [
+    { at: now, freq: 1500, end: 700, gain: 0.2 },
+    { at: now + 0.19, freq: 1100, end: 420, gain: 0.17 }
+  ];
+  for (const bite of bites) {
+    const source = ctx.createBufferSource();
+    source.buffer = audioNoiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(bite.freq, bite.at);
+    filter.frequency.exponentialRampToValueAtTime(bite.end, bite.at + 0.1);
+    filter.Q.value = 1.1;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, bite.at);
+    gain.gain.exponentialRampToValueAtTime(bite.gain, bite.at + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, bite.at + 0.12);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioConnectOutput(0));
+    source.start(bite.at, Math.random() * 0.4, 0.14);
+    source.stop(bite.at + 0.16);
+  }
+  return true;
+}
+
 /** Sharp double snap for a tool reaching zero durability. */
 function playToolBreakSound() {
   const ctx = ensureAudio();
@@ -9617,7 +9813,9 @@ function serializeWorldSave() {
       z: player.pos.z,
       yaw,
       pitch,
-      health: player.health
+      health: player.health,
+      hunger: player.hunger,
+      exhaustion: player.exhaustion
     },
     slot: selectedSlot,
     time: dayTime,
@@ -9784,6 +9982,9 @@ function restoreSavedPlayer(save) {
   if (Number.isFinite(p.yaw)) yaw = p.yaw;
   if (Number.isFinite(p.pitch)) pitch = clamp(p.pitch, -1.55, 1.55);
   player.health = clamp(Number(p.health) || player.maxHealth, 1, player.maxHealth);
+  player.hunger = clamp(Number(p.hunger ?? HUNGER_MAX), 0, HUNGER_MAX);
+  player.exhaustion = clamp(Number(p.exhaustion) || 0, 0, 1);
+  renderHunger();
   applyLook();
   syncCamera();
   heldLastYaw = yaw;
@@ -9984,7 +10185,18 @@ window.__voxelcraft = {
   heldRoot,
   heldScene,
   heldCamera,
+  /**
+   * Drop the game into its playing state without pointer lock so automated
+   * checks can drive updatePlayer(). Real players get here through the overlay
+   * click plus requestLock(); the harness must not race that 350 ms timeout.
+   */
+  start() {
+    if (!isPlayable()) enableFallbackControls();
+    return { playable: isPlayable(), screen: activeScreen, dead: player.dead };
+  },
   save() {
+    // Asking for a write also re-arms autosave, which wipeSave() turns off.
+    saveDisabled = false;
     saveWorld();
     return this.saveInfo();
   },
@@ -10013,6 +10225,10 @@ window.__voxelcraft = {
       localStorage.removeItem(SAVE_KEY);
       for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
     } catch (unavailable) {}
+    // Same guard the "New world" button uses: pagehide also writes a save, so
+    // without this the wiped world comes straight back on the next load.
+    saveDisabled = true;
+    saveDirty = false;
     lastSaveAt = 0;
     lastSaveBytes = 0;
     lastSaveError = null;
@@ -10044,6 +10260,25 @@ window.__voxelcraft = {
   damage(amount, cause = 'debug') {
     damagePlayer(Number(amount) || 0, cause);
     return this.health();
+  },
+  /** Food left, plus the invisible exhaustion counter that spends it. */
+  hunger() {
+    return {
+      hunger: player.hunger,
+      exhaustion: Number(player.exhaustion.toFixed(3)),
+      max: HUNGER_MAX,
+      regenNeeds: HUNGER_REGEN_MIN
+    };
+  },
+  setHunger(points) {
+    player.hunger = clamp(Number(points) || 0, 0, HUNGER_MAX);
+    renderHunger();
+    markSaveDirty();
+    return this.hunger();
+  },
+  /** Eats one bite of whatever food is held, as a right click would. */
+  eat() {
+    return tryEatSelectedItem();
   },
   heal(amount = 20) {
     healPlayer(Number(amount) || 0);
@@ -10546,6 +10781,7 @@ window.__voxelcraft = {
       updateMining(dt, false);
       updateMobs(dt);
       updateHealth(dt);
+      updateHunger(dt);
       updateHeldItem(dt);
       updateItemEntities(dt);
       updateBreakParticles(dt);
@@ -10574,6 +10810,7 @@ window.__voxelcraft = {
       updateMobTarget();
       updateMobs(dt);
       updateHealth(dt);
+      updateHunger(dt);
       updateHeldItem(dt);
       updateItemEntities(dt);
       updateBreakParticles(dt);
@@ -10651,6 +10888,7 @@ window.__voxelcraft = {
       inWater: player.inWater,
       headInWater: player.headInWater,
       sprinting: player.sprinting,
+      playable: isPlayable(),
       gamepad: {
         connected: gamepadState.connected,
         active: gamepadState.active,
@@ -10679,7 +10917,10 @@ window.__voxelcraft = {
         points: player.health,
         max: player.maxHealth,
         dead: player.dead,
-        regenDelay: player.regenDelay
+        regenDelay: player.regenDelay,
+        hunger: player.hunger,
+        exhaustion: Number(player.exhaustion.toFixed(3)),
+        defense: armorDefense()
       },
       mobs: {
         total: mobs.length,
@@ -10777,6 +11018,7 @@ function animate(now) {
     updateMobs(dt);
     updateHeldItem(dt);
     updateHealth(dt);
+    updateHunger(dt);
     updateItemEntities(dt);
     updateBreakParticles(dt);
     updateTorchEmbers(dt);
