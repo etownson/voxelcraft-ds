@@ -64,6 +64,22 @@
     -webkit-background-clip: text;
     background-clip: text;
   }
+  /* Armour row: ten shields, one per two defence points, filled from the right
+     the way Minecraft fills it. Hidden entirely while nothing is worn. */
+  #armor {
+    display: flex; flex-direction: row-reverse; gap: 3px;
+    filter: drop-shadow(0 2px 0 rgba(0,0,0,0.55));
+  }
+  .shield {
+    width: 13px; height: 15px;
+    clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+    background: #c2d2e2;
+    transition: background 0.15s linear;
+  }
+  .shield.dark { background: #2b3440; }
+  .shield.half {
+    background: linear-gradient(90deg, #c2d2e2 50%, #2b3440 50%);
+  }
 
   #hotbar {
     display: flex; gap: 2px; padding: 3px;
@@ -256,6 +272,22 @@
     border-color: var(--accent);
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 10px rgba(244,208,111,0.3);
   }
+  /* Armour column: four slots stacked head to feet, the order they are worn. */
+  .inv-armor { display: flex; flex-direction: column; gap: 10px; }
+  .armor-grid {
+    display: grid; grid-template-columns: repeat(1, var(--inv-slot)); gap: 4px;
+  }
+  .inv-slot.armor-slot { border-color: rgba(150, 190, 230, 0.32); }
+  .armor-glyph {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; letter-spacing: 0.02em;
+    color: rgba(150, 190, 230, 0.34);
+    pointer-events: none;
+  }
+  .armor-summary {
+    min-height: 14px; font-size: 11px; color: #dbe7f2; text-align: center;
+  }
   .craft-row { display: flex; align-items: center; gap: 10px; }
   .craft-arrow { font-size: 20px; color: #9fb4c7; line-height: 1; }
   .craft-output-name {
@@ -387,6 +419,7 @@
   <div id="control-hint" class="hidden">Mouse lock unavailable &middot; Right-drag to look &middot; Arrow keys also look</div>
 
   <div id="bottom-hud">
+    <div id="armor" class="hidden"></div>
     <div id="health"></div>
     <div id="hotbar"></div>
   </div>
@@ -724,6 +757,7 @@ defineItem({ id: 'coal', name: 'Coal', kind: 'material', stack: 64 });
 defineItem({ id: 'charcoal', name: 'Charcoal', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_iron', name: 'Raw Iron', kind: 'material', stack: 64 });
 defineItem({ id: 'iron_ingot', name: 'Iron Ingot', kind: 'material', stack: 64 });
+defineItem({ id: 'leather', name: 'Leather', kind: 'material', stack: 64 });
 defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, hunger: 3 });
@@ -801,6 +835,50 @@ for (const [tier, stats] of Object.entries(TOOL_TIERS)) {
       icon: tier + '_' + tool
     });
   }
+}
+
+/**
+ * Armour, in the order the inventory panel draws it: head down to feet. The
+ * defence and durability columns are Minecraft's own numbers, listed helmet,
+ * chestplate, leggings, boots.
+ */
+const ARMOR_SLOTS = ['head', 'chest', 'legs', 'feet'];
+const ARMOR_PIECES = [
+  { slot: 'head', label: 'Helmet', piece: 'helmet', glyph: 'H' },
+  { slot: 'chest', label: 'Chestplate', piece: 'chestplate', glyph: 'C' },
+  { slot: 'legs', label: 'Leggings', piece: 'leggings', glyph: 'L' },
+  { slot: 'feet', label: 'Boots', piece: 'boots', glyph: 'B' }
+];
+/** Hint letter drawn in an empty armour slot, head down to feet. */
+const ARMOR_GLYPHS = ARMOR_PIECES.map((piece) => piece.glyph);
+/** Minecraft's own limits: 20 defence points, drawn as ten shields. */
+const ARMOR_MAX_DEFENSE = 20;
+const ARMOR_BAR_SHIELDS = 10;
+const ARMOR_MATERIALS = {
+  leather: {
+    material: 'leather',
+    defense: [1, 3, 2, 1], durability: [55, 80, 75, 65]
+  },
+  iron: {
+    material: 'iron_ingot',
+    defense: [2, 6, 5, 2], durability: [165, 240, 225, 195]
+  },
+  diamond: {
+    material: 'diamond',
+    defense: [3, 8, 6, 3], durability: [363, 528, 495, 429]
+  }
+};
+
+for (const [tier, stats] of Object.entries(ARMOR_MATERIALS)) {
+  ARMOR_PIECES.forEach((piece, index) => {
+    defineItem({
+      id: tier + '_' + piece.piece,
+      name: capital(tier) + ' ' + piece.label,
+      kind: 'armor', armorSlot: piece.slot, tier,
+      stack: 1, durability: stats.durability[index],
+      defense: stats.defense[index]
+    });
+  });
 }
 
 /* ============================================================
@@ -1583,6 +1661,112 @@ function makeToolIcon(item) {
   return upscaleIcon(canvas);
 }
 
+/**
+ * Armour icons, drawn as flat silhouettes with 1-6 standing for outline, dark,
+ * mid, body, highlight and shine, exactly like the tool heads. Every material
+ * just swaps the palette, so one sprite serves helmet through boots.
+ */
+const ARMOR_SPRITES = {
+  head: [
+    '................',
+    '................',
+    '....22222222....',
+    '...2544444442...',
+    '..244444444442..',
+    '..244555554442..',
+    '..244555554442..',
+    '..244444444442..',
+    '..244444444442..',
+    '..244444444442..',
+    '..222222222222..',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................'
+  ],
+  chest: [
+    '................',
+    '.2222......2222.',
+    '.24423333332442.',
+    '.24424444442442.',
+    '.24425555552442.',
+    '.24424444442442.',
+    '.24424444442442.',
+    '.24424444442442.',
+    '...2444444442...',
+    '...2444444442...',
+    '...2222222222...',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................'
+  ],
+  legs: [
+    '................',
+    '..222222222222..',
+    '..244444444442..',
+    '..244441144442..',
+    '..2442....2442..',
+    '..2542....2452..',
+    '..2442....2442..',
+    '..2442....2442..',
+    '..2442....2442..',
+    '..2442....2442..',
+    '..2222....2222..',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................'
+  ],
+  feet: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '..242......242..',
+    '..2442....2442..',
+    '..2442....2442..',
+    '..24442..24442..',
+    '..24442..24442..',
+    '..22222..22222..',
+    '................',
+    '................',
+    '................',
+    '................'
+  ]
+};
+
+const ARMOR_PALETTES = {
+  leather: ['#241408', '#4b2f18', '#7c5227', '#96682f', '#b58548', '#d3a766'],
+  iron: ['#1c1c1c', '#4a4a4a', '#8f8f8f', '#bcbcbc', '#d9d9d9', '#f2f2f2'],
+  diamond: ['#083b45', '#0f6270', '#1a8b9c', '#2fb4c3', '#5fd9e4', '#9beef5']
+};
+
+function makeArmorIcon(item) {
+  const shades = ARMOR_PALETTES[item.tier] || ARMOR_PALETTES.leather;
+  const sprite = ARMOR_SPRITES[item.armorSlot] || ARMOR_SPRITES.head;
+  const canvas = createCanvas(16);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  for (let y = 0; y < sprite.length; y++) {
+    const row = sprite[y];
+    for (let x = 0; x < row.length; x++) {
+      const sym = row[x];
+      if (sym === '.' || sym < '1' || sym > '6') continue;
+      ctx.fillStyle = shades[Number(sym) - 1];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  return upscaleIcon(canvas);
+}
+
 function drawBlockFace(ctx, tileIndex, ox, oy, ux, uy, vx, vy, tint) {
   const sx = (tileIndex % ATLAS_GRID) * ATLAS_TILE;
   const sy = ((tileIndex / ATLAS_GRID) | 0) * ATLAS_TILE;
@@ -1658,6 +1842,16 @@ const MATERIAL_ICON_PAINTERS = {
     px(4, 6, '#e4e4ea', 5, 1);
     px(4, 9, '#6f6f77', 8, 1);
     px(5, 7, '#d8d8e0', 3, 1);
+  },
+  leather(px) {
+    // A cured hide: tan panel, lighter belly, dark lower edge.
+    px(3, 4, '#7c5228', 10, 8);
+    px(4, 3, '#96682f', 8, 1);
+    px(2, 5, '#96682f', 1, 6);
+    px(13, 5, '#96682f', 1, 6);
+    px(4, 5, '#b58548', 8, 6);
+    px(5, 6, '#d3a766', 4, 2);
+    px(4, 11, '#5c3c1c', 9, 1);
   },
   charcoal(px) {
     px(4, 4, '#2b2823', 3, 3);
@@ -1736,6 +1930,8 @@ for (const [itemId, item] of ITEMS) {
     canvas = makeBlockItemIcon(BLOCKS[item.blockId]);
   } else if (item.kind === 'tool') {
     canvas = makeToolIcon(item);
+  } else if (item.kind === 'armor') {
+    canvas = makeArmorIcon(item);
   } else {
     canvas = makeMaterialIcon(itemId);
   }
@@ -3488,6 +3684,55 @@ camera.rotation.order = 'YXZ';
 const INVENTORY_SIZE = 36;
 const HOTBAR_SIZE = 9;
 const inventory = new Array(INVENTORY_SIZE).fill(null);
+/**
+ * Worn armour in head, chest, legs, feet order. Kept apart from the inventory
+ * so a full pack never strands a helmet in it, and so a death can leave the
+ * gear on the player the way Minecraft does.
+ */
+const armorSlots = new Array(ARMOR_SLOTS.length).fill(null);
+
+/** Which worn slot a stack belongs in, or -1 when it is not armour. */
+function equipSlotFor(stack) {
+  if (!stack) return -1;
+  const item = ITEMS.get(stack.id);
+  if (!item || item.kind !== 'armor') return -1;
+  return ARMOR_SLOTS.indexOf(item.armorSlot);
+}
+
+/** Defence points worn right now. Minecraft caps the total at 20 points. */
+function armorDefense() {
+  let total = 0;
+  for (const stack of armorSlots) {
+    if (!stack) continue;
+    const item = ITEMS.get(stack.id);
+    if (item && item.kind === 'armor') total += item.defense || 0;
+  }
+  return total;
+}
+
+/**
+ * Puts a stack on, swapping with whatever is already worn in that slot. The
+ * incoming stack replaces the worn one in place; the caller gets back anything
+ * that has to go somewhere else, or null when the swap is clean.
+ */
+function equipStack(stack) {
+  const index = equipSlotFor(stack);
+  if (index < 0) return stack;
+  const worn = armorSlots[index];
+  armorSlots[index] = stack;
+  return worn;
+}
+
+/** Takes a piece off into the first free inventory cell. False when full. */
+function unequipSlot(index) {
+  const worn = armorSlots[index];
+  if (!worn) return false;
+  const free = inventory.findIndex((slot) => !slot);
+  if (free < 0) return false;
+  armorSlots[index] = null;
+  inventory[free] = worn;
+  return true;
+}
 
 /** null, 'inventory' (2x2 grid) or 'crafting' (3x3 grid). */
 let activeScreen = null;
@@ -3559,6 +3804,28 @@ for (const [tier, material] of Object.entries(TOOL_MATERIALS)) {
       pattern: shape.slice(),
       key: { X: material, S: 'stick' },
       result: { id: tier + '_' + kind, count: 1 }
+    });
+  }
+}
+
+/**
+ * Armour patterns, borrowed straight from Minecraft: eight cells ring a
+ * chestplate, five make a helmet, seven make leggings, four make boots.
+ */
+const ARMOR_SHAPES = {
+  helmet: ['XXX', 'X.X'],
+  chestplate: ['X.X', 'XXX', 'XXX'],
+  leggings: ['XXX', 'X.X', 'X.X'],
+  boots: ['X.X', 'X.X']
+};
+
+for (const [tier, stats] of Object.entries(ARMOR_MATERIALS)) {
+  for (const piece of ARMOR_PIECES) {
+    RECIPES.push({
+      id: tier + '_' + piece.piece,
+      pattern: ARMOR_SHAPES[piece.piece].slice(),
+      key: { X: stats.material },
+      result: { id: tier + '_' + piece.piece, count: 1 }
     });
   }
 }
@@ -5789,7 +6056,7 @@ let hostileSpawnTimer = 2.5;
 const MOB_DEFS = {
   cow: {
     hostile: false, health: 10, speed: 1.15, width: 0.82, height: 1.42,
-    drops: [{ id: 'raw_beef', min: 1, max: 2 }]
+    drops: [{ id: 'raw_beef', min: 1, max: 2 }, { id: 'leather', min: 0, max: 2 }]
   },
   pig: {
     hostile: false, health: 10, speed: 1.25, width: 0.78, height: 1.18,
@@ -6206,6 +6473,8 @@ function spawnBurstParticles(x, y, z, color, count = 8, spread = 3.2) {
 function dropMobLoot(mob) {
   for (const drop of mob.def.drops || []) {
     const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+    // A hide roll can come up empty, which is how Minecraft spreads out loot.
+    if (count <= 0) continue;
     spawnItemDrop(
       drop.id, count,
       mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z
@@ -6795,7 +7064,9 @@ function renderHealth() {
   const hearts = healthBarEl.children;
   const points = clamp(player.health, 0, player.maxHealth);
   const full = Math.floor(points / 2);
-  const half = points % 2 === 1;
+  // Armour leaves health with fractions on it, so a heart counts as half as
+  // soon as a full point of it is left, rather than only on exact halves.
+  const half = points % 2 >= 1;
 
   for (let i = 0; i < hearts.length; i++) {
     const heart = hearts[i];
@@ -6804,11 +7075,71 @@ function renderHealth() {
   }
 }
 
+/**
+ * Draws the shield row above the hearts. Minecraft spends one shield per two
+ * defence points and hides the whole row when nothing is worn.
+ */
+function renderArmorBar() {
+  const points = Math.min(ARMOR_MAX_DEFENSE, armorDefense());
+  armorEl.classList.toggle('hidden', points <= 0);
+  const shields = armorEl.children;
+  const full = Math.floor(points / 2);
+  const half = points % 2 === 1;
+
+  for (let i = 0; i < shields.length; i++) {
+    const shield = shields[i];
+    shield.classList.toggle('dark', i >= full + (half ? 1 : 0));
+    shield.classList.toggle('half', half && i === full);
+  }
+}
+
+/**
+ * Armour's damage reduction, straight from Minecraft: a set absorbs a share of
+ * the incoming hit, and heavy hits get through proportionally more of them.
+ */
+function armorAbsorbed(defense, amount) {
+  if (defense <= 0) return 0;
+  const points = Math.min(ARMOR_MAX_DEFENSE, defense);
+  const factor = Math.min(20, Math.max(points / 5, points - amount / 2)) / 25;
+  return amount * factor;
+}
+
+/**
+ * A hit costs the set four durability per point it absorbed, Minecraft's rate.
+ * One random piece carries the whole cost, which is what wears a set out
+ * unevenly instead of every piece at once, and a hit the set barely softens
+ * costs nothing at all.
+ */
+function wearArmour(absorbed) {
+  const cost = Math.floor(absorbed * 4);
+  if (cost <= 0) return;
+  const worn = [];
+  for (let i = 0; i < armorSlots.length; i++) {
+    if (armorSlots[i]) worn.push(i);
+  }
+  if (worn.length === 0) return;
+
+  const index = worn[Math.floor(Math.random() * worn.length)];
+  const stack = armorSlots[index];
+  if (!consumeDurability(stack, cost)) return;
+
+  armorSlots[index] = null;
+  const item = ITEMS.get(stack.id);
+  showToast((item ? item.name : 'Armour') + ' broke');
+  playToolBreakSound();
+  renderArmorBar();
+  markSaveDirty();
+}
+
 function damagePlayer(amount, cause = 'unknown') {
   if (player.dead || !Number.isFinite(amount) || amount <= 0) return false;
   if (player.hurtCooldown > 0 && cause !== 'fall') return false;
 
-  player.health = Math.max(0, player.health - amount);
+  const defense = armorDefense();
+  const absorbed = armorAbsorbed(defense, amount);
+  if (absorbed > 0) wearArmour(absorbed);
+
+  player.health = Math.max(0, player.health - (amount - absorbed));
   player.hurtCooldown = 0.35;
   player.regenDelay = 6;
   regenTimer = 0;
@@ -7037,6 +7368,7 @@ const coordsEl = document.getElementById('coords');
 const chunklineEl = document.getElementById('chunkline');
 const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
+const armorEl = document.getElementById('armor');
 const toastEl = document.getElementById('item-toast');
 const screenLayer = document.getElementById('screen-layer');
 const screenTitle = document.getElementById('screen-title');
@@ -7058,6 +7390,14 @@ for (let i = 0; i < player.maxHealth / 2; i++) {
   healthEl.appendChild(heart);
 }
 renderHealth();
+
+/** Ten shields, one per two defence points, filled from the right. */
+for (let i = 0; i < ARMOR_BAR_SHIELDS; i++) {
+  const shield = document.createElement('span');
+  shield.className = 'shield';
+  armorEl.appendChild(shield);
+}
+renderArmorBar();
 
 const hotbarSlots = [];
 const hotbarIcons = [];
@@ -7245,6 +7585,44 @@ function buildStorageColumn() {
   return left;
 }
 
+/**
+ * Armour column: four slots stacked head to feet, with a faint glyph in each
+ * empty slot so it is obvious what goes where, and a one-line readout of the
+ * defence the set is currently worth.
+ */
+function buildArmorColumn() {
+  const column = document.createElement('div');
+  column.className = 'inv-armor';
+
+  const label = document.createElement('div');
+  label.className = 'inv-section-label';
+  label.textContent = 'Armour';
+
+  const grid = document.createElement('div');
+  grid.className = 'armor-grid';
+  for (let i = 0; i < armorSlots.length; i++) {
+    const el = createScreenSlot('armor', i, armorSlots[i], {
+      extraClass: 'armor-slot'
+    });
+    if (!armorSlots[i]) {
+      const glyph = document.createElement('span');
+      glyph.className = 'armor-glyph';
+      glyph.textContent = ARMOR_GLYPHS[i];
+      glyph.title = ARMOR_PIECES[i].label;
+      el.append(glyph);
+    }
+    grid.append(el);
+  }
+
+  const summary = document.createElement('div');
+  summary.className = 'armor-summary';
+  const points = armorDefense();
+  summary.textContent = points > 0 ? points + ' defence' : '';
+
+  column.append(label, grid, summary);
+  return column;
+}
+
 /** Crafting grid, arrow and result slot. */
 function buildCraftingColumn() {
   const isTable = activeScreen === 'crafting';
@@ -7384,9 +7762,11 @@ function renderScreen() {
   layout.className = 'inv-layout';
   layout.append(
     buildStorageColumn(),
+    buildArmorColumn(),
     isFurnace ? buildFurnaceColumn() : buildCraftingColumn()
   );
   screenBody.append(layout);
+  renderArmorBar();
 
   if (gamepadState.active) applyPadCursorFocus(false);
 }
@@ -7413,27 +7793,33 @@ function padSections() {
       count: HOTBAR_SIZE, cols: 9, column: 0
     }
   ];
+  const armour = [
+    {
+      container: 'armor', start: 0,
+      count: armorSlots.length, cols: 1, column: 1
+    }
+  ];
   if (activeScreen === 'furnace') {
-    return storage.concat([
+    return storage.concat(armour).concat([
       {
         container: 'furnace', start: FURNACE_INPUT,
-        count: 2, cols: 1, column: 1
+        count: 2, cols: 1, column: 2
       },
       {
         container: 'furnace', start: FURNACE_OUTPUT,
-        count: 1, cols: 1, column: 2
+        count: 1, cols: 1, column: 3
       }
     ]);
   }
 
   const isTable = activeScreen === 'crafting';
-  return storage.concat([
+  return storage.concat(armour).concat([
     {
       container: isTable ? 'craft3' : 'craft2', start: 0,
       count: (isTable ? CRAFT3_SIZE : CRAFT2_SIZE) ** 2,
-      cols: isTable ? CRAFT3_SIZE : CRAFT2_SIZE, column: 1
+      cols: isTable ? CRAFT3_SIZE : CRAFT2_SIZE, column: 2
     },
-    { container: 'result', start: 0, count: 1, cols: 1, column: 2 }
+    { container: 'result', start: 0, count: 1, cols: 1, column: 3 }
   ]);
 }
 
@@ -7719,6 +8105,7 @@ function toggleInventory() {
 
 function screenGridFor(container) {
   if (container === 'inventory') return inventory;
+  if (container === 'armor') return armorSlots;
   if (container === 'craft2') return craft2;
   if (container === 'craft3') return craft3;
   if (container === 'furnace') {
@@ -7745,6 +8132,33 @@ function quickMoveStack(container, index) {
   if (!sourceGrid) return;
   const source = sourceGrid[index];
   if (!source) return;
+
+  // Shift-clicking a piece of armour puts it on. Anything that was worn in that
+  // slot goes back into the pack, and if the pack is full nothing moves at all.
+  const wearInto = equipSlotFor(source);
+  if (wearInto >= 0 && container !== 'armor') {
+    const worn = armorSlots[wearInto];
+    if (worn) {
+      if (container === 'inventory') {
+        armorSlots[wearInto] = source;
+        sourceGrid[index] = worn;
+      } else {
+        const free = inventory.findIndex((slot) => !slot);
+        if (free < 0) {
+          showToast('No room in your pack to swap armour');
+          return;
+        }
+        armorSlots[wearInto] = source;
+        sourceGrid[index] = null;
+        inventory[free] = worn;
+      }
+    } else {
+      armorSlots[wearInto] = source;
+      sourceGrid[index] = null;
+    }
+    if (container === 'furnace') markSaveDirty();
+    return;
+  }
 
   let targetArray;
   let targetStart;
@@ -7790,6 +8204,7 @@ function handleScreenSlotClick(container, index, button, shift) {
   const grid = screenGridFor(container);
   if (!grid) return;
   if (container === 'furnace') markSaveDirty();
+  if (container === 'armor') markSaveDirty();
 
   // Shift always quick-moves first, including out of the furnace result slot.
   if (button === 0 && shift) {
@@ -7818,6 +8233,12 @@ function handleScreenSlotClick(container, index, button, shift) {
     renderScreen();
     renderHotbar();
     updateCursorVisual();
+    return;
+  }
+
+  // An armour slot only takes the matching kind of armour. Dropping a pickaxe
+  // on the chestplate slot should do nothing rather than hide it.
+  if (container === 'armor' && cursorStack && equipSlotFor(cursorStack) !== index) {
     return;
   }
 
@@ -9200,12 +9621,8 @@ function serializeWorldSave() {
     },
     slot: selectedSlot,
     time: dayTime,
-    inventory: inventory.map((slot) => {
-      if (!slot) return null;
-      return slot.dur == null
-        ? [slot.id, slot.count]
-        : [slot.id, slot.count, slot.dur];
-    }),
+    inventory: inventory.map((slot) => stackRecord(slot)),
+    armour: armorSlots.map((slot) => stackRecord(slot)),
     entities: serializeBlockEntities(),
     edits
   };
@@ -9374,20 +9791,49 @@ function restoreSavedPlayer(save) {
   return true;
 }
 
+/** A saved stack as a compact record: [id, count] plus durability if it has any. */
+function stackRecord(stack) {
+  if (!stack) return null;
+  return stack.dur == null
+    ? [stack.id, stack.count]
+    : [stack.id, stack.count, stack.dur];
+}
+
+/** Reads one saved record back into a stack, or null if it no longer exists. */
+function stackFromRecord(record) {
+  if (!Array.isArray(record) || !ITEMS.has(record[0])) return null;
+  const count = Math.trunc(Number(record[1]) || 0);
+  if (count <= 0) return null;
+  const def = ITEMS.get(record[0]);
+  const stack = makeStack(record[0], Math.min(count, def.stack));
+  if (def.durability && record[2] != null) {
+    stack.dur = clamp(Math.trunc(Number(record[2]) || 0), 0, def.durability);
+  }
+  return stack;
+}
+
 function restoreSavedInventory(save) {
   if (!Array.isArray(save.inventory)) return;
   for (let i = 0; i < INVENTORY_SIZE; i++) {
-    const slot = save.inventory[i];
-    if (!Array.isArray(slot) || !ITEMS.has(slot[0])) continue;
-    const count = Math.trunc(Number(slot[1]) || 0);
-    if (count <= 0) continue;
-    const def = ITEMS.get(slot[0]);
-    const restored = makeStack(slot[0], Math.min(count, def.stack));
-    if (def.durability && slot[2] != null) {
-      restored.dur = clamp(Math.trunc(Number(slot[2]) || 0), 0, def.durability);
-    }
-    inventory[i] = restored;
+    const restored = stackFromRecord(save.inventory[i]);
+    if (restored) inventory[i] = restored;
   }
+}
+
+/**
+ * Worn armour, put back only if it is still the right kind of armour for the
+ * slot it is stored in.
+ */
+function restoreSavedArmour(save) {
+  if (!Array.isArray(save.armour)) return;
+  for (let i = 0; i < armorSlots.length; i++) {
+    const restored = stackFromRecord(save.armour[i]);
+    if (!restored) continue;
+    const item = ITEMS.get(restored.id);
+    if (item.kind !== 'armor' || item.armorSlot !== ARMOR_SLOTS[i]) continue;
+    armorSlots[i] = restored;
+  }
+  renderArmorBar();
 }
 
 function formatSavedAt(timestamp) {
@@ -9500,6 +9946,7 @@ spawnChunk.group.visible = true;
 
 if (loadedSave && restoreSavedPlayer(loadedSave)) {
   restoreSavedInventory(loadedSave);
+  restoreSavedArmour(loadedSave);
   if (Number.isFinite(loadedSave.time)) dayTime = ((loadedSave.time % 1) + 1) % 1;
 } else {
   spawnPlayer(spawnColumn);
@@ -9755,9 +10202,49 @@ window.__voxelcraft = {
   durability(slotIndex = selectedSlot) {
     return stackDurability(inventory[Number(slotIndex)] || null);
   },
+  /** Worn armour: the four slots plus the defence they are worth. */
+  armour() {
+    const worn = {};
+    armorSlots.forEach((stack, i) => {
+      worn[ARMOR_SLOTS[i]] = stack
+        ? { id: stack.id, dur: stack.dur ?? null, max: ITEMS.get(stack.id).durability }
+        : null;
+    });
+    return { defense: armorDefense(), worn };
+  },
+  /** How much of a hit a given defence would absorb, Minecraft's formula. */
+  armorAbsorb(defense, amount) {
+    return armorAbsorbed(Number(defense) || 0, Number(amount) || 0);
+  },
+  /** Equips the stack in an inventory slot, the way shift-click does. */
+  equip(slotIndex) {
+    const stack = inventory[Number(slotIndex)];
+    if (!stack || equipSlotFor(stack) < 0) return null;
+    inventory[Number(slotIndex)] = null;
+    const spare = equipStack(stack);
+    if (spare) inventory[Number(slotIndex)] = spare;
+    renderArmorBar();
+    renderHotbar();
+    markSaveDirty();
+    return this.armour();
+  },
+  /** Takes a piece off into the first free slot. False when the pack is full. */
+  unequip(armorSlot) {
+    const index = ARMOR_SLOTS.indexOf(String(armorSlot));
+    if (index < 0) return false;
+    const moved = unequipSlot(index);
+    if (moved) {
+      renderArmorBar();
+      renderHotbar();
+      markSaveDirty();
+    }
+    return moved;
+  },
   /** Empty every slot, cursor included. Handy for focused test runs. */
   clearInventory() {
     for (let i = 0; i < INVENTORY_SIZE; i++) inventory[i] = null;
+    for (let i = 0; i < armorSlots.length; i++) armorSlots[i] = null;
+    renderArmorBar();
     returnCursorStack();
     renderHotbar();
     if (activeScreen) renderScreen();
@@ -10212,6 +10699,7 @@ window.__voxelcraft = {
       selectedSlot,
       selected: selected ? { id: selected.id, count: selected.count } : null,
       inventory: inventory.map((slot) => slotInfo(slot)),
+      armour: armorSlots.map((slot) => slotInfo(slot)),
       crafting: {
         screen: activeScreen,
         cursor: slotInfo(cursorStack),
