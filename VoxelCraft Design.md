@@ -651,9 +651,26 @@ reaches 9, so an unlit field never ripens. Roughly ten real minutes in the open.
 | Unripe crop | its seed, and the furrow stays tilled |
 | Farmland dug out from under a crop | the crop is destroyed |
 
+### Sprint is a latch, not a held key
+
+Shift, either Ctrl, or the gamepad's B / L3 starts the run and the same key stops
+it, so nothing about sprinting depends on holding a modifier down. The latch drops
+whenever the controls leave the player — the pause overlay, any open screen, death,
+respawn, the window losing focus, a gamepad disconnect — so a sprint can never
+resume by surprise. While it is set the HUD shows a `Sprint on` line in the debug
+stack, above the sound state.
+
+| Situation | Result |
+| --- | --- |
+| Latch set, moving | 6.9 blocks/s instead of 4.6 |
+| Latch set, Shift let go | Keeps running |
+| Latch set, standing still | Not sprinting, latch stays armed |
+| Latch set, in water | Not sprinting, latch survives |
+| Pause, screen, death, blur, pad lost | Latch drops |
+
 ### Notes for whoever picks this up next
 
 - The save format is schema 3 under the key `voxelcraft:world:v3`. v1 and v2 saves are deliberately not migrated: the game starts a fresh world and says so on screen.
 - New block ids are appended from 16 upwards and never renumbered, enforced by a runtime assertion. The eight wheat stages are block ids 21–28 rather than block entities, so crop stage survives chunk unloads with no change to the save format.
-- `window.__voxelcraft` gained `breakTime`, `mine`, `give`, `durability`, `hunger`, `setHunger`, `eat`, `armour`, `equip`, `openFurnace`, `furnace`, `furnaceList`, `setFurnaceSlots`, `smelting`, `tillDirt`, `plantSeed`, `crops` and `growCrops`. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
-- Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, and any world saved before this milestone resets.
+- `window.__voxelcraft` gained `breakTime`, `mine`, `give`, `durability`, `hunger`, `setHunger`, `eat`, `armour`, `equip`, `openFurnace`, `furnace`, `furnaceList`, `setFurnaceSlots`, `smelting`, `tillDirt`, `plantSeed`, `crops`, `growCrops`, `setSprint` and `sprintState`; `stats()` reports `sprintLatched` next to `sprinting`. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
+- Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, sprint is tapped on and off instead of held, and any world saved before this milestone resets.

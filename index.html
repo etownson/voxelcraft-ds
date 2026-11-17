@@ -46,6 +46,9 @@
   #clock { color: #f4d06f; }
   #audio-state { color: #7ee08a; }
   #audio-state.off { color: #e08a7e; }
+  /* Sprint is latched, not held, so the HUD says so while the latch is set. */
+  #sprint-state { color: #7ec8e8; }
+  #sprint-state.hidden { display: none; }
 
   #bottom-hud {
     position: absolute; left: 50%; bottom: 16px;
@@ -434,6 +437,7 @@
     <div id="clock">06:00 &middot; Day</div>
     <div id="coords" class="muted">XYZ -- / -- / --</div>
     <div id="chunkline" class="muted">Chunk --, -- &middot; 0 loaded</div>
+    <div id="sprint-state" class="hidden">Sprint on</div>
     <div id="audio-state">Sound on &middot; M mute</div>
   </div>
 
@@ -478,7 +482,7 @@
       <div><kbd>Mouse</kbd><span>Look around</span></div>
       <div><kbd>W A S D</kbd><span>Walk</span></div>
       <div><kbd>Space</kbd><span>Jump / swim up / climb out</span></div>
-      <div><kbd>Shift</kbd><span>Sprint</span></div>
+      <div><kbd>Shift</kbd><span>Sprint on / off</span></div>
       <div><kbd>Left click</kbd><span>Break blocks / attack mobs</span></div>
       <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow</span></div>
       <div><kbd>1&ndash;9</kbd><span>Select hotbar slot</span></div>
@@ -491,7 +495,7 @@
       <div><kbd>Pad</kbd><span>Left stick move &middot; right stick look</span></div>
       <div><kbd>RT / LT</kbd><span>Mine &middot; attack / place &middot; use</span></div>
       <div><kbd>A</kbd><span>Jump / respawn</span></div>
-      <div><kbd>B</kbd><span>Hold to sprint</span></div>
+      <div><kbd>B</kbd><span>Sprint on / off</span></div>
       <div><kbd>LB / RB</kbd><span>Cycle hotbar</span></div>
       <div><kbd>Y</kbd><span>Inventory &middot; quick move in menu</span></div>
       <div><kbd>X</kbd><span>Half stack in menu</span></div>
@@ -5296,6 +5300,42 @@ const player = {
   fallPeakY: 0
 };
 
+/**
+ * Sprint is latched rather than held: one press of Shift, Ctrl or B starts the
+ * run and the next one stops it, so neither a keyboard pinky nor a gamepad
+ * thumb has to stay busy while the player covers ground. Anything that takes
+ * the controls away drops the latch, so a sprint can never resume by surprise
+ * after a pause, a screen, a death or a tab that lost focus.
+ */
+let sprintLatched = false;
+
+/** The world is on screen and the controls belong to the player. */
+function controlsOwned() {
+  return isPlayable() && !activeScreen && !player.dead &&
+    overlayEl.classList.contains('hidden');
+}
+
+function setSprintLatch(on) {
+  const next = !!on;
+  if (next === sprintLatched) return;
+  sprintLatched = next;
+  renderSprintState();
+}
+
+function toggleSprintLatch() {
+  setSprintLatch(!sprintLatched);
+}
+
+function clearSprintLatch() {
+  setSprintLatch(false);
+}
+
+/** The HUD's single line of movement state, lit while the latch is set. */
+function renderSprintState() {
+  if (!sprintStateEl) return;
+  sprintStateEl.classList.toggle('hidden', !sprintLatched);
+}
+
 function applyLook() {
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
@@ -5619,11 +5659,12 @@ function readPlayerInput() {
   const overlayUp = !overlayEl.classList.contains('hidden');
   if (activeScreen || overlayUp || !canPlay || player.dead) {
     padResumeFrame = false;
+    clearSprintLatch();
     return { forward: 0, right: 0, jump: false, sprint: false };
   }
   if (padResumeFrame) {
     padResumeFrame = false;
-    return { forward: 0, right: 0, jump: false, sprint: false };
+    return { forward: 0, right: 0, jump: false, sprint: sprintLatched };
   }
 
   let forward = 0;
@@ -5639,14 +5680,14 @@ function readPlayerInput() {
   }
 
   const padJump = gamepadState.active && gpButton('a');
-  const padSprint = gamepadState.active && (gpButton('b') || gpButton('l3'));
 
+  // Sprint arrives through the latch: the Shift, Ctrl and B edges in the input
+  // handlers set it, and holding the key down does nothing on its own.
   return {
     forward: clamp(forward, -1, 1),
     right: clamp(right, -1, 1),
     jump: pressedKeys.has('Space') || padJump,
-    sprint: pressedKeys.has('ShiftLeft') || pressedKeys.has('ShiftRight') ||
-      pressedKeys.has('ControlLeft') || pressedKeys.has('ControlRight') || padSprint
+    sprint: sprintLatched
   };
 }
 
@@ -5795,6 +5836,7 @@ document.addEventListener('pointerlockchange', () => {
     fallbackRightDrag = false;
     hideMiningFeedback();
     targetOutline.visible = false;
+    clearSprintLatch();
   }
 });
 
@@ -5819,8 +5861,15 @@ document.addEventListener('mousemove', (event) => {
   }
 });
 
+const SPRINT_KEYS = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'];
+
 window.addEventListener('keydown', (event) => {
   pressedKeys.add(event.code);
+  if (SPRINT_KEYS.includes(event.code) && !event.repeat && controlsOwned()) {
+    // Shift and Ctrl latch sprint: pressed once they start the run, pressed
+    // again they end it, so nothing about sprinting depends on holding a key.
+    toggleSprintLatch();
+  }
   if (event.code === 'Space') event.preventDefault();
   if (fallbackControls && event.code.startsWith('Arrow')) event.preventDefault();
 });
@@ -5834,6 +5883,7 @@ window.addEventListener('blur', () => {
   fallbackRightDrag = false;
   releasePadMining();
   hideMiningFeedback();
+  clearSprintLatch();
 });
 
 /* ============================================================
@@ -5964,6 +6014,7 @@ function pollGamepad(dt) {
       gamepadState.prev.fill(false);
       gamepadState.pressed.fill(false);
       releasePadMining();
+      clearSprintLatch();
       showToast('Gamepad disconnected');
       updatePadStatus();
     }
@@ -6078,6 +6129,10 @@ function handlePadTap(name) {
     case 'rt':
       beginPadMining();
       break;
+    case 'b':
+    case 'l3':
+      if (controlsOwned()) toggleSprintLatch();
+      break;
     default:
       break;
   }
@@ -6139,6 +6194,9 @@ function updateGamepad(dt) {
     overlayEl.classList.remove('hidden');
     releasePadMining();
     return;
+  }
+  if (gamepadState.pressed[PAD_BUTTON.b] || gamepadState.pressed[PAD_BUTTON.l3]) {
+    toggleSprintLatch();
   }
   if (gamepadState.pressed[PAD_BUTTON.lb]) {
     selectHotbarSlot(selectedSlot - 1, true);
@@ -7477,6 +7535,8 @@ function playerDie(cause) {
   player.dead = true;
   player.health = 0;
   player.vel.set(0, 0, 0);
+  player.sprinting = false;
+  clearSprintLatch();
   leftMouseDown = false;
   hideMiningFeedback();
   targetOutline.visible = false;
@@ -7501,6 +7561,8 @@ function playerDie(cause) {
 function respawnPlayer() {
   player.dead = false;
   player.health = player.maxHealth;
+  player.sprinting = false;
+  clearSprintLatch();
   player.hurtCooldown = 0;
   player.regenDelay = 0;
   player.fallPeakY = 0;
@@ -7807,6 +7869,7 @@ const cursorCountEl = cursorStackEl.querySelector('.count');
 const controlHintEl = document.getElementById('control-hint');
 const padStatusEl = document.getElementById('pad-status');
 const padSensitivityEl = document.getElementById('pad-sens-value');
+const sprintStateEl = document.getElementById('sprint-state');
 
 let cursorX = window.innerWidth / 2;
 let cursorY = window.innerHeight / 2;
@@ -7834,6 +7897,7 @@ for (let i = 0; i < HUNGER_MAX / 2; i++) {
   hungerBarEl.appendChild(haunch);
 }
 renderHunger();
+renderSprintState();
 
 const hotbarSlots = [];
 const hotbarIcons = [];
@@ -10899,6 +10963,15 @@ window.__voxelcraft = {
     selectHotbarSlot(index, true);
     return selectedSlot;
   },
+  /** Set or flip the sprint latch, the way Shift, Ctrl and B do. */
+  setSprint(value) {
+    if (value === 'toggle') toggleSprintLatch();
+    else setSprintLatch(!!value);
+    return this.sprintState();
+  },
+  sprintState() {
+    return { latched: sprintLatched, sprinting: player.sprinting };
+  },
   gamepad() {
     return {
       connected: gamepadState.connected,
@@ -11196,6 +11269,7 @@ window.__voxelcraft = {
       inWater: player.inWater,
       headInWater: player.headInWater,
       sprinting: player.sprinting,
+      sprintLatched: sprintLatched,
       playable: isPlayable(),
       gamepad: {
         connected: gamepadState.connected,
@@ -11335,10 +11409,15 @@ function animate(now) {
     updateExplosionEffects(dt);
     updateFurnaces(dt);
     updateCrops(dt);
-  } else if (activeScreen === 'furnace') {
-    // The furnace whose screen is open keeps smelting while you browse your
-    // inventory; everything else in the world stays frozen.
-    updateFurnaces(dt);
+  } else {
+    // A pause or an open screen takes the controls away, and the sprint latch
+    // goes with them: resuming must never leave the player running unawares.
+    clearSprintLatch();
+    if (activeScreen === 'furnace') {
+      // The furnace whose screen is open keeps smelting while you browse your
+      // inventory; everything else in the world stays frozen.
+      updateFurnaces(dt);
+    }
   }
 
   world.updateStreaming(player.pos.x, player.pos.z);
