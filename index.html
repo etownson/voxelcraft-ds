@@ -6423,26 +6423,49 @@ function renderScreen() {
 
 const padCursor = { section: 0, index: 0 };
 
-/** Logical slot groups in on-screen reading order. */
+/**
+ * Logical slot groups in on-screen reading order. `column` mirrors the panel
+ * layout: storage and hotbar stack in the left column, the crafting grid and
+ * its result sit to the right, so the D-pad walks between them the way the
+ * eye does.
+ */
 function padSections() {
   if (!activeScreen) return [];
   const isTable = activeScreen === 'crafting';
   return [
     {
       container: 'inventory', start: HOTBAR_SIZE,
-      count: INVENTORY_SIZE - HOTBAR_SIZE, cols: 9
+      count: INVENTORY_SIZE - HOTBAR_SIZE, cols: 9, column: 0
     },
     {
       container: 'inventory', start: 0,
-      count: HOTBAR_SIZE, cols: 9
+      count: HOTBAR_SIZE, cols: 9, column: 0
     },
     {
       container: isTable ? 'craft3' : 'craft2', start: 0,
       count: (isTable ? CRAFT3_SIZE : CRAFT2_SIZE) ** 2,
-      cols: isTable ? CRAFT3_SIZE : CRAFT2_SIZE
+      cols: isTable ? CRAFT3_SIZE : CRAFT2_SIZE, column: 1
     },
-    { container: 'result', start: 0, count: 1, cols: 1 }
+    { container: 'result', start: 0, count: 1, cols: 1, column: 2 }
   ];
+}
+
+/** Other section indices sharing the current section's layout column. */
+function columnSiblings(sections, index) {
+  return sections
+    .map((section, i) => (section.column === sections[index].column ? i : -1))
+    .filter((i) => i >= 0);
+}
+
+/** Section the cursor lands on stepping sideways into an adjacent column. */
+function sidewaysSection(sections, from, dir) {
+  const targets = sections
+    .map((section, i) => (section.column === sections[from].column + dir ? i : -1))
+    .filter((i) => i >= 0);
+  if (!targets.length) return -1;
+  // Prefer the section at the same vertical position inside its column.
+  const rank = columnSiblings(sections, from).indexOf(from);
+  return targets[Math.min(rank, targets.length - 1)];
 }
 
 function resetPadCursor() {
@@ -6477,19 +6500,35 @@ function movePadCursor(dx, dy) {
   if (dx) {
     const inRow = Math.min(section.cols, section.count - row * section.cols);
     const nextCol = col + dx;
-    if (nextCol >= 0 && nextCol < inRow) index = row * section.cols + nextCol;
-  } else if (dy) {
+    if (nextCol >= 0 && nextCol < inRow) {
+      index = row * section.cols + nextCol;
+    } else {
+      // Walk out sideways into the neighbouring column, entering at its edge.
+      const target = sidewaysSection(sections, sectionIndex, dx);
+      if (target < 0) return;
+      sectionIndex = target;
+      const dest = sections[target];
+      const destRow = Math.min(row, Math.ceil(dest.count / dest.cols) - 1);
+      const destInRow = Math.min(dest.cols, dest.count - destRow * dest.cols);
+      index = destRow * dest.cols + (dx > 0 ? 0 : destInRow - 1);
+    }
+  } else {
     const nextRow = row + dy;
     if (nextRow >= 0 && nextRow < rows) {
       const inRow = Math.min(section.cols, section.count - nextRow * section.cols);
       index = nextRow * section.cols + Math.min(col, inRow - 1);
     } else {
-      sectionIndex = (sectionIndex + dy + sections.length) % sections.length;
-      const target = sections[sectionIndex];
-      const targetRows = Math.ceil(target.count / target.cols);
-      const targetRow = dy > 0 ? 0 : targetRows - 1;
-      const inRow = Math.min(target.cols, target.count - targetRow * target.cols);
-      index = targetRow * target.cols + Math.min(col, inRow - 1);
+      // Wrap to the next section above or below inside the same column.
+      const siblings = columnSiblings(sections, sectionIndex);
+      if (siblings.length < 2) return;
+      const target = siblings[
+        (siblings.indexOf(sectionIndex) + dy + siblings.length) % siblings.length
+      ];
+      sectionIndex = target;
+      const dest = sections[target];
+      const destRow = dy > 0 ? 0 : Math.ceil(dest.count / dest.cols) - 1;
+      const inRow = Math.min(dest.cols, dest.count - destRow * dest.cols);
+      index = destRow * dest.cols + Math.min(col, inRow - 1);
     }
   }
 
