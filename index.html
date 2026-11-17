@@ -97,6 +97,16 @@
     font-size: 10px; font-weight: 700; color: #fff;
     text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 0 -1px 0 #000;
   }
+  /* Wear strip for tools and armour; only mounted when a stack is damaged. */
+  .slot .durbar {
+    position: absolute; left: 4px; right: 4px; bottom: 3px; height: 3px;
+    background: rgba(0, 0, 0, 0.62);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+  }
+  .slot .durbar .durfill {
+    display: block; height: 100%;
+  }
 
   #item-toast {
     position: absolute; left: 50%; bottom: 116px; transform: translateX(-50%);
@@ -514,7 +524,7 @@ const BLOCKS = [
   {
     id: B.GRASS, key: 'grass', name: 'Grass Block',
     tiles: { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
-    solid: true, opaque: true, hardness: 0.55, tool: 'shovel',
+    solid: true, opaque: true, hardness: 0.6, tool: 'shovel',
     drops: [{ item: 'dirt', min: 1, max: 1 }], placeable: true
   },
   {
@@ -538,7 +548,7 @@ const BLOCKS = [
   {
     id: B.COAL_ORE, key: 'coal_ore', name: 'Coal Ore',
     tiles: { top: 'coal_ore', bottom: 'coal_ore', side: 'coal_ore' },
-    solid: true, opaque: true, hardness: 2.6, tool: 'pickaxe', tier: 1,
+    solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 1,
     drops: [{ item: 'coal', min: 1, max: 2 }], placeable: true
   },
   {
@@ -573,13 +583,13 @@ const BLOCKS = [
   {
     id: B.LEAVES, key: 'leaves', name: 'Oak Leaves',
     tiles: { top: 'leaves', bottom: 'leaves', side: 'leaves' },
-    solid: true, opaque: false, cutout: true, hardness: 0.25,
+    solid: true, opaque: false, cutout: true, hardness: 0.2,
     drops: [], placeable: true
   },
   {
     id: B.SNOW, key: 'snow', name: 'Snow Block',
     tiles: { top: 'snow', bottom: 'snow', side: 'snow' },
-    solid: true, opaque: true, hardness: 0.35, tool: 'shovel',
+    solid: true, opaque: true, hardness: 0.2, tool: 'shovel',
     drops: [{ item: 'snow', min: 1, max: 1 }], placeable: true
   },
   {
@@ -591,7 +601,7 @@ const BLOCKS = [
   {
     id: B.TORCH, key: 'torch', name: 'Torch',
     tiles: { top: 'torch', bottom: 'torch', side: 'torch' },
-    solid: false, opaque: false, cutout: true, hardness: 0.05,
+    solid: false, opaque: false, cutout: true, hardness: 0,
     light: 14, placeOnTop: true,
     drops: [{ item: 'torch', min: 1, max: 1 }], placeable: true
   },
@@ -648,10 +658,6 @@ function makeStack(id, count, dur) {
   const stack = { id, count };
   if (dur != null) stack.dur = dur;
   return stack;
-}
-
-function cloneStack(stack) {
-  return stack ? makeStack(stack.id, stack.count, stack.dur) : null;
 }
 
 /** A damaged tool never merges with a fresh one, so slots must agree on `dur`. */
@@ -3885,7 +3891,9 @@ const miningState = {
   z: 0,
   itemId: null,
   progress: 0,
-  duration: 0
+  duration: 0,
+  canHarvest: false,
+  wearsTool: false
 };
 
 /** How often a swing lands while breaking; drives both the arm and its sound. */
@@ -3933,46 +3941,76 @@ function startMiningOn(target) {
     return;
   }
 
+  const facts = miningFacts(target.id, stack);
   miningState.active = true;
   miningState.x = target.x;
   miningState.y = target.y;
   miningState.z = target.z;
   miningState.itemId = itemId;
   miningState.progress = 0;
-  miningState.duration = miningDuration(target.id);
+  miningState.duration = facts.duration;
+  miningState.canHarvest = facts.canHarvest;
+  miningState.wearsTool = facts.wearsTool;
 }
 
-function miningDuration(blockId) {
+/**
+ * Minecraft's break math. Each tick the tool deals its speed as damage and the
+ * block gives way at hardness x 30, which works out to `hardness x 1.5 / speed`
+ * seconds. A tool that cannot harvest the block deals a fifth of that damage, so
+ * the same block takes five times as long and drops nothing at all.
+ */
+function miningFacts(blockId, stack) {
   const block = BLOCKS[blockId];
-  if (!isFinite(block.hardness)) return Infinity;
-
-  const stack = getSelectedStack();
-  const tool = stack ? ITEMS.get(stack.id) : null;
-  let factor = 1;
-
-  if (block.tool) {
-    if (tool && tool.kind === 'tool' && tool.tool === block.tool) {
-      factor = tool.miningSpeed || 1;
-      if (block.tier && tool.tierLevel < block.tier) {
-        factor = Math.max(0.35, factor * 0.2);
-      }
-    } else {
-      factor = block.tier ? 0.2 : 0.55;
-    }
+  if (!block.breakable || !isFinite(block.hardness)) {
+    return { duration: Infinity, canHarvest: false, wearsTool: false };
   }
 
-  return Math.max(0.05, (block.hardness * 1.2) / factor);
+  const item = stack ? ITEMS.get(stack.id) : null;
+  const tool = item && item.kind === 'tool' ? item : null;
+  const correctTool = !!(tool && block.tool && tool.tool === block.tool);
+  const canHarvest = !block.tier ||
+    (correctTool && (tool.tierLevel || 0) >= block.tier);
+  const speed = correctTool ? (tool.miningSpeed || 1) : 1;
+
+  return {
+    duration: Math.max(0.05, block.hardness * (canHarvest ? 1.5 : 5) / speed),
+    canHarvest,
+    wearsTool: correctTool
+  };
 }
 
-function breakBlockAt(x, y, z, id) {
+/**
+ * Spend durability on whatever is in hand and clear the slot when it snaps.
+ * Only swings that actually used the tool should call this.
+ */
+function wearHeldTool(amount = 1) {
+  const stack = getSelectedStack();
+  if (!stack || !consumeDurability(stack, amount)) return false;
+
+  const item = ITEMS.get(stack.id);
+  inventory[selectedSlot] = null;
+  playToolBreakSound();
+  showToast(((item && item.name) || 'Tool') + ' broke');
+  hideMiningFeedback();
+  renderHotbar();
+  if (activeScreen) renderScreen();
+  return true;
+}
+
+/**
+ * @param canHarvest when false the block still breaks but yields nothing,
+ *                   which is how a too-low pickaxe tier behaves.
+ */
+function breakBlockAt(x, y, z, id, canHarvest = true) {
   const block = BLOCKS[id];
   if (!block.breakable || !isFinite(block.hardness)) return false;
 
   world.setBlock(x, y, z, B.AIR);
-  const drops = block.drops ?? [];
-  for (const drop of drops) {
-    const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
-    spawnItemDrop(drop.item, count, x + 0.5, y + 0.5, z + 0.5);
+  if (canHarvest) {
+    for (const drop of block.drops ?? []) {
+      const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+      spawnItemDrop(drop.item, count, x + 0.5, y + 0.5, z + 0.5);
+    }
   }
   spawnBlockBreakParticles(x, y, z, id);
   playBreakSound(id, x + 0.5, y + 0.5, z + 0.5);
@@ -4008,8 +4046,10 @@ function updateMining(dt, held) {
   updateMiningHitSound(dt, target);
 
   if (miningState.progress >= miningState.duration) {
-    breakBlockAt(target.x, target.y, target.z, target.id);
+    const wearsTool = miningState.wearsTool;
+    breakBlockAt(target.x, target.y, target.z, target.id, miningState.canHarvest);
     hideMiningFeedback();
+    if (wearsTool) wearHeldTool(1);
     updateTarget();
   }
 }
@@ -6374,6 +6414,11 @@ function attackMob(mob) {
   const knockX = (dx / length) * 4.5;
   const knockZ = (dz / length) * 4.5;
   damageMob(mob, heldAttackDamage(), knockX, knockZ);
+
+  // A sword costs 1 durability per swing, any other improvised weapon costs 2.
+  const stack = getSelectedStack();
+  const item = stack ? ITEMS.get(stack.id) : null;
+  if (item && item.kind === 'tool') wearHeldTool(item.tool === 'sword' ? 1 : 2);
   return true;
 }
 
@@ -6442,6 +6487,42 @@ let selectedSlot = 0;
 let fps = 0;
 let toastTimer = 0;
 
+/** Tooltip text for a stack, including the durability left on tools and armour. */
+function stackTitle(stack) {
+  if (!stack) return '';
+  const item = ITEMS.get(stack.id);
+  const name = item ? item.name : stack.id;
+  const info = stackDurability(stack);
+  return info ? name + ' — ' + info.current + '/' + info.max : name;
+}
+
+/**
+ * Mounts, refreshes or removes the wear strip on a slot. Only damaged stacks
+ * get one, so a pristine tool looks exactly like any other item.
+ */
+function updateSlotDurability(el, stack) {
+  const info = stackDurability(stack);
+  let bar = el.querySelector('.durbar');
+
+  if (!info || info.ratio >= 1) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('span');
+    bar.className = 'durbar';
+    const fill = document.createElement('span');
+    fill.className = 'durfill';
+    bar.append(fill);
+    el.append(bar);
+  }
+
+  const fill = bar.firstElementChild;
+  fill.style.width = (info.ratio * 100).toFixed(1) + '%';
+  // Green while nearly fresh, sliding to red as the item runs out.
+  fill.style.background = 'hsl(' + Math.round(info.ratio * 105) + ', 78%, 45%)';
+}
+
 function renderHotbar() {
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     const stack = inventory[i];
@@ -6452,12 +6533,13 @@ function renderHotbar() {
       const itemIcon = ITEM_ICONS.get(stack.id);
       icon.style.backgroundImage = itemIcon ? 'url("' + itemIcon.url + '")' : '';
       count.textContent = stack.count > 1 ? String(stack.count) : '';
-      hotbarSlots[i].title = (ITEMS.get(stack.id) || {}).name || stack.id;
+      hotbarSlots[i].title = stackTitle(stack);
     } else {
       icon.style.backgroundImage = '';
       count.textContent = '';
       hotbarSlots[i].title = '';
     }
+    updateSlotDurability(hotbarSlots[i], stack);
   }
 }
 
@@ -6479,11 +6561,11 @@ function createScreenSlot(container, index, stack, options = {}) {
     const itemIcon = ITEM_ICONS.get(stack.id);
     if (itemIcon) icon.style.backgroundImage = 'url("' + itemIcon.url + '")';
     if (stack.count > 1) count.textContent = String(stack.count);
-    const item = ITEMS.get(stack.id);
-    el.title = item ? item.name : stack.id;
+    el.title = stackTitle(stack);
   }
 
   el.append(icon, count);
+  updateSlotDurability(el, stack);
 
   if (options.key) {
     const key = document.createElement('span');
@@ -7774,6 +7856,41 @@ function playCraftSound() {
   return true;
 }
 
+/** Sharp double snap for a tool reaching zero durability. */
+function playToolBreakSound() {
+  const ctx = ensureAudio();
+  if (!ctx) return false;
+  if (!audioBeginVoice(0.24)) return false;
+  const now = ctx.currentTime;
+  for (let i = 0; i < 2; i++) {
+    const at = now + i * 0.07;
+    const source = ctx.createBufferSource();
+    source.buffer = audioNoiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(i ? 1100 : 1900, at);
+    filter.Q.value = 1.4;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.16, at + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.1);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioConnectOutput(0));
+    source.start(at, Math.random() * 0.4, 0.12);
+    source.stop(at + 0.13);
+  }
+  audioTone({
+    type: 'square',
+    from: 420,
+    to: 130,
+    duration: 0.18,
+    volume: 0.07,
+    pan: 0
+  });
+  return true;
+}
+
 function playExplosionSound(x, y, z) {
   const ctx = ensureAudio();
   if (!ctx) return false;
@@ -8656,6 +8773,14 @@ window.__voxelcraft = {
   durability(slotIndex = selectedSlot) {
     return stackDurability(inventory[Number(slotIndex)] || null);
   },
+  /** Empty every slot, cursor included. Handy for focused test runs. */
+  clearInventory() {
+    for (let i = 0; i < INVENTORY_SIZE; i++) inventory[i] = null;
+    returnCursorStack();
+    renderHotbar();
+    if (activeScreen) renderScreen();
+    return true;
+  },
   openInventory() {
     openScreen('inventory');
     return activeScreen;
@@ -8825,6 +8950,29 @@ window.__voxelcraft = {
     updateTarget();
     updateDebug();
     return this.stats();
+  },
+  /**
+   * Break time in seconds for a block with a given item in hand, worked out
+   * without touching the world. Pass null as the item for an empty hand.
+   */
+  breakTime(block, item = null) {
+    let blockId = block;
+    if (typeof block === 'string') {
+      blockId = BLOCK_BY_KEY.get(block)?.id ?? Number(block);
+    }
+    if (!Number.isFinite(blockId)) return null;
+    const facts = miningFacts(blockId, item ? makeStack(item, 1) : null);
+    return {
+      seconds: Number.isFinite(facts.duration)
+        ? Number(facts.duration.toFixed(4))
+        : null,
+      canHarvest: facts.canHarvest,
+      wearsTool: facts.wearsTool
+    };
+  },
+  /** Snapshot of the mining loop, including the tool it is wearing down. */
+  mining() {
+    return { ...miningState, held: slotInfo(getSelectedStack()) };
   },
   place() {
     const placed = tryPlaceSelectedBlock();
