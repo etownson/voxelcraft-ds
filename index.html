@@ -588,7 +588,11 @@ const B = Object.freeze({
   COAL_ORE: 5, IRON_ORE: 6, SAND: 7, WATER: 8, LOG: 9,
   PLANKS: 10, LEAVES: 11, SNOW: 12, CRAFTING_TABLE: 13,
   TORCH: 14, BEDROCK: 15, DIAMOND_ORE: 16,
-  FURNACE: 17, FURNACE_LIT: 18, GLASS: 19, FARMLAND: 20
+  FURNACE: 17, FURNACE_LIT: 18, GLASS: 19, FARMLAND: 20,
+  // Wheat keeps eight growth stages in the block id itself, because a chunk
+  // cell is one byte and has nowhere else to hold a growth value.
+  WHEAT_0: 21, WHEAT_1: 22, WHEAT_2: 23, WHEAT_3: 24,
+  WHEAT_4: 25, WHEAT_5: 26, WHEAT_6: 27, WHEAT_7: 28
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -617,7 +621,13 @@ const BLOCKS = [
     id: B.GRASS, key: 'grass', name: 'Grass Block',
     tiles: { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
     solid: true, opaque: true, hardness: 0.6, tool: 'shovel',
-    drops: [{ item: 'dirt', min: 1, max: 1 }], placeable: true
+    // A quarter of grass blocks dug up by hand hide a couple of seeds, which is
+    // how a player with no farm at all gets the first crop planted.
+    drops: [
+      { item: 'dirt', min: 1, max: 1 },
+      { item: 'wheat_seeds', min: 1, max: 2, chance: 0.25 }
+    ],
+    placeable: true
   },
   {
     id: B.DIRT, key: 'dirt', name: 'Dirt',
@@ -747,6 +757,28 @@ const BLOCKS = [
   }
 ];
 
+/**
+ * A wheat crop is one block id per growth stage rather than a value in a
+ * metadata array: the chunk array holds a single id per cell, so eight ids is
+ * what lets a growing field survive chunk saves for free.
+ */
+for (let stage = 0; stage < 8; stage++) {
+  const ripe = stage === 7;
+  BLOCKS.push({
+    id: B['WHEAT_' + stage], key: 'wheat_' + stage,
+    name: ripe ? 'Wheat' : 'Wheat Crop',
+    tiles: {
+      top: 'wheat_' + stage, bottom: 'wheat_' + stage, side: 'wheat_' + stage
+    },
+    solid: false, opaque: false, cutout: true, hardness: 0,
+    crop: stage,
+    drops: ripe
+      ? [{ item: 'wheat', min: 1, max: 1 }, { item: 'wheat_seeds', min: 1, max: 2 }]
+      : [{ item: 'wheat_seeds', min: 1, max: 1 }],
+    placeable: false
+  });
+}
+
 const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -757,6 +789,7 @@ for (const block of BLOCKS) {
   block.breakable ??= !block.unbreakable;
   block.facings ??= false;
   block.blockEntity ??= null;
+  block.crop ??= null;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }
@@ -789,6 +822,11 @@ defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, hunger: 3 });
 defineItem({ id: 'cooked_beef', name: 'Steak', kind: 'food', stack: 64, hunger: 8 });
+defineItem({ id: 'wheat', name: 'Wheat', kind: 'food', stack: 64, hunger: 2 });
+defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5 });
+// Seeds are the one item that turns into a block on right click, so they carry
+// the stage they plant as rather than a block id of their own.
+defineItem({ id: 'wheat_seeds', name: 'Wheat Seeds', kind: 'seed', stack: 64, plants: B.WHEAT_0 });
 defineItem({ id: 'feather', name: 'Feather', kind: 'material', stack: 64 });
 
 /* ---------- Item stacks ---------- */
@@ -921,6 +959,8 @@ const TILE_ORDER = [
   'glass', 'farmland_top'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
+// One tile per wheat growth stage, painted in a loop like the crack stages.
+for (let stage = 0; stage < 8; stage++) TILE_ORDER.push('wheat_' + stage);
 
 const TILES = Object.create(null);
 TILE_ORDER.forEach((name, index) => { TILES[name] = index; });
@@ -1446,6 +1486,47 @@ function generateAtlas() {
     };
   }
 
+  // Wheat is drawn on crossed quads, so only the plant itself is painted and
+  // the rest of each tile stays clear. Four thin shoots grow taller, lean over
+  // and fill out a golden ear as the stages run on, topping out around three
+  // quarters of the block so a ripe field still shows sky between the ears.
+  const WHEAT_HEIGHTS = [2, 4, 5, 7, 8, 10, 11, 12];
+  for (let stage = 0; stage < 8; stage++) {
+    painters['wheat_' + stage] = (paint, rand) => {
+      const height = WHEAT_HEIGHTS[stage];
+      const top = 15 - height;
+      const ripening = stage >= 5;
+      const stalk = ripening ? [188, 170, 92] : [76, 142, 62];
+      const leaf = ripening ? [156, 140, 70] : [56, 116, 48];
+      const grain = [228, 208, 122];
+
+      for (const base of [2, 6, 10, 14]) {
+        const lean = stage >= 4 && rand() < 0.45 ? (rand() < 0.5 ? -1 : 1) : 0;
+        for (let y = 0; y < height; y++) {
+          const x = base + (y >= height - 3 ? lean : 0);
+          paint(x, 15 - y, vary(rand, stalk, 12));
+        }
+        if (stage >= 2) {
+          // A pair of leaves branching off the upper stalk.
+          paint(base - 1, top + 3, vary(rand, leaf, 10));
+          paint(base + 1, top + 2, vary(rand, leaf, 10));
+        }
+        if (stage >= 5) {
+          // The ear: two pixels of grain wide, tapering to a point at the tip.
+          for (let y = height - 1; y >= height - 5; y--) {
+            const x = base + (y >= height - 2 ? lean : 0);
+            paint(x, 15 - y, vary(rand, grain, 10));
+            if (y < height - 1) paint(x + 1, 15 - y, vary(rand, grain, 8));
+          }
+        }
+        if (stage >= 6 && top - 1 >= 0) {
+          // A single awn reaching up from the ear.
+          paint(base + lean, top - 1, vary(rand, grain, 6));
+        }
+      }
+    };
+  }
+
   for (const name of TILE_ORDER) {
     const index = TILES[name];
     const tx = index % ATLAS_GRID;
@@ -1925,6 +2006,47 @@ const MATERIAL_ICON_PAINTERS = {
     px(9, 5, '#e4e9f0');
     px(7, 7, '#e4e9f0');
   },
+  wheat_seeds(px) {
+    // A scatter of pale grains, each with a darker seam down one side.
+    const seeds = [[3, 4], [8, 3], [11, 6], [4, 9], [9, 10], [6, 12]];
+    for (const [x, y] of seeds) {
+      px(x, y, '#d8c478', 2, 3);
+      px(x, y + 1, '#a8904a', 1, 2);
+      px(x + 1, y, '#efe0a4', 1, 1);
+    }
+  },
+  wheat(px) {
+    // A single ear: stalk below, rows of grain leaning out above it.
+    paintIconLine(px, 8, 15, 8, 6, '#b99a4a');
+    for (let y = 2; y <= 8; y++) {
+      px(7, y, '#e3cd6e');
+      px(9, y, '#e3cd6e');
+      px(8, y, '#c8ab54');
+      if (y % 2 === 0) {
+        px(6, y, '#f0e091');
+        px(10, y, '#f0e091');
+      }
+    }
+    px(8, 1, '#f0e091');
+    px(6, 1, '#c8ab54');
+    px(10, 1, '#c8ab54');
+    px(7, 10, '#a8873c');
+    px(9, 12, '#a8873c');
+  },
+  bread(px) {
+    // A crusty loaf, pale across the top and dark along the bottom edge.
+    px(3, 5, '#c98a43', 10, 6);
+    px(2, 6, '#c98a43', 1, 4);
+    px(13, 6, '#c98a43', 1, 4);
+    px(3, 4, '#e0ab63', 10, 1);
+    px(4, 3, '#e9bd7c', 8, 1);
+    px(4, 5, '#e6b771', 3, 1);
+    px(9, 5, '#e6b771', 3, 1);
+    px(3, 11, '#8f5b26', 10, 1);
+    px(5, 10, '#a96f30', 6, 1);
+    px(6, 6, '#a96f30', 1, 4);
+    px(10, 6, '#a96f30', 1, 4);
+  },
   diamond(px) {
     px(6, 3, '#c6f7fb', 4, 1);
     px(5, 4, '#8ce8f2', 6, 1);
@@ -2231,12 +2353,25 @@ class World {
     this.blockEntities = new Map();
     /** "x,y,z" -> [dx, dz] front normal for blocks that have an orientation. */
     this.facings = new Map();
+    /**
+     * "x,y,z" -> every cell holding a wheat crop. Growth only ever needs to
+     * look at this short list, and the stage itself lives in the block id.
+     */
+    this.crops = new Set();
   }
 
   trackTorch(gx, gy, gz, oldId, newId) {
     const key = gx + ',' + gy + ',' + gz;
     if (newId === B.TORCH) this.torches.add(key);
     else if (oldId === B.TORCH) this.torches.delete(key);
+  }
+
+  /** Keeps the list of growing crops in step with block edits. */
+  trackCrop(gx, gy, gz, oldId, newId) {
+    if (BLOCKS[newId].crop === null && BLOCKS[oldId].crop === null) return;
+    const key = gx + ',' + gy + ',' + gz;
+    if (BLOCKS[newId].crop !== null) this.crops.add(key);
+    else this.crops.delete(key);
   }
 
   /**
@@ -2322,6 +2457,7 @@ class World {
     this.overrides.set(gx + ',' + y + ',' + gz, id);
     this.trackTorch(gx, y, gz, B.AIR, id);
     this.trackBlockEntity(gx, y, gz, B.AIR, id);
+    this.trackCrop(gx, y, gz, B.AIR, id);
   }
 
   /**
@@ -2337,6 +2473,7 @@ class World {
     this.recordOverride(gx, gy, gz, id);
     this.trackTorch(gx, gy, gz, oldId, id);
     this.trackBlockEntity(gx, gy, gz, oldId, id, facing);
+    this.trackCrop(gx, gy, gz, oldId, id);
 
     const chunk = this.chunks.get(chunkKey(cx, cz));
     if (!chunk || !chunk.generated) return true;
@@ -2365,6 +2502,7 @@ class World {
       this.recordOverride(gx, gy, gz, id);
       this.trackTorch(gx, gy, gz, oldId, id);
       this.trackBlockEntity(gx, gy, gz, oldId, id);
+      this.trackCrop(gx, gy, gz, oldId, id);
       const chunk = this.chunks.get(chunkKey(cx, cz));
       if (!chunk || !chunk.generated) continue;
 
@@ -3426,6 +3564,10 @@ function buildChunkMesh(world, chunk) {
         }
 
         const block = BLOCKS[id];
+        if (block.crop !== null) {
+          appendCropQuads(cutout, world, x, y, z, wx, wz, block);
+          continue;
+        }
         const target = block.cutout ? cutout : opaque;
 
         for (const face of FACES) {
@@ -3545,6 +3687,34 @@ function appendTorch(builder, world, x, y, z, wx, wz) {
     [x + 0.85, y, z + 0.85],
     [x + 0.85, y + height, z + 0.85],
     [x + 0.15, y + height, z + 0.15]
+  ];
+  builder.quad(planeA, rect, sky, blockLight, shades);
+  builder.quad(planeB, rect, sky, blockLight, shades);
+}
+
+/**
+ * A wheat crop is two crossing quads, the same trick the torch uses. The tile
+ * art decides how tall the plant stands, so every growth stage shares this
+ * geometry, and the planes sit just inside the cell so neighbouring crops do
+ * not fight over the same pixels.
+ */
+function appendCropQuads(builder, world, x, y, z, wx, wz, block) {
+  const rect = tileRect(block.tileSide);
+  const sky = skyBrightness(world.getSkyLight(wx, y, wz));
+  const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
+  const shades = [1, 1, 1, 1];
+
+  const planeA = [
+    [x + 0.18, y, z + 0.82],
+    [x + 0.82, y, z + 0.18],
+    [x + 0.82, y + 1, z + 0.18],
+    [x + 0.18, y + 1, z + 0.82]
+  ];
+  const planeB = [
+    [x + 0.18, y, z + 0.18],
+    [x + 0.82, y, z + 0.82],
+    [x + 0.82, y + 1, z + 0.82],
+    [x + 0.18, y + 1, z + 0.18]
   ];
   builder.quad(planeA, rect, sky, blockLight, shades);
   builder.quad(planeB, rect, sky, blockLight, shades);
@@ -3806,6 +3976,12 @@ const RECIPES = [
     id: 'furnace', pattern: ['CCC', 'C.C', 'CCC'],
     key: { C: 'cobblestone' },
     result: { id: 'furnace', count: 1 }
+  },
+  {
+    // Three ears laid side by side: bread needs the crafting table, not the
+    // 2x2 grid carried in the inventory.
+    id: 'bread', pattern: ['WWW'], key: { W: 'wheat' },
+    result: { id: 'bread', count: 1 }
   }
 ];
 
@@ -4668,6 +4844,8 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   addExhaustion(EXHAUSTION.mine);
   if (canHarvest) {
     for (const drop of block.drops ?? []) {
+      // Some drops are a roll rather than a certainty, like seeds in grass.
+      if (drop.chance != null && Math.random() >= drop.chance) continue;
       const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
       spawnItemDrop(drop.item, count, x + 0.5, y + 0.5, z + 0.5);
     }
@@ -4732,6 +4910,9 @@ function tryPlaceSelectedBlock() {
 
   // And a hoe in hand tilling soil is a use, not a placement.
   if (useHoeOnTarget()) return true;
+
+  // Seeds on farmland start a crop the same way.
+  if (plantSeedsOnTarget()) return true;
 
   const stack = getSelectedStack();
   if (!stack) return false;
@@ -4805,6 +4986,97 @@ function useHoeOnTarget() {
   wearHeldTool(1);
   playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
   return true;
+}
+
+/**
+ * Right-clicking farmland with seeds plants them at stage 0. Seeds are the one
+ * item that turns into a block on use rather than being placed like a brick.
+ */
+function plantSeedsOnTarget() {
+  const stack = getSelectedStack();
+  if (!stack) return false;
+
+  const item = ITEMS.get(stack.id);
+  if (!item || item.kind !== 'seed') return false;
+  if (currentTarget.id !== B.FARMLAND) return false;
+
+  const x = currentTarget.x;
+  const y = currentTarget.y + 1;
+  const z = currentTarget.z;
+  if (y >= WORLD_HEIGHT || world.getBlock(x, y, z) !== B.AIR) return false;
+
+  world.setBlock(x, y, z, item.plants);
+  consumeSelectedItem();
+  playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/* ---------- Crops ---------- */
+
+/** One growth attempt per crop per second of game time. */
+const CROP_TICK_SECONDS = 1;
+
+/**
+ * About one attempt in eighty-five lands, so a single stage takes some 83 s and
+ * a freshly sown field turns gold in ten real minutes, which is the pace a wheat
+ * farm keeps in Minecraft.
+ */
+const CROP_GROWTH_CHANCE = 0.012;
+
+/** Crops need daylight or a nearby torch, the same threshold Minecraft uses. */
+const CROP_LIGHT_MIN = 9;
+
+let cropTimer = 0;
+
+/**
+ * Advances wheat one stage at a time. Only crops the world has actually
+ * generated are touched, so an unloaded field simply waits until the player
+ * comes back for it.
+ */
+function updateCrops(dt) {
+  if (!world || dt <= 0 || world.crops.size === 0) return;
+
+  cropTimer += dt;
+  if (cropTimer < CROP_TICK_SECONDS) return;
+  const ticks = Math.floor(cropTimer / CROP_TICK_SECONDS);
+  cropTimer -= ticks * CROP_TICK_SECONDS;
+
+  for (const key of world.crops) {
+    const parts = key.split(',');
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+
+    // Reading an unloaded chunk would answer "air", which would read as a dead
+    // crop and wipe a field the player merely walked away from. Wait instead.
+    const chunk = world.chunks.get(chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)));
+    if (!chunk || !chunk.generated) continue;
+
+    const id = world.getBlock(x, y, z);
+    const block = BLOCKS[id];
+    if (block.crop === null) {
+      world.crops.delete(key);
+      continue;
+    }
+
+    // A crop whose farmland has been dug away is lost, as it is in Minecraft.
+    if (world.getBlock(x, y - 1, z) !== B.FARMLAND) {
+      world.setBlock(x, y, z, B.AIR);
+      continue;
+    }
+    if (block.crop >= 7) continue;
+
+    const sky = world.getSkyLight(x, y, z);
+    const lamp = world.getBlockLight(x, y, z);
+    if (sky < CROP_LIGHT_MIN && lamp < CROP_LIGHT_MIN) continue;
+
+    let stage = block.crop;
+    for (let i = 0; i < ticks && stage < 7; i++) {
+      if (Math.random() >= CROP_GROWTH_CHANCE) continue;
+      stage += 1;
+      world.setBlock(x, y, z, B.WHEAT_0 + stage);
+    }
+  }
 }
 
 /* ---------- Smelting and furnaces ---------- */
@@ -10758,6 +11030,41 @@ window.__voxelcraft = {
     updateTarget();
     return placed;
   },
+  /** Tills the block under the crosshair with the hoe in hand. */
+  tillDirt() {
+    updateTarget();
+    const tilled = currentTarget ? useHoeOnTarget() : false;
+    updateTarget();
+    return { tilled, target: currentTarget ? { ...currentTarget } : null };
+  },
+  /** Sows the seeds in hand onto the farmland under the crosshair. */
+  plantSeed() {
+    updateTarget();
+    const planted = currentTarget ? plantSeedsOnTarget() : false;
+    updateTarget();
+    return { planted, crops: this.crops() };
+  },
+  /** Every tracked crop with its stage, so a field can be read at a glance. */
+  crops() {
+    const list = [];
+    for (const key of world.crops) {
+      const [x, y, z] = key.split(',').map(Number);
+      const block = BLOCKS[world.getBlock(x, y, z)];
+      list.push({
+        at: [x, y, z],
+        stage: block.crop,
+        ground: world.getBlock(x, y - 1, z),
+        sky: world.getSkyLight(x, y, z),
+        lamp: world.getBlockLight(x, y, z)
+      });
+    }
+    return list;
+  },
+  /** Runs the crop growth clock forward without waiting real time. */
+  growCrops(seconds = 60) {
+    updateCrops(seconds);
+    return this.crops();
+  },
   setBlock(x, y, z, id) {
     let numericId = id;
     if (typeof id === 'string') {
@@ -10789,6 +11096,7 @@ window.__voxelcraft = {
       updateAudio(dt);
       updateExplosionEffects(dt);
       updateFurnaces(dt);
+      updateCrops(dt);
     }
     updateDebug();
     return this.stats();
@@ -10954,6 +11262,7 @@ window.__voxelcraft = {
       },
       overrides: world.overrides.size,
       furnaces: world.blockEntities.size,
+      crops: world.crops.size,
       save: this.saveInfo(),
       itemDrops: itemEntities.map((entity) => ({
         id: entity.itemId,
@@ -11025,6 +11334,7 @@ function animate(now) {
     updateDayNight(dt);
     updateExplosionEffects(dt);
     updateFurnaces(dt);
+    updateCrops(dt);
   } else if (activeScreen === 'furnace') {
     // The furnace whose screen is open keeps smelting while you browse your
     // inventory; everything else in the world stays frozen.
