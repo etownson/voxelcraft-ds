@@ -395,9 +395,10 @@
       <div><kbd>A</kbd><span>Jump / respawn</span></div>
       <div><kbd>B</kbd><span>Hold to sprint</span></div>
       <div><kbd>LB / RB</kbd><span>Cycle hotbar</span></div>
-      <div><kbd>Start</kbd><span>Inventory &middot; Back pauses</span></div>
+      <div><kbd>Y</kbd><span>Inventory &middot; quick move in menu</span></div>
+      <div><kbd>X</kbd><span>Half stack in menu</span></div>
+      <div><kbd>Start</kbd><span>Pause &middot; close menu</span></div>
       <div><kbd>D-pad</kbd><span>Navigate menus</span></div>
-      <div><kbd>Y / X</kbd><span>Menu quick move / half stack</span></div>
     </div>
     <div class="pad-settings">
       <span id="pad-status" class="pad-state">Gamepad: not detected</span>
@@ -4681,8 +4682,12 @@ function handlePadTap(name) {
   }
 
   switch (name) {
-    case 'start':
+    case 'y':
       toggleInventory();
+      break;
+    case 'start':
+      overlayEl.classList.remove('hidden');
+      setGamepadSensitivity(gamepadState.sensitivity);
       break;
     case 'lb':
       selectHotbarSlot(selectedSlot - 1, true);
@@ -4695,10 +4700,6 @@ function handlePadTap(name) {
       break;
     case 'rt':
       beginPadMining();
-      break;
-    case 'back':
-      overlayEl.classList.remove('hidden');
-      setGamepadSensitivity(gamepadState.sensitivity);
       break;
     default:
       break;
@@ -4753,11 +4754,11 @@ function updateGamepad(dt) {
     return;
   }
 
-  if (gamepadState.pressed[PAD_BUTTON.start]) {
+  if (gamepadState.pressed[PAD_BUTTON.y]) {
     toggleInventory();
     return;
   }
-  if (gamepadState.pressed[PAD_BUTTON.back]) {
+  if (gamepadState.pressed[PAD_BUTTON.start]) {
     overlayEl.classList.remove('hidden');
     releasePadMining();
     return;
