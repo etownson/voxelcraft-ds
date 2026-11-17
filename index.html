@@ -483,6 +483,7 @@ const TREE_MARGIN = 4;
 const TREE_SALT = 0x51ED270B;
 const ORE_SALT_COAL = 0xC0A1;
 const ORE_SALT_IRON = 0x1F0E;
+const ORE_SALT_DIAMOND = 0xD1A40;
 
 const SKY_ZENITH = 0x4f8fd8;
 const SKY_HORIZON = 0xc3dbef;
@@ -496,7 +497,7 @@ const B = Object.freeze({
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, COBBLESTONE: 4,
   COAL_ORE: 5, IRON_ORE: 6, SAND: 7, WATER: 8, LOG: 9,
   PLANKS: 10, LEAVES: 11, SNOW: 12, CRAFTING_TABLE: 13,
-  TORCH: 14, BEDROCK: 15
+  TORCH: 14, BEDROCK: 15, DIAMOND_ORE: 16
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -610,6 +611,16 @@ const BLOCKS = [
     tiles: { top: 'bedrock', bottom: 'bedrock', side: 'bedrock' },
     solid: true, opaque: true, hardness: Infinity, unbreakable: true,
     drops: [], placeable: false
+  },
+  // New blocks are appended here and their ids added at the end of B, because
+  // everything from the chunk arrays to the light engine looks blocks up as
+  // BLOCKS[id]. Never insert one in the middle: it would silently renumber the
+  // world and break every saved edit.
+  {
+    id: B.DIAMOND_ORE, key: 'diamond_ore', name: 'Diamond Ore',
+    tiles: { top: 'diamond_ore', bottom: 'diamond_ore', side: 'diamond_ore' },
+    solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 3,
+    drops: [{ item: 'diamond', min: 1, max: 1 }], placeable: true
   }
 ];
 
@@ -621,6 +632,9 @@ for (const block of BLOCKS) {
   block.liquid ??= false;
   block.placeable ??= false;
   block.breakable ??= !block.unbreakable;
+  if (BLOCKS[block.id] !== block) {
+    throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
+  }
   BLOCK_BY_KEY.set(block.key, block);
 }
 
@@ -643,6 +657,7 @@ for (const block of BLOCKS) {
 
 defineItem({ id: 'coal', name: 'Coal', kind: 'material', stack: 64 });
 defineItem({ id: 'iron', name: 'Iron', kind: 'material', stack: 64 });
+defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64 });
 defineItem({ id: 'feather', name: 'Feather', kind: 'material', stack: 64 });
@@ -700,9 +715,12 @@ function consumeDurability(stack, amount = 1) {
 const TOOL_TIERS = {
   wood:  { level: 1, speed: 2.0, durability: 60,  damage: 2.5 },
   stone: { level: 2, speed: 4.0, durability: 132, damage: 3.5 },
-  iron:  { level: 3, speed: 6.0, durability: 251, damage: 5.0 }
+  iron:  { level: 3, speed: 6.0, durability: 251, damage: 5.0 },
+  diamond: { level: 4, speed: 8.0, durability: 1561, damage: 7.0 }
 };
-const TOOL_KINDS = { pickaxe: 'Pickaxe', sword: 'Sword', axe: 'Axe', shovel: 'Shovel' };
+const TOOL_KINDS = {
+  pickaxe: 'Pickaxe', sword: 'Sword', axe: 'Axe', shovel: 'Shovel', hoe: 'Hoe'
+};
 
 for (const [tier, stats] of Object.entries(TOOL_TIERS)) {
   for (const [tool, label] of Object.entries(TOOL_KINDS)) {
@@ -723,7 +741,7 @@ for (const [tier, stats] of Object.entries(TOOL_TIERS)) {
 
 const TILE_ORDER = [
   'grass_top', 'grass_side', 'dirt', 'stone', 'cobblestone',
-  'coal_ore', 'iron_ore', 'sand', 'water', 'log_side', 'log_top',
+  'coal_ore', 'iron_ore', 'diamond_ore', 'sand', 'water', 'log_side', 'log_top',
   'planks', 'leaves', 'snow', 'crafting_table_top',
   'crafting_table_side', 'torch', 'bedrock'
 ];
@@ -884,6 +902,15 @@ function generateAtlas() {
       paintOreCluster(paint, rand, 9, 2, ironColors, 3);
       paintOreCluster(paint, rand, 6, 11, ironColors, 2);
       paintOreCluster(paint, rand, 12, 10, ironColors, 2);
+    },
+
+    diamond_ore(paint, rand) {
+      paintStoneBase(paint, rand);
+      const diamondColors = [[58, 190, 202], [98, 224, 232], [150, 242, 246], [34, 152, 172]];
+      paintOreCluster(paint, rand, 3, 3, diamondColors, 2);
+      paintOreCluster(paint, rand, 10, 2, diamondColors, 3);
+      paintOreCluster(paint, rand, 5, 10, diamondColors, 2);
+      paintOreCluster(paint, rand, 12, 11, diamondColors, 2);
     },
 
     sand(paint, rand) {
@@ -1280,6 +1307,26 @@ const TOOL_SPRITES = {
     '...SS...........',
     '................'
   ],
+  // Same handle as the pickaxe, but the head is a single blade rather than two
+  // prongs, which is what makes a hoe read as a hoe at 16 pixels.
+  hoe: [
+    '................',
+    '................',
+    '......22222.....',
+    '.....2666662HM..',
+    '......211155LS..',
+    '..........H651..',
+    '.........HMS11..',
+    '........HLS.....',
+    '.......HMS......',
+    '......HLS.......',
+    '.....HMS........',
+    '....HLS.........',
+    '...HMS..........',
+    '..HLS...........',
+    '..SS............',
+    '................'
+  ],
   sword: [
     '.............222',
     '............2661',
@@ -1305,7 +1352,8 @@ const TOOL_HANDLE_COLORS = ['#493615', '#684e1e', '#896727', '#281e0b'];
 const TOOL_HEAD_PALETTES = {
   wood: ['#20180a', '#372910', '#594319', '#6b511f', '#755821', '#866526'],
   stone: ['#181818', '#494949', '#6c6c6c', '#7f7f7f', '#898989', '#9a9a9a'],
-  iron: ['#181818', '#444444', '#969696', '#c1c1c1', '#d8d8d8', '#ffffff']
+  iron: ['#181818', '#444444', '#969696', '#c1c1c1', '#d8d8d8', '#ffffff'],
+  diamond: ['#0a4d57', '#12727f', '#1f97a6', '#3fc0cd', '#66dfe9', '#a6f2f7']
 };
 
 function makeToolIcon(item) {
@@ -1419,6 +1467,17 @@ const MATERIAL_ICON_PAINTERS = {
     px(10, 2, '#ffffff', 2, 2);
     px(9, 5, '#e4e9f0');
     px(7, 7, '#e4e9f0');
+  },
+  diamond(px) {
+    px(6, 3, '#c6f7fb', 4, 1);
+    px(5, 4, '#8ce8f2', 6, 1);
+    px(4, 5, '#5fd3e2', 8, 2);
+    px(5, 7, '#3cb8cd', 6, 2);
+    px(6, 9, '#2897ad', 4, 1);
+    px(7, 10, '#1c7d94', 2, 1);
+    px(6, 4, '#eafdff', 2, 1);
+    px(5, 5, '#c6f7fb', 1, 1);
+    px(9, 6, '#9ceef8', 1, 1);
   }
 };
 
@@ -2306,6 +2365,14 @@ function generateOres(chunk) {
     const size = 2 + Math.floor(ironRand() * 5);
     carveOreVein(chunk, ironRand, B.IRON_ORE, size, 4, WORLD_HEIGHT - 8, true);
   }
+
+  // Diamonds only form in the deep rock, and the bias keeps most veins near
+  // the bottom of the world so they stay a reward for digging.
+  const diamondRand = chunkRandom(chunk.cx, chunk.cz, ORE_SALT_DIAMOND);
+  for (let vein = 0; vein < 6; vein++) {
+    const size = 2 + Math.floor(diamondRand() * 4);
+    carveOreVein(chunk, diamondRand, B.DIAMOND_ORE, size, 4, 26, true);
+  }
 }
 
 /** Deterministic tree lookup for a single world column. */
@@ -3159,48 +3226,34 @@ const RECIPES = [
   {
     id: 'torches', pattern: ['C', 'S'], key: { C: 'coal', S: 'stick' },
     result: { id: 'torch', count: 4 }
-  },
-  {
-    id: 'wood_pickaxe', pattern: ['PPP', '.S.', '.S.'],
-    key: { P: 'planks', S: 'stick' },
-    result: { id: 'wood_pickaxe', count: 1 }
-  },
-  {
-    id: 'stone_pickaxe', pattern: ['CCC', '.S.', '.S.'],
-    key: { C: 'cobblestone', S: 'stick' },
-    result: { id: 'stone_pickaxe', count: 1 }
-  },
-  {
-    id: 'iron_pickaxe', pattern: ['III', '.S.', '.S.'],
-    key: { I: 'iron', S: 'stick' },
-    result: { id: 'iron_pickaxe', count: 1 }
-  },
-  {
-    id: 'wood_sword', pattern: ['P', 'P', 'S'],
-    key: { P: 'planks', S: 'stick' },
-    result: { id: 'wood_sword', count: 1 }
-  },
-  {
-    id: 'stone_sword', pattern: ['C', 'C', 'S'],
-    key: { C: 'cobblestone', S: 'stick' },
-    result: { id: 'stone_sword', count: 1 }
-  },
-  {
-    id: 'iron_sword', pattern: ['I', 'I', 'S'],
-    key: { I: 'iron', S: 'stick' },
-    result: { id: 'iron_sword', count: 1 }
-  },
-  {
-    id: 'wood_axe', pattern: ['PP', 'PS', '.S'],
-    key: { P: 'planks', S: 'stick' },
-    result: { id: 'wood_axe', count: 1 }
-  },
-  {
-    id: 'wood_shovel', pattern: ['P', 'S', 'S'],
-    key: { P: 'planks', S: 'stick' },
-    result: { id: 'wood_shovel', count: 1 }
   }
 ];
+
+/**
+ * Minecraft's tool shapes: a head of two or three material cells over a stick
+ * handle. Generated for every tier rather than written out twenty times.
+ */
+const TOOL_SHAPES = {
+  pickaxe: ['XXX', '.S.', '.S.'],
+  sword: ['X', 'X', 'S'],
+  axe: ['XX', 'XS', '.S'],
+  shovel: ['X', 'S', 'S'],
+  hoe: ['XX', '.S', '.S']
+};
+const TOOL_MATERIALS = {
+  wood: 'planks', stone: 'cobblestone', iron: 'iron', diamond: 'diamond'
+};
+
+for (const [tier, material] of Object.entries(TOOL_MATERIALS)) {
+  for (const [kind, shape] of Object.entries(TOOL_SHAPES)) {
+    RECIPES.push({
+      id: tier + '_' + kind,
+      pattern: shape.slice(),
+      key: { X: material, S: 'stick' },
+      result: { id: tier + '_' + kind, count: 1 }
+    });
+  }
+}
 
 /** Trim a pattern to its non-empty bounding box. */
 function trimPattern(pattern) {
@@ -6397,7 +6450,7 @@ function heldAttackDamage() {
   const item = stack ? ITEMS.get(stack.id) : null;
   if (!item || item.kind !== 'tool') return 1;
   if (item.tool === 'sword') {
-    return { wood: 4, stone: 6, iron: 8 }[item.tier] || 3;
+    return { wood: 4, stone: 6, iron: 8, diamond: 10 }[item.tier] || 3;
   }
   return Math.max(2, Math.round((item.damage || 2) * 0.7));
 }
