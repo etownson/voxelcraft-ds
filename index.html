@@ -262,6 +262,34 @@
     min-height: 14px; font-size: 11px; color: #dbe7f2; letter-spacing: 0.04em;
     text-align: center;
   }
+  /* Furnace screen: input/flame/fuel stacked on the left, progress and output
+     on the right, echoing the shape of the block itself. */
+  .furnace-body { display: flex; align-items: center; gap: 12px; }
+  .furnace-stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .inv-slot.furnace-in-slot, .inv-slot.furnace-fuel-slot {
+    border-color: rgba(244, 208, 111, 0.34);
+  }
+  .inv-slot.furnace-out-slot { border-color: rgba(244, 208, 111, 0.45); }
+  .furnace-flame {
+    position: relative; width: 16px; height: 18px;
+    background: rgba(0, 0, 0, 0.42);
+    clip-path: polygon(50% 0, 100% 60%, 80% 100%, 20% 100%, 0 60%);
+  }
+  .furnace-flame .flame-fill {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #ffe08a 0%, #f0a03c 45%, #d2601f 100%);
+  }
+  .furnace-progress {
+    position: relative; width: 38px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .furnace-progress .progress-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: rgba(244, 208, 111, 0.34);
+  }
+  .furnace-progress .progress-glyph {
+    position: relative; font-size: 20px; color: #cfe0ee; line-height: 1;
+  }
   .inv-hint {
     margin: 14px 0 0; font-size: 10.5px; color: #7d90a2;
     letter-spacing: 0.03em; text-align: center; white-space: nowrap;
@@ -479,6 +507,8 @@ const MAX_MOVE_STEP = 0.25;
 const FOG_NEAR = 48;
 const FOG_FAR = 132;
 const FOCUS_REACH = 5;
+/** Furnaces this far from the player keep smelting; farther ones stay idle. */
+const FURNACE_TICK_RANGE = 32;
 const TREE_MARGIN = 4;
 const TREE_SALT = 0x51ED270B;
 const ORE_SALT_COAL = 0xC0A1;
@@ -497,7 +527,8 @@ const B = Object.freeze({
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, COBBLESTONE: 4,
   COAL_ORE: 5, IRON_ORE: 6, SAND: 7, WATER: 8, LOG: 9,
   PLANKS: 10, LEAVES: 11, SNOW: 12, CRAFTING_TABLE: 13,
-  TORCH: 14, BEDROCK: 15, DIAMOND_ORE: 16
+  TORCH: 14, BEDROCK: 15, DIAMOND_ORE: 16,
+  FURNACE: 17, FURNACE_LIT: 18, GLASS: 19, FARMLAND: 20
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -556,7 +587,7 @@ const BLOCKS = [
     id: B.IRON_ORE, key: 'iron_ore', name: 'Iron Ore',
     tiles: { top: 'iron_ore', bottom: 'iron_ore', side: 'iron_ore' },
     solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 2,
-    drops: [{ item: 'iron', min: 1, max: 1 }], placeable: true
+    drops: [{ item: 'raw_iron', min: 1, max: 1 }], placeable: true
   },
   {
     id: B.SAND, key: 'sand', name: 'Sand',
@@ -621,6 +652,38 @@ const BLOCKS = [
     tiles: { top: 'diamond_ore', bottom: 'diamond_ore', side: 'diamond_ore' },
     solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 3,
     drops: [{ item: 'diamond', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.FURNACE, key: 'furnace', name: 'Furnace',
+    tiles: {
+      top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side',
+      front: 'furnace_front'
+    },
+    solid: true, opaque: true, hardness: 3.5, tool: 'pickaxe', tier: 1,
+    facings: true, blockEntity: 'furnace',
+    drops: [{ item: 'furnace', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.FURNACE_LIT, key: 'furnace_lit', name: 'Furnace',
+    tiles: {
+      top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side',
+      front: 'furnace_front_lit'
+    },
+    solid: true, opaque: true, hardness: 3.5, tool: 'pickaxe', tier: 1,
+    facings: true, light: 13, blockEntity: 'furnace',
+    drops: [{ item: 'furnace', min: 1, max: 1 }], placeable: false
+  },
+  {
+    id: B.GLASS, key: 'glass', name: 'Glass',
+    tiles: { top: 'glass', bottom: 'glass', side: 'glass' },
+    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'pickaxe',
+    drops: [{ item: 'glass', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.FARMLAND, key: 'farmland', name: 'Farmland',
+    tiles: { top: 'farmland_top', bottom: 'dirt', side: 'dirt' },
+    solid: true, opaque: true, hardness: 0.6, tool: 'shovel',
+    drops: [{ item: 'dirt', min: 1, max: 1 }], placeable: false
   }
 ];
 
@@ -632,6 +695,8 @@ for (const block of BLOCKS) {
   block.liquid ??= false;
   block.placeable ??= false;
   block.breakable ??= !block.unbreakable;
+  block.facings ??= false;
+  block.blockEntity ??= null;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }
@@ -656,10 +721,13 @@ for (const block of BLOCKS) {
 }
 
 defineItem({ id: 'coal', name: 'Coal', kind: 'material', stack: 64 });
-defineItem({ id: 'iron', name: 'Iron', kind: 'material', stack: 64 });
+defineItem({ id: 'charcoal', name: 'Charcoal', kind: 'material', stack: 64 });
+defineItem({ id: 'raw_iron', name: 'Raw Iron', kind: 'material', stack: 64 });
+defineItem({ id: 'iron_ingot', name: 'Iron Ingot', kind: 'material', stack: 64 });
 defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
-defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64 });
+defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, hunger: 3 });
+defineItem({ id: 'cooked_beef', name: 'Steak', kind: 'food', stack: 64, hunger: 8 });
 defineItem({ id: 'feather', name: 'Feather', kind: 'material', stack: 64 });
 
 /* ---------- Item stacks ---------- */
@@ -743,7 +811,9 @@ const TILE_ORDER = [
   'grass_top', 'grass_side', 'dirt', 'stone', 'cobblestone',
   'coal_ore', 'iron_ore', 'diamond_ore', 'sand', 'water', 'log_side', 'log_top',
   'planks', 'leaves', 'snow', 'crafting_table_top',
-  'crafting_table_side', 'torch', 'bedrock'
+  'crafting_table_side', 'torch', 'bedrock',
+  'furnace_top', 'furnace_side', 'furnace_front', 'furnace_front_lit',
+  'glass', 'farmland_top'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 
@@ -825,6 +895,21 @@ function generateAtlas() {
         if (x === x0 + w - 1) shade -= 7;
         paint(x, y, vary(rand, [131 + shade, 131 + shade, 131 + shade], 6));
       }
+    }
+  }
+
+  /** Stone casing shared by the lit and unlit furnace faces. */
+  function paintCasingBase(paint, rand) {
+    pixelNoise(paint, rand, [124, 124, 126], 6);
+    for (let i = 0; i < 14; i++) {
+      paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [100, 100, 102], 6));
+    }
+    for (let i = 0; i < 16; i++) {
+      const shade = vary(rand, [84, 84, 86], 4);
+      paint(i, 0, shade);
+      paint(i, 15, shade);
+      paint(0, i, shade);
+      paint(15, i, shade);
     }
   }
 
@@ -1100,6 +1185,122 @@ function generateAtlas() {
       paint(8, 7, [255, 244, 190]);
     },
 
+    furnace_top(paint, rand) {
+      pixelNoise(paint, rand, [122, 122, 124], 7);
+      for (let i = 0; i < 26; i++) {
+        paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [96, 96, 98], 6));
+      }
+      // The cast-iron rim Minecraft draws around the top face.
+      for (let i = 0; i < 16; i++) {
+        const shade = vary(rand, [78, 78, 80], 5);
+        paint(i, 0, shade);
+        paint(i, 15, shade);
+        paint(0, i, shade);
+        paint(15, i, shade);
+      }
+    },
+
+    furnace_side(paint, rand) {
+      pixelNoise(paint, rand, [124, 124, 126], 6);
+      for (let i = 0; i < 18; i++) {
+        paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [100, 100, 102], 6));
+      }
+      for (let i = 0; i < 16; i++) {
+        const shade = vary(rand, [84, 84, 86], 4);
+        paint(i, 0, shade);
+        paint(i, 15, shade);
+        paint(0, i, shade);
+        paint(15, i, shade);
+      }
+      // Rivet row along the bottom, the tell of a furnace casing.
+      for (let x = 2; x < 15; x += 3) {
+        paint(x, 13, vary(rand, [88, 88, 90], 4));
+        paint(x, 12, vary(rand, [148, 148, 150], 5));
+      }
+    },
+
+    furnace_front(paint, rand) {
+      paintCasingBase(paint, rand);
+      // Dark arched opening, cold until the furnace is lit.
+      for (let y = 7; y < 14; y++) {
+        const inset = y < 9 ? 2 : 1;
+        for (let x = 4 + inset; x < 12 - inset; x++) {
+          paint(x, y, vary(rand, [38, 38, 40], 4));
+        }
+      }
+      for (let x = 5; x < 11; x++) paint(x, 6, vary(rand, [70, 70, 72], 4));
+      for (let x = 4; x < 12; x++) paint(x, 14, vary(rand, [86, 86, 88], 4));
+    },
+
+    furnace_front_lit(paint, rand) {
+      paintCasingBase(paint, rand);
+      // Same arch, but the fire inside lights the opening and the rim.
+      for (let y = 7; y < 14; y++) {
+        const inset = y < 9 ? 2 : 1;
+        for (let x = 4 + inset; x < 12 - inset; x++) {
+          const heat = (y - 6) / 8;
+          const base = [
+            40 + Math.round(190 * heat),
+            36 + Math.round(110 * heat),
+            34 + Math.round(20 * heat)
+          ];
+          paint(x, y, vary(rand, base, 10));
+        }
+      }
+      for (let x = 5; x < 11; x++) {
+        paint(x, 6, vary(rand, [150, 92, 40], 12));
+      }
+      for (let x = 4; x < 12; x++) paint(x, 14, vary(rand, [210, 150, 62], 14));
+      for (let y = 8; y < 13; y += 2) {
+        paint(4, y, vary(rand, [240, 186, 82], 12));
+        paint(11, y, vary(rand, [240, 186, 82], 12));
+      }
+    },
+
+    glass(paint, rand) {
+      // Cutout material: the middle stays clear and only the frame plus a
+      // couple of highlight streaks are painted, the way Minecraft draws glass.
+      for (let i = 0; i < 16; i++) {
+        const edge = vary(rand, [190, 220, 232], 7);
+        paint(i, 0, edge);
+        paint(i, 15, edge);
+        paint(0, i, edge);
+        paint(15, i, edge);
+      }
+      // A faint inner lip on the top and left only, which is what gives the
+      // pane its sense of thickness.
+      for (let i = 1; i < 15; i++) {
+        paint(i, 1, vary(rand, [206, 232, 240], 6));
+        paint(1, i, vary(rand, [206, 232, 240], 6));
+      }
+      // The two highlight streaks, drawn as clean diagonals rather than noise.
+      for (let i = 0; i < 9; i++) {
+        paint(3 + i, 13 - i, vary(rand, [234, 246, 250], 5));
+      }
+      for (let i = 0; i < 5; i++) {
+        paint(9 + i, 6 - i, vary(rand, [242, 250, 252], 4));
+      }
+      for (let i = 0; i < 4; i++) {
+        paint(2 + i, 3, vary(rand, [220, 238, 244], 6));
+      }
+    },
+
+    farmland_top(paint, rand) {
+      paintDirtBase(paint, rand);
+      // Four dry furrows running across the tile, drawn darker and drier than
+      // plain dirt so a tilled field reads from the air.
+      for (let row = 0; row < 4; row++) {
+        const y = 2 + row * 4;
+        for (let x = 0; x < 16; x++) {
+          paint(x, y, vary(rand, [86, 58, 36], 7));
+          if (x % 3 === 0) paint(x, y + 1, vary(rand, [104, 72, 46], 7));
+        }
+      }
+      for (let i = 0; i < 12; i++) {
+        paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [122, 88, 58], 6));
+      }
+    },
+
     bedrock(paint, rand) {
       pixelNoise(paint, rand, [74, 74, 76], 10);
       for (let i = 0; i < 6; i++) {
@@ -1177,6 +1378,9 @@ for (const block of BLOCKS) {
   block.tileTop = TILES[block.tiles.top];
   block.tileBottom = TILES[block.tiles.bottom];
   block.tileSide = TILES[block.tiles.side];
+  if (block.tiles.front !== undefined) {
+    block.tileFront = TILES[block.tiles.front];
+  }
 }
 
 const TILE_RECT_CACHE = new Array(TILE_ORDER.length);
@@ -1437,13 +1641,45 @@ const MATERIAL_ICON_PAINTERS = {
     px(9, 3, '#5d5d66', 1, 1);
     px(10, 9, '#47474f', 1, 1);
   },
-  iron(px) {
+  raw_iron(px) {
     px(3, 5, '#9f7447', 3, 3);
     px(6, 3, '#c79a62', 2, 2);
     px(8, 6, '#b98b55', 4, 3);
     px(5, 9, '#cfa66f', 3, 2);
     px(10, 4, '#8a623c', 2, 2);
     px(9, 7, '#e0bc86', 1, 1);
+  },
+  iron_ingot(px) {
+    // Smelted bar: flat top face, bevelled ends.
+    px(3, 6, '#8b8b93', 10, 4);
+    px(4, 5, '#c9c9d1', 8, 1);
+    px(3, 5, '#a7a7af', 1, 1);
+    px(12, 5, '#a7a7af', 1, 1);
+    px(4, 6, '#e4e4ea', 5, 1);
+    px(4, 9, '#6f6f77', 8, 1);
+    px(5, 7, '#d8d8e0', 3, 1);
+  },
+  charcoal(px) {
+    px(4, 4, '#2b2823', 3, 3);
+    px(8, 3, '#38352e', 3, 3);
+    px(8, 8, '#2f2c26', 4, 3);
+    px(4, 9, '#23211c', 3, 2);
+    px(5, 4, '#4d4a41', 1, 1);
+    px(9, 4, '#57534a', 1, 1);
+    px(10, 9, '#3e3b34', 1, 1);
+    px(6, 6, '#1b1a16', 1, 1);
+  },
+  cooked_beef(px) {
+    // Seared outside with a pink seam, the classic steak look.
+    px(4, 4, '#8f4a26', 6, 5);
+    px(3, 5, '#a15a2e', 2, 3);
+    px(9, 3, '#7c3f20', 3, 2);
+    px(6, 9, '#8a4523', 5, 3);
+    px(8, 10, '#6f3719', 2, 1);
+    px(5, 5, '#c9784a', 2, 1);
+    px(5, 6, '#b35f34', 4, 1);
+    px(10, 4, '#d08a5c', 1, 1);
+    px(7, 8, '#99522d', 3, 1);
   },
   stick(px) {
     paintIconLine(px, 3, 12, 12, 3, '#6d4d29');
@@ -1764,12 +2000,58 @@ class World {
     this.overridesByChunk = new Map();
     /** World-space positions of placed torches, used for ember particles. */
     this.torches = new Set();
+    /**
+     * "x,y,z" -> state for the few blocks that hold things: furnaces keep an
+     * input, fuel, output and their burn timers. Torch-style flags live in the
+     * block id itself, so only real inventories need this.
+     */
+    this.blockEntities = new Map();
+    /** "x,y,z" -> [dx, dz] front normal for blocks that have an orientation. */
+    this.facings = new Map();
   }
 
   trackTorch(gx, gy, gz, oldId, newId) {
     const key = gx + ',' + gy + ',' + gz;
     if (newId === B.TORCH) this.torches.add(key);
     else if (oldId === B.TORCH) this.torches.delete(key);
+  }
+
+  /**
+   * Keeps block entities and orientations in step with block edits. Swapping
+   * a furnace for its lit variant keeps the same state, which is how burning
+   * furnaces survive being redrawn.
+   */
+  trackBlockEntity(gx, gy, gz, oldId, newId, facing = null) {
+    const key = gx + ',' + gy + ',' + gz;
+    const oldBlock = BLOCKS[oldId];
+    const newBlock = BLOCKS[newId];
+
+    if (!newBlock.blockEntity) {
+      if (oldBlock.blockEntity) this.blockEntities.delete(key);
+      this.facings.delete(key);
+      return;
+    }
+    if (oldBlock.blockEntity !== newBlock.blockEntity) this.blockEntities.delete(key);
+    if (!this.blockEntities.has(key)) {
+      this.blockEntities.set(key, createBlockEntity(newBlock.blockEntity));
+    }
+    if (facing) this.facings.set(key, facing);
+    else if (!this.facings.has(key)) this.facings.set(key, [0, 1]);
+  }
+
+  /** Furnace state at a position, creating an empty one if it is missing. */
+  blockEntityAt(gx, gy, gz, kind = null) {
+    const key = gx + ',' + gy + ',' + gz;
+    let entity = this.blockEntities.get(key);
+    if (!entity && kind) {
+      entity = createBlockEntity(kind);
+      this.blockEntities.set(key, entity);
+    }
+    return entity ?? null;
+  }
+
+  facingAt(gx, gy, gz) {
+    return this.facings.get(gx + ',' + gy + ',' + gz) ?? null;
   }
 
   getChunk(cx, cz) {
@@ -1816,19 +2098,22 @@ class World {
     const gz = cz * CHUNK_SIZE + lz;
     this.overrides.set(gx + ',' + y + ',' + gz, id);
     this.trackTorch(gx, y, gz, B.AIR, id);
+    this.trackBlockEntity(gx, y, gz, B.AIR, id);
   }
 
   /**
    * Edit a block in the world and remember the change. Recomputes lighting and
    * rebuilds this chunk's mesh plus any meshed neighbour across an edited border.
+   * `facing` is the [dx, dz] front normal for blocks that have an orientation.
    */
-  setBlock(gx, gy, gz, id) {
+  setBlock(gx, gy, gz, id, facing = null) {
     if (gy < 0 || gy >= WORLD_HEIGHT) return false;
     const cx = Math.floor(gx / CHUNK_SIZE);
     const cz = Math.floor(gz / CHUNK_SIZE);
     const oldId = this.getBlock(gx, gy, gz);
     this.recordOverride(gx, gy, gz, id);
     this.trackTorch(gx, gy, gz, oldId, id);
+    this.trackBlockEntity(gx, gy, gz, oldId, id, facing);
 
     const chunk = this.chunks.get(chunkKey(cx, cz));
     if (!chunk || !chunk.generated) return true;
@@ -1856,6 +2141,7 @@ class World {
       const oldId = this.getBlock(gx, gy, gz);
       this.recordOverride(gx, gy, gz, id);
       this.trackTorch(gx, gy, gz, oldId, id);
+      this.trackBlockEntity(gx, gy, gz, oldId, id);
       const chunk = this.chunks.get(chunkKey(cx, cz));
       if (!chunk || !chunk.generated) continue;
 
@@ -2929,7 +3215,17 @@ function buildChunkMesh(world, chunk) {
           let tileIndex;
           if (face.kind === 'top') tileIndex = block.tileTop;
           else if (face.kind === 'bottom') tileIndex = block.tileBottom;
-          else tileIndex = block.tileSide;
+          else {
+            tileIndex = block.tileSide;
+            // Oriented blocks draw a special face towards their front normal.
+            // Facings are stored as a two-cell [dx, dz] pair.
+            if (block.tileFront !== undefined) {
+              const facing = world.facingAt(wx, y, wz);
+              if (facing && face.n[0] === facing[0] && face.n[2] === facing[1]) {
+                tileIndex = block.tileFront;
+              }
+            }
+          }
 
           const sky = skyBrightness(world.getSkyLight(wx + face.n[0], y + face.n[1], wz + face.n[2]));
           const blockLight = blockBrightness(world.getBlockLight(wx + face.n[0], y + face.n[1], wz + face.n[2]));
@@ -3195,6 +3491,8 @@ const inventory = new Array(INVENTORY_SIZE).fill(null);
 
 /** null, 'inventory' (2x2 grid) or 'crafting' (3x3 grid). */
 let activeScreen = null;
+/** Furnace position while the furnace screen is open, else null. */
+let activeScreenAt = null;
 /** Whether pointer lock was active when the current screen opened. */
 let screenHadPointerLock = false;
 /** Stack currently attached to the mouse cursor while a screen is open. */
@@ -3226,6 +3524,16 @@ const RECIPES = [
   {
     id: 'torches', pattern: ['C', 'S'], key: { C: 'coal', S: 'stick' },
     result: { id: 'torch', count: 4 }
+  },
+  {
+    id: 'torches_charcoal', pattern: ['C', 'S'],
+    key: { C: 'charcoal', S: 'stick' },
+    result: { id: 'torch', count: 4 }
+  },
+  {
+    id: 'furnace', pattern: ['CCC', 'C.C', 'CCC'],
+    key: { C: 'cobblestone' },
+    result: { id: 'furnace', count: 1 }
   }
 ];
 
@@ -3241,7 +3549,7 @@ const TOOL_SHAPES = {
   hoe: ['XX', '.S', '.S']
 };
 const TOOL_MATERIALS = {
-  wood: 'planks', stone: 'cobblestone', iron: 'iron', diamond: 'diamond'
+  wood: 'planks', stone: 'cobblestone', iron: 'iron_ingot', diamond: 'diamond'
 };
 
 for (const [tier, material] of Object.entries(TOOL_MATERIALS)) {
@@ -4058,6 +4366,10 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   const block = BLOCKS[id];
   if (!block.breakable || !isFinite(block.hardness)) return false;
 
+  // A broken furnace empties its contents onto the ground first, so nothing
+  // smelting away in there is lost.
+  if (block.blockEntity) spillFurnaceContents(x, y, z);
+
   world.setBlock(x, y, z, B.AIR);
   if (canHarvest) {
     for (const drop of block.drops ?? []) {
@@ -4117,6 +4429,15 @@ function tryPlaceSelectedBlock() {
     return false;
   }
 
+  // So does a furnace, lit or not, which opens its smelting screen.
+  if (isFurnaceBlock(currentTarget.id)) {
+    openScreen('furnace', currentTarget);
+    return false;
+  }
+
+  // And a hoe in hand tilling soil is a use, not a placement.
+  if (useHoeOnTarget()) return true;
+
   const stack = getSelectedStack();
   if (!stack) return false;
 
@@ -4143,10 +4464,229 @@ function tryPlaceSelectedBlock() {
     return false;
   }
 
-  if (!world.setBlock(px, py, pz, block.id)) return false;
+  const facing = block.facings ? frontFacingTowardsPlayer(px, pz) : null;
+  if (!world.setBlock(px, py, pz, block.id, facing)) return false;
   consumeSelectedItem();
   playPlaceSound(block.id, px + 0.5, py + 0.5, pz + 0.5);
   return true;
+}
+
+/**
+ * Horizontal normal a placed block should point along: towards whoever is
+ * placing it, which is how Minecraft aims a furnace front.
+ */
+function frontFacingTowardsPlayer(x, z) {
+  const dx = player.pos.x - (x + 0.5);
+  const dz = player.pos.z - (z + 0.5);
+  if (Math.abs(dx) >= Math.abs(dz)) return [dx >= 0 ? 1 : -1, 0];
+  return [0, dz >= 0 ? 1 : -1];
+}
+
+/** The dirt family a hoe can break up into farmland. */
+const HOE_TILLABLE = new Set([B.DIRT, B.GRASS]);
+
+/**
+ * Right-clicking soil with a hoe tills it into farmland, the first step of
+ * farming. Nothing is consumed but one use of the hoe, and the soil only gives
+ * way when there is open air above it for crops to stand in.
+ */
+function useHoeOnTarget() {
+  const stack = getSelectedStack();
+  if (!stack) return false;
+
+  const item = ITEMS.get(stack.id);
+  if (!item || item.kind !== 'tool' || item.tool !== 'hoe') return false;
+  if (!HOE_TILLABLE.has(currentTarget.id)) return false;
+
+  const x = currentTarget.x;
+  const y = currentTarget.y;
+  const z = currentTarget.z;
+  if (world.getBlock(x, y + 1, z) !== B.AIR) {
+    showToast('Needs air above it to till');
+    return false;
+  }
+
+  world.setBlock(x, y, z, B.FARMLAND);
+  wearHeldTool(1);
+  playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/* ---------- Smelting and furnaces ---------- */
+
+/** What a furnace can transform, and how long one item takes. */
+const SMELTING_RECIPES = new Map([
+  ['raw_iron', { out: 'iron_ingot', seconds: 10 }],
+  ['raw_beef', { out: 'cooked_beef', seconds: 10 }],
+  ['sand', { out: 'glass', seconds: 10 }],
+  ['cobblestone', { out: 'stone', seconds: 10 }],
+  ['log', { out: 'charcoal', seconds: 10 }]
+]);
+
+/** Seconds of heat one unit of each fuel buys. Coal is the workhorse. */
+const FURNACE_FUELS = new Map([
+  ['coal', 80], ['charcoal', 80],
+  ['planks', 15], ['log', 15], ['crafting_table', 15],
+  ['stick', 5]
+]);
+
+/** Furnace slot layout, matching the order the screen draws them in. */
+const FURNACE_INPUT = 0;
+const FURNACE_FUEL = 1;
+const FURNACE_OUTPUT = 2;
+
+function createBlockEntity(kind) {
+  if (kind === 'furnace') {
+    return {
+      kind, slots: [null, null, null],
+      cookTime: 0, burnTime: 0, burnTotal: 0
+    };
+  }
+  return { kind, slots: [null, null, null] };
+}
+
+function isFurnaceBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && block.blockEntity === 'furnace';
+}
+
+/** True while something smelt-able is waiting and the output has room. */
+function furnaceHasWork(state) {
+  const input = state.slots[FURNACE_INPUT];
+  if (!input) return false;
+  const recipe = SMELTING_RECIPES.get(input.id);
+  if (!recipe) return false;
+
+  const output = state.slots[FURNACE_OUTPUT];
+  if (!output) return true;
+  const def = ITEMS.get(recipe.out);
+  return output.id === recipe.out && output.count < (def ? def.stack : 1);
+}
+
+/**
+ * Advances one furnace by dt seconds, following Minecraft's rule: the item
+ * only cooks while there is heat, and heat only exists while fuel is burning.
+ * Returns true when a batch finished, which is when sounds and a re-render
+ * are worth doing.
+ */
+function tickFurnace(state, dt) {
+  if (state.burnTime > 0) state.burnTime = Math.max(0, state.burnTime - dt);
+
+  const working = furnaceHasWork(state);
+  if (!working) {
+    state.cookTime = Math.max(0, state.cookTime - dt);
+    return false;
+  }
+
+  const fuel = state.slots[FURNACE_FUEL];
+  const burn = fuel ? FURNACE_FUELS.get(fuel.id) : null;
+  if (state.burnTime <= 0 && burn) {
+    state.burnTime = burn;
+    state.burnTotal = burn;
+    fuel.count -= 1;
+    if (fuel.count <= 0) state.slots[FURNACE_FUEL] = null;
+    markSaveDirty();
+  }
+  if (state.burnTime <= 0) {
+    state.cookTime = Math.max(0, state.cookTime - dt);
+    return false;
+  }
+
+  const recipe = SMELTING_RECIPES.get(state.slots[FURNACE_INPUT].id);
+  state.cookTime += dt;
+  if (state.cookTime < recipe.seconds) return false;
+
+  state.cookTime = 0;
+  const input = state.slots[FURNACE_INPUT];
+  input.count -= 1;
+  if (input.count <= 0) state.slots[FURNACE_INPUT] = null;
+
+  const output = state.slots[FURNACE_OUTPUT];
+  if (output && output.id === recipe.out) output.count += 1;
+  else state.slots[FURNACE_OUTPUT] = makeStack(recipe.out, 1);
+  return true;
+}
+
+/** Swaps a furnace for its lit variant, which is what makes it glow. */
+function setFurnaceLit(x, y, z, lit) {
+  const id = world.getBlock(x, y, z);
+  const want = lit ? B.FURNACE_LIT : B.FURNACE;
+  if (id === want) return false;
+  if (!isFurnaceBlock(id)) return false;
+  return world.setBlock(x, y, z, want);
+}
+
+/**
+ * True when a furnace state still belongs where it is saved. Chunks are only
+ * loaded near the player, so an unloadable column is left alone rather than
+ * treated as empty.
+ */
+function furnaceEntityValid(x, y, z) {
+  const cx = Math.floor(x / CHUNK_SIZE);
+  const cz = Math.floor(z / CHUNK_SIZE);
+  if (!world.getChunk(cx, cz)) return true;
+  return isFurnaceBlock(world.getBlock(x, y, z));
+}
+
+/**
+ * Keeps nearby furnaces burning. Only furnaces within a chunk or so of the
+ * player, plus the one whose screen is open, are simulated, which is the same
+ * range-limited idea Minecraft uses for block entities.
+ */
+function updateFurnaces(dt) {
+  if (!world || dt <= 0 || !world.blockEntities.size) return;
+
+  const openKey = activeScreen === 'furnace' && activeScreenAt
+    ? activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z
+    : null;
+
+  for (const [key, state] of world.blockEntities) {
+    if (state.kind !== 'furnace') continue;
+    const parts = key.split(',');
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+    if (key !== openKey) {
+      const dx = x + 0.5 - player.pos.x;
+      const dy = y + 0.5 - player.pos.y;
+      const dz = z + 0.5 - player.pos.z;
+      if (dx * dx + dy * dy + dz * dz > FURNACE_TICK_RANGE * FURNACE_TICK_RANGE) {
+        continue;
+      }
+      // A furnace that has since been broken leaves its state behind in an old
+      // save; while we are close enough to see that, clear it out.
+      if (!furnaceEntityValid(x, y, z)) {
+        world.blockEntities.delete(key);
+        world.facings.delete(key);
+        markSaveDirty();
+        continue;
+      }
+    }
+
+    const wasLit = state.burnTime > 0;
+    const finished = tickFurnace(state, dt);
+    const isLit = state.burnTime > 0;
+    if (wasLit !== isLit) {
+      setFurnaceLit(x, y, z, isLit);
+      if (isLit) playFurnaceIgniteSound(x + 0.5, y + 0.5, z + 0.5);
+    }
+    if (finished) {
+      playFurnaceFinishSound(x + 0.5, y + 0.5, z + 0.5);
+      markSaveDirty();
+      if (key === openKey) renderScreen();
+    }
+    if (key === openKey) updateFurnaceGauges(state);
+  }
+}
+
+/** Drops whatever a furnace was holding when it is broken. */
+function spillFurnaceContents(x, y, z) {
+  const state = world.blockEntities.get(x + ',' + y + ',' + z);
+  if (!state) return;
+  for (const slot of state.slots) {
+    if (!slot) continue;
+    spawnItemDrop(slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5);
+  }
 }
 
 /* ============================================================
@@ -5837,6 +6377,9 @@ function explodeCreeper(mob) {
         if (id === B.AIR || id === B.BEDROCK || id === B.WATER) continue;
         const block = BLOCKS[id];
         if (!block.breakable || block.liquid) continue;
+        // A furnace caught in the blast empties its contents first, so the
+        // smelting that was going on in there is not simply deleted.
+        if (block.blockEntity) spillFurnaceContents(x, y, z);
         edits.push({ x, y, z, id: B.AIR });
         for (const drop of block.drops || []) {
           drops.push({
@@ -6630,20 +7173,50 @@ function createScreenSlot(container, index, stack, options = {}) {
   return el;
 }
 
-function renderScreen() {
-  if (!activeScreen) return;
+/** Furnace state behind the open furnace screen, creating one if need be. */
+function activeFurnace() {
+  if (activeScreen !== 'furnace' || !activeScreenAt) return null;
+  const at = activeScreenAt;
+  if (!isFurnaceBlock(world.getBlock(at.x, at.y, at.z))) return null;
+  return world.blockEntityAt(at.x, at.y, at.z, 'furnace');
+}
 
-  const isTable = activeScreen === 'crafting';
-  const grid = isTable ? craft3 : craft2;
-  const size = isTable ? CRAFT3_SIZE : CRAFT2_SIZE;
-  const recipe = matchRecipe(grid, size);
+/** Gauge elements of the open furnace, refreshed without a full re-render. */
+let furnaceGauges = null;
 
-  screenTitle.textContent = isTable ? 'Crafting Table' : 'Inventory';
-  screenBody.innerHTML = '';
+function updateFurnaceGauges(state) {
+  if (!furnaceGauges || !state) return;
+  const input = state.slots[FURNACE_INPUT];
+  const recipe = input ? SMELTING_RECIPES.get(input.id) : null;
+  const cook = recipe ? clamp(state.cookTime / recipe.seconds, 0, 1) : 0;
+  const burn = state.burnTotal > 0 ? clamp(state.burnTime / state.burnTotal, 0, 1) : 0;
+  furnaceGauges.cook.style.width = (cook * 100).toFixed(1) + '%';
+  furnaceGauges.flame.style.height = (burn * 100).toFixed(1) + '%';
+  // The caption is part of the gauge: a furnace that runs out of coal or
+  // finishes a batch should say so without opening and closing the screen.
+  if (furnaceGauges.status) furnaceGauges.status.textContent = furnaceStatusText(state);
+}
 
-  const layout = document.createElement('div');
-  layout.className = 'inv-layout';
+/** One line of plain advice under the furnace slots. */
+function furnaceStatusText(state) {
+  const input = state.slots[FURNACE_INPUT];
+  if (!input) return 'Put something to smelt on top';
+  const recipe = SMELTING_RECIPES.get(input.id);
+  if (!recipe) return 'That cannot be smelted';
+  if (!furnaceHasWork(state)) {
+    return 'Result slot is full \u2014 take what is in it';
+  }
+  if (state.burnTime <= 0) {
+    return state.slots[FURNACE_FUEL]
+      ? 'Out of fuel'
+      : 'Needs fuel: coal, charcoal or planks';
+  }
+  const item = ITEMS.get(recipe.out);
+  return 'Cooking ' + (item ? item.name : recipe.out);
+}
 
+/** Storage and hotbar grids, shared by every screen. */
+function buildStorageColumn() {
   const left = document.createElement('div');
   left.className = 'inv-left';
 
@@ -6669,6 +7242,15 @@ function renderScreen() {
   }
 
   left.append(storageLabel, storageGrid, hotbarLabel, hotbarGrid);
+  return left;
+}
+
+/** Crafting grid, arrow and result slot. */
+function buildCraftingColumn() {
+  const isTable = activeScreen === 'crafting';
+  const grid = isTable ? craft3 : craft2;
+  const size = isTable ? CRAFT3_SIZE : CRAFT2_SIZE;
+  const recipe = matchRecipe(grid, size);
 
   const right = document.createElement('div');
   right.className = 'craft-column';
@@ -6715,7 +7297,95 @@ function renderScreen() {
   }
 
   right.append(craftLabel, craftRow, outputName);
-  layout.append(left, right);
+  return right;
+}
+
+/** Input, flame, fuel, progress and output for the furnace screen. */
+function buildFurnaceColumn() {
+  const state = activeFurnace();
+
+  const column = document.createElement('div');
+  column.className = 'craft-column';
+
+  const label = document.createElement('div');
+  label.className = 'inv-section-label';
+  label.textContent = 'Smelting';
+
+  const body = document.createElement('div');
+  body.className = 'furnace-body';
+
+  const feedStack = document.createElement('div');
+  feedStack.className = 'furnace-stack';
+  const inputEl = createScreenSlot('furnace', FURNACE_INPUT, state.slots[FURNACE_INPUT], {
+    extraClass: 'furnace-in-slot'
+  });
+  inputEl.title = 'What to smelt';
+
+  const flame = document.createElement('div');
+  flame.className = 'furnace-flame';
+  const flameFill = document.createElement('span');
+  flameFill.className = 'flame-fill';
+  flame.append(flameFill);
+
+  const fuelEl = createScreenSlot('furnace', FURNACE_FUEL, state.slots[FURNACE_FUEL], {
+    extraClass: 'furnace-fuel-slot'
+  });
+  fuelEl.title = 'Fuel: coal and charcoal burn for 80 seconds';
+
+  feedStack.append(inputEl, flame, fuelEl);
+
+  const resultStack = document.createElement('div');
+  resultStack.className = 'furnace-stack';
+
+  const progress = document.createElement('div');
+  progress.className = 'furnace-progress';
+  const progressFill = document.createElement('span');
+  progressFill.className = 'progress-fill';
+  const glyph = document.createElement('span');
+  glyph.className = 'progress-glyph';
+  glyph.textContent = '\u2192';
+  progress.append(progressFill, glyph);
+
+  const outputEl = createScreenSlot('furnace', FURNACE_OUTPUT, state.slots[FURNACE_OUTPUT], {
+    extraClass: 'furnace-out-slot'
+  });
+  outputEl.title = 'Take the result out';
+
+  resultStack.append(progress, outputEl);
+  body.append(feedStack, resultStack);
+
+  const status = document.createElement('div');
+  status.className = 'craft-output-name';
+  status.textContent = furnaceStatusText(state);
+
+  column.append(label, body, status);
+
+  furnaceGauges = { flame: flameFill, cook: progressFill, status };
+  updateFurnaceGauges(state);
+  return column;
+}
+
+function renderScreen() {
+  if (!activeScreen) return;
+
+  const isFurnace = activeScreen === 'furnace';
+  furnaceGauges = null;
+  if (isFurnace && !activeFurnace()) {
+    closeScreen();
+    return;
+  }
+
+  screenTitle.textContent = isFurnace
+    ? 'Furnace'
+    : (activeScreen === 'crafting' ? 'Crafting Table' : 'Inventory');
+  screenBody.innerHTML = '';
+
+  const layout = document.createElement('div');
+  layout.className = 'inv-layout';
+  layout.append(
+    buildStorageColumn(),
+    isFurnace ? buildFurnaceColumn() : buildCraftingColumn()
+  );
   screenBody.append(layout);
 
   if (gamepadState.active) applyPadCursorFocus(false);
@@ -6733,8 +7403,7 @@ const padCursor = { section: 0, index: 0 };
  */
 function padSections() {
   if (!activeScreen) return [];
-  const isTable = activeScreen === 'crafting';
-  return [
+  const storage = [
     {
       container: 'inventory', start: HOTBAR_SIZE,
       count: INVENTORY_SIZE - HOTBAR_SIZE, cols: 9, column: 0
@@ -6742,14 +7411,30 @@ function padSections() {
     {
       container: 'inventory', start: 0,
       count: HOTBAR_SIZE, cols: 9, column: 0
-    },
+    }
+  ];
+  if (activeScreen === 'furnace') {
+    return storage.concat([
+      {
+        container: 'furnace', start: FURNACE_INPUT,
+        count: 2, cols: 1, column: 1
+      },
+      {
+        container: 'furnace', start: FURNACE_OUTPUT,
+        count: 1, cols: 1, column: 2
+      }
+    ]);
+  }
+
+  const isTable = activeScreen === 'crafting';
+  return storage.concat([
     {
       container: isTable ? 'craft3' : 'craft2', start: 0,
       count: (isTable ? CRAFT3_SIZE : CRAFT2_SIZE) ** 2,
       cols: isTable ? CRAFT3_SIZE : CRAFT2_SIZE, column: 1
     },
     { container: 'result', start: 0, count: 1, cols: 1, column: 2 }
-  ];
+  ]);
 }
 
 /** Other section indices sharing the current section's layout column. */
@@ -6968,13 +7653,22 @@ function updateGamepadScreen(dt) {
   if (dy) movePadCursor(0, dy);
 }
 
-function openScreen(kind) {
-  if (kind !== 'inventory' && kind !== 'crafting') return;
+function openScreen(kind, at = null) {
+  if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace') return;
+
+  // A furnace screen only makes sense at a real furnace, so anything pointing
+  // at air or a block that has since been broken is turned away here.
+  if (kind === 'furnace') {
+    if (!at || !isFurnaceBlock(world.getBlock(at.x, at.y, at.z))) return;
+  }
 
   screenHadPointerLock = document.pointerLockElement === canvas;
   if (screenHadPointerLock) document.exitPointerLock();
 
   activeScreen = kind;
+  activeScreenAt = kind === 'furnace' && at
+    ? { x: at.x, y: at.y, z: at.z }
+    : null;
   pressedKeys.clear();
   leftMouseDown = false;
   releasePadMining();
@@ -6995,6 +7689,8 @@ function closeScreen() {
 
   returnCursorStack();
   activeScreen = null;
+  activeScreenAt = null;
+  furnaceGauges = null;
   screenLayer.classList.add('hidden');
   document.body.classList.remove('screen-open');
   updateCursorVisual();
@@ -7025,7 +7721,23 @@ function screenGridFor(container) {
   if (container === 'inventory') return inventory;
   if (container === 'craft2') return craft2;
   if (container === 'craft3') return craft3;
+  if (container === 'furnace') {
+    const state = activeFurnace();
+    return state ? state.slots : null;
+  }
   return null;
+}
+
+/**
+ * Shift-click destinations. Inside a furnace screen, smeltables go to the top
+ * slot and fuels go to the bottom one, which is what a player reaching for the
+ * shift key is trying to do.
+ */
+function furnaceSlotFor(stack) {
+  if (!stack) return -1;
+  if (SMELTING_RECIPES.has(stack.id)) return FURNACE_INPUT;
+  if (FURNACE_FUELS.has(stack.id)) return FURNACE_FUEL;
+  return -1;
 }
 
 function quickMoveStack(container, index) {
@@ -7037,8 +7749,23 @@ function quickMoveStack(container, index) {
   let targetArray;
   let targetStart;
   let targetEnd;
+  let wantedFurnaceSlot = -1;
 
-  if (container === 'inventory') {
+  if (container === 'furnace') {
+    targetArray = inventory;
+    targetStart = 0;
+    targetEnd = INVENTORY_SIZE;
+  } else if (container === 'inventory') {
+    wantedFurnaceSlot = activeScreen === 'furnace' ? furnaceSlotFor(source) : -1;
+    if (wantedFurnaceSlot >= 0) {
+      const state = activeFurnace();
+      const rest = mergeStackInto(source, state.slots, wantedFurnaceSlot, wantedFurnaceSlot + 1);
+      if (rest <= 0) sourceGrid[index] = null;
+      else source.count = rest;
+      markSaveDirty();
+      return;
+    }
+
     targetArray = inventory;
     if (index < HOTBAR_SIZE) {
       targetStart = HOTBAR_SIZE;
@@ -7056,14 +7783,38 @@ function quickMoveStack(container, index) {
   const remaining = mergeStackInto(source, targetArray, targetStart, targetEnd);
   if (remaining <= 0) sourceGrid[index] = null;
   else source.count = remaining;
+  if (container === 'furnace') markSaveDirty();
 }
 
 function handleScreenSlotClick(container, index, button, shift) {
   const grid = screenGridFor(container);
   if (!grid) return;
+  if (container === 'furnace') markSaveDirty();
 
+  // Shift always quick-moves first, including out of the furnace result slot.
   if (button === 0 && shift) {
     quickMoveStack(container, index);
+    renderScreen();
+    renderHotbar();
+    updateCursorVisual();
+    return;
+  }
+
+  // A furnace result slot only ever gives items out; pushing one back in would
+  // let a player smelt the same ingot forever.
+  if (container === 'furnace' && index === FURNACE_OUTPUT) {
+    const result = grid[index];
+    if (result && !cursorStack) {
+      if (button === 2) {
+        const take = Math.ceil(result.count / 2);
+        cursorStack = makeStack(result.id, take, result.dur);
+        result.count -= take;
+        if (result.count <= 0) grid[index] = null;
+      } else {
+        cursorStack = result;
+        grid[index] = null;
+      }
+    }
     renderScreen();
     renderHotbar();
     updateCursorVisual();
@@ -7612,6 +8363,10 @@ const BLOCK_SOUND_PROFILES = {
   leaves: {
     type: 'highpass', freq: 2500, freqEnd: 1600, q: 0.6,
     duration: 0.15, volume: 0.16
+  },
+  glass: {
+    type: 'bandpass', freq: 3200, freqEnd: 2100, q: 2.4,
+    duration: 0.13, volume: 0.2, tone: 1560, toneVolume: 0.07
   }
 };
 
@@ -7630,6 +8385,8 @@ function blockSoundMaterial(blockId) {
     case 'crafting_table':
     case 'torch': return 'wood';
     case 'leaves': return 'leaves';
+    case 'glass': return 'glass';
+    case 'farmland': return 'dirt';
     default: return 'stone';
   }
 }
@@ -7942,6 +8699,33 @@ function playToolBreakSound() {
     pan: 0
   });
   return true;
+}
+
+/** Airy whoosh plus a low rumble as a furnace catches its fuel. */
+function playFurnaceIgniteSound(x, y, z) {
+  return audioNoiseHit(
+    {
+      type: 'bandpass', freq: 420, freqEnd: 1500, q: 0.8,
+      duration: 0.42, volume: 0.18, tone: 92, toneVolume: 0.1
+    },
+    x, y, z, { range: 22 }
+  );
+}
+
+/** Soft muted chink when a smelted item lands in the output slot. */
+function playFurnaceFinishSound(x, y, z) {
+  return audioNoiseHit(
+    { type: 'highpass', freq: 2400, duration: 0.16, volume: 0.07 },
+    x, y, z, { range: 16 }
+  );
+}
+
+/** Earthy scrape as a hoe drags furrows through soil. */
+function playHoeTillSound(x, y, z) {
+  return audioNoiseHit(
+    { type: 'lowpass', freq: 1500, freqEnd: 430, q: 0.7, duration: 0.26, volume: 0.26 },
+    x, y, z, { range: 18, pitch: 0.9 + Math.random() * 0.15 }
+  );
 }
 
 function playExplosionSound(x, y, z) {
@@ -8370,11 +9154,13 @@ function updateAudio(dt) {
  * write synchronous, so the save fired on page hide is guaranteed to land.
  *
  * Schema 2 added the `dur` third element to inventory slots (tools and armour
- * now wear out), so schema 1 worlds are no longer readable.
+ * now wear out). Schema 3 adds furnaces with their contents, plus the raw iron,
+ * iron ingots, charcoal, glass and farmland that come with them, so older saves
+ * are no longer readable.
  */
-const SAVE_KEY = 'voxelcraft:world:v2';
-const LEGACY_SAVE_KEY = 'voxelcraft:world:v1';
-const SAVE_SCHEMA = 2;
+const SAVE_KEY = 'voxelcraft:world:v3';
+const LEGACY_SAVE_KEYS = ['voxelcraft:world:v1', 'voxelcraft:world:v2'];
+const SAVE_SCHEMA = 3;
 const AUTOSAVE_SECONDS = 25;
 
 const saveStatusEl = document.getElementById('save-status');
@@ -8420,8 +9206,43 @@ function serializeWorldSave() {
         ? [slot.id, slot.count]
         : [slot.id, slot.count, slot.dur];
     }),
+    entities: serializeBlockEntities(),
     edits
   };
+}
+
+/**
+ * Furnace contents and block orientations ride along with the block diff, as
+ * flat records: [x, y, z, input id, input count, fuel id, fuel count,
+ * output id, output count, burn, burn total, cook] and
+ * [x, y, z, dx, dz].
+ */
+function serializeBlockEntities() {
+  const furnaces = [];
+  const facings = [];
+
+  for (const [key, state] of world.blockEntities) {
+    if (state.kind !== 'furnace') continue;
+    const at = key.split(',');
+    const row = [Number(at[0]), Number(at[1]), Number(at[2])];
+    for (const slot of state.slots) {
+      row.push(slot ? slot.id : null, slot ? slot.count : null);
+    }
+    row.push(
+      Math.round(state.burnTime * 10) / 10,
+      Math.round(state.burnTotal * 10) / 10,
+      Math.round(state.cookTime * 10) / 10
+    );
+    furnaces.push(row);
+  }
+
+  for (const [key, normal] of world.facings) {
+    const at = key.split(',');
+    facings.push(Number(at[0]), Number(at[1]), Number(at[2]), normal[0], normal[1]);
+  }
+
+  if (!furnaces.length && !facings.length) return null;
+  return { furnaces, facings };
 }
 
 function saveWorld() {
@@ -8489,6 +9310,54 @@ function applySavedEdits(world, save) {
   }
 }
 
+function applySavedBlockEntities(world, save) {
+  const entities = save.entities;
+  if (!entities || typeof entities !== 'object') return;
+
+  if (Array.isArray(entities.furnaces)) {
+    for (const row of entities.furnaces) {
+      if (!Array.isArray(row) || row.length < 9) continue;
+      const x = Math.trunc(Number(row[0]));
+      const y = Math.trunc(Number(row[1]));
+      const z = Math.trunc(Number(row[2]));
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (y < 0 || y >= WORLD_HEIGHT) continue;
+      // Blocks are not loaded yet at load time, so the saved diff is what says
+      // whether a furnace really still stands here.
+      const savedId = world.overrides.get(x + ',' + y + ',' + z);
+      if (savedId === undefined || !isFurnaceBlock(savedId)) continue;
+
+      const state = createBlockEntity('furnace');
+      for (let slot = 0; slot < 3; slot++) {
+        const id = row[3 + slot * 2];
+        const count = Math.trunc(Number(row[4 + slot * 2]) || 0);
+        if (typeof id !== 'string' || !ITEMS.has(id) || count <= 0) continue;
+        state.slots[slot] = makeStack(id, Math.min(count, ITEMS.get(id).stack));
+      }
+      state.burnTime = Math.max(0, Number(row[9]) || 0);
+      state.burnTotal = Math.max(0, Number(row[10]) || 0);
+      state.cookTime = Math.max(0, Number(row[11]) || 0);
+      world.blockEntities.set(x + ',' + y + ',' + z, state);
+    }
+  }
+
+  const facings = entities.facings;
+  if (Array.isArray(facings)) {
+    for (let i = 0; i + 4 < facings.length; i += 5) {
+      const x = Math.trunc(Number(facings[i]));
+      const y = Math.trunc(Number(facings[i + 1]));
+      const z = Math.trunc(Number(facings[i + 2]));
+      const dx = Math.trunc(Number(facings[i + 3])) || 0;
+      const dz = Math.trunc(Number(facings[i + 4])) || 0;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      const blockId = world.overrides.get(x + ',' + y + ',' + z);
+      const block = blockId === undefined ? null : BLOCKS[blockId];
+      if (!block || !block.facings) continue;
+      world.facings.set(x + ',' + y + ',' + z, [dx, dz]);
+    }
+  }
+}
+
 function restoreSavedPlayer(save) {
   const p = save.player;
   if (!p) return false;
@@ -8550,10 +9419,19 @@ function refreshSaveStatus() {
   }
 }
 
-/** True when an unreadable schema 1 world is still sitting in storage. */
+/** True when an unreadable older-schema world is still sitting in storage. */
 function hasLegacySave() {
   try {
-    return localStorage.getItem(LEGACY_SAVE_KEY) != null;
+    return LEGACY_SAVE_KEYS.some((key) => localStorage.getItem(key) != null);
+  } catch (unavailable) {
+    return false;
+  }
+}
+
+/** True when this build has written its own world yet, readable or not. */
+function hasCurrentSave() {
+  try {
+    return localStorage.getItem(SAVE_KEY) != null;
   } catch (unavailable) {
     return false;
   }
@@ -8567,7 +9445,7 @@ function initSaveUi(hasSavedWorld) {
     saveDisabled = true;
     try {
       localStorage.removeItem(SAVE_KEY);
-      localStorage.removeItem(LEGACY_SAVE_KEY);
+      for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
     } catch (unavailable) {}
     window.location.reload();
   });
@@ -8599,7 +9477,10 @@ window.addEventListener('visibilitychange', () => {
 const world = new World(WORLD_SEED);
 
 const loadedSave = readSavedWorld();
-if (loadedSave) applySavedEdits(world, loadedSave);
+if (loadedSave) {
+  applySavedEdits(world, loadedSave);
+  applySavedBlockEntities(world, loadedSave);
+}
 
 // Pick a dry spawn column, then prepare a 3x3 patch synchronously so the spawn
 // chunk can mesh with correct borders.
@@ -8631,6 +9512,13 @@ updateDebug();
 
 lastSaveAt = (loadedSave && loadedSave.savedAt) || 0;
 initSaveUi(Boolean(loadedSave));
+
+// A world written by an older build stays in storage but cannot be read, so
+// say so out loud on the first new-world boot rather than let a player wonder
+// where their base went.
+if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
+  showToast('Older worlds can\u2019t be loaded \u2014 this is a new world');
+}
 
 window.__voxelcraft = {
   version: '0.1.0-milestone-10',
@@ -8664,9 +9552,19 @@ window.__voxelcraft = {
       error: lastSaveError
     };
   },
+  /** The pause panel's save line, re-evaluated. Lets the legacy-world notice be checked. */
+  saveStatus() {
+    refreshSaveStatus();
+    return {
+      text: saveStatusEl ? saveStatusEl.textContent : null,
+      legacy: hasLegacySave(),
+      keys: LEGACY_SAVE_KEYS.concat([SAVE_KEY])
+    };
+  },
   wipeSave() {
     try {
       localStorage.removeItem(SAVE_KEY);
+      for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
     } catch (unavailable) {}
     lastSaveAt = 0;
     lastSaveBytes = 0;
@@ -8796,6 +9694,37 @@ window.__voxelcraft = {
   getBlock(x, y, z) {
     return world.getBlock(x, y, z);
   },
+  /** The definition table entry for a block, by key or id. */
+  blockInfo(key) {
+    const block = typeof key === 'number' ? BLOCKS[key] : BLOCK_BY_KEY.get(key);
+    if (!block) return null;
+    return {
+      id: block.id,
+      key: block.key,
+      name: block.name,
+      hardness: block.hardness,
+      tool: block.tool ?? null,
+      tier: block.tier ?? null,
+      solid: block.solid,
+      opaque: block.opaque,
+      cutout: block.cutout,
+      light: block.light ?? 0,
+      facings: block.facings,
+      blockEntity: block.blockEntity,
+      placeable: block.placeable,
+      drops: (block.drops ?? []).map((drop) => drop.item),
+      tiles: {
+        top: block.tileTop,
+        bottom: block.tileBottom,
+        side: block.tileSide,
+        front: block.tileFront === undefined ? null : block.tileFront
+      }
+    };
+  },
+  /** Stored orientation of an oriented block at a position, if any. */
+  facingAt(x, y, z) {
+    return world.facingAt(x, y, z);
+  },
   getSkyLight(x, y, z) {
     return world.getSkyLight(x, y, z);
   },
@@ -8841,6 +9770,81 @@ window.__voxelcraft = {
   openCraftingTable() {
     openScreen('crafting');
     return activeScreen;
+  },
+  /** Opens the furnace screen for the furnace at a position. */
+  openFurnace(x = null, y = null, z = null) {
+    let at = null;
+    if (x !== null && y !== null && z !== null) at = { x, y, z };
+    else if (currentTarget && isFurnaceBlock(currentTarget.id)) {
+      at = { x: currentTarget.x, y: currentTarget.y, z: currentTarget.z };
+    }
+    if (!at) return null;
+    openScreen('furnace', at);
+    return activeScreen;
+  },
+  /** Furnace contents and timers at a position, or the open furnace. */
+  furnace(x = null, y = null, z = null) {
+    let key = null;
+    if (x !== null && y !== null && z !== null) key = x + ',' + y + ',' + z;
+    else if (activeScreenAt) {
+      key = activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z;
+    }
+    if (!key) return null;
+
+    const state = world.blockEntities.get(key);
+    if (!state) return null;
+    const parts = key.split(',');
+    const facing = world.facings.get(key) ?? null;
+    return {
+      at: [Number(parts[0]), Number(parts[1]), Number(parts[2])],
+      block: world.getBlock(Number(parts[0]), Number(parts[1]), Number(parts[2])),
+      lit: state.burnTime > 0,
+      burn: Number(state.burnTime.toFixed(2)),
+      burnTotal: state.burnTotal,
+      cook: Number(state.cookTime.toFixed(2)),
+      facing,
+      input: slotInfo(state.slots[FURNACE_INPUT]),
+      fuel: slotInfo(state.slots[FURNACE_FUEL]),
+      output: slotInfo(state.slots[FURNACE_OUTPUT])
+    };
+  },
+  /** The smelting table, for scripted checks. */
+  smelting() {
+    return {
+      recipes: [...SMELTING_RECIPES].map(([from, to]) => ({
+        from, to: to.out, seconds: to.seconds
+      })),
+      fuels: [...FURNACE_FUELS].map(([id, seconds]) => ({ id, seconds }))
+    };
+  },
+  /** Every furnace in the world, for scripted checks. */
+  furnaceList() {
+    const rows = [];
+    for (const [key, state] of world.blockEntities) {
+      if (state.kind !== 'furnace') continue;
+      const at = key.split(',').map(Number);
+      rows.push({
+        at,
+        block: world.getBlock(at[0], at[1], at[2]),
+        facing: world.facings.get(key) ?? null,
+        lit: state.burnTime > 0,
+        burn: Number(state.burnTime.toFixed(2)),
+        cook: Number(state.cookTime.toFixed(2)),
+        slots: state.slots.map((slot) => (slot ? slot.id + ' x' + slot.count : null))
+      });
+    }
+    return rows;
+  },
+  /** Puts stacks straight into a furnace, for scripted tests. */
+  setFurnaceSlots(x, y, z, input = null, fuel = null, count = 1, output = null) {
+    if (!isFurnaceBlock(world.getBlock(x, y, z))) return null;
+    const state = world.blockEntityAt(x, y, z, 'furnace');
+    if (!state) return null;
+    state.slots[FURNACE_INPUT] = input ? freshStack(input, count) : null;
+    state.slots[FURNACE_FUEL] = fuel ? freshStack(fuel, count) : null;
+    state.slots[FURNACE_OUTPUT] = output ? freshStack(output, count) : null;
+    if (activeScreen === 'furnace') renderScreen();
+    return this.furnace(x, y, z);
   },
   closeScreen() {
     closeScreen();
@@ -9061,6 +10065,7 @@ window.__voxelcraft = {
       updateTorchEmbers(dt);
       updateAudio(dt);
       updateExplosionEffects(dt);
+      updateFurnaces(dt);
     }
     updateDebug();
     return this.stats();
@@ -9219,6 +10224,7 @@ window.__voxelcraft = {
         } : null
       },
       overrides: world.overrides.size,
+      furnaces: world.blockEntities.size,
       save: this.saveInfo(),
       itemDrops: itemEntities.map((entity) => ({
         id: entity.itemId,
@@ -9288,6 +10294,11 @@ function animate(now) {
     updateTorchEmbers(dt);
     updateDayNight(dt);
     updateExplosionEffects(dt);
+    updateFurnaces(dt);
+  } else if (activeScreen === 'furnace') {
+    // The furnace whose screen is open keeps smelting while you browse your
+    // inventory; everything else in the world stays frozen.
+    updateFurnaces(dt);
   }
 
   world.updateStreaming(player.pos.x, player.pos.z);
