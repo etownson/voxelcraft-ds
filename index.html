@@ -473,14 +473,14 @@
 <div id="overlay">
   <div class="panel">
     <h1>VOXELCRAFT</h1>
-    <p class="subtitle">Milestone 10 &middot; World Persistence</p>
+    <p class="subtitle">Milestone 11 &middot; Tools, Furnaces &amp; Farming</p>
     <div class="controls">
       <div><kbd>Mouse</kbd><span>Look around</span></div>
       <div><kbd>W A S D</kbd><span>Walk</span></div>
       <div><kbd>Space</kbd><span>Jump / swim up / climb out</span></div>
       <div><kbd>Shift</kbd><span>Sprint</span></div>
       <div><kbd>Left click</kbd><span>Break blocks / attack mobs</span></div>
-      <div><kbd>Right click</kbd><span>Place block / use table</span></div>
+      <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow &middot; use table</span></div>
       <div><kbd>1&ndash;9</kbd><span>Select hotbar slot</span></div>
       <div><kbd>Wheel</kbd><span>Cycle hotbar</span></div>
       <div><kbd>E</kbd><span>Inventory &amp; crafting</span></div>
@@ -513,7 +513,7 @@
       <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
     </div>
     <button id="start-button" class="cta" type="button">CLICK TO START</button>
-    <p class="fineprint">Explore forests, jungles, deserts, mountains, rivers, and caves. Torches light the dark, animals roam the grass, and hostile things stir at night. Stone, coal, and iron wait underground.</p>
+    <p class="fineprint">Explore forests, jungles, deserts, mountains, rivers, and caves. Torches light the dark, animals roam the grass, and hostile things stir at night. Stone, coal, and iron wait underground, with diamonds far below. Make a furnace, arm yourself, and sow wheat &mdash; an empty hunger bar is a slow way to die.</p>
   </div>
 </div>
 
@@ -10441,7 +10441,7 @@ if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
 }
 
 window.__voxelcraft = {
-  version: '0.1.0-milestone-10',
+  version: '0.1.0-milestone-11',
   seed: WORLD_SEED,
   world,
   camera,
@@ -11187,7 +11187,7 @@ window.__voxelcraft = {
     const selected = getSelectedStack();
     const craftRecipe = currentCraftRecipe();
     return {
-      version: '0.1.0-milestone-10',
+      version: '0.1.0-milestone-11',
       seed: WORLD_SEED,
       position: [camera.position.x, camera.position.y, camera.position.z],
       feet: [pos.x, pos.y, pos.z],
