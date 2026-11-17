@@ -8902,9 +8902,10 @@ function animate(now) {
 
   updateGamepad(dt);
 
-  // The pause overlay freezes the whole world, Minecraft-style. Rendering,
-  // chunk streaming, pad menu navigation, ambience and autosave keep running.
-  if (overlayEl.classList.contains('hidden')) {
+  // The pause overlay and the inventory/crafting screens freeze the whole
+  // world, Minecraft-style. Rendering, chunk streaming, pad menu navigation,
+  // ambience and autosave keep running.
+  if (!activeScreen && overlayEl.classList.contains('hidden')) {
     updatePlayer(dt, readPlayerInput());
     updateTarget();
     updateMobTarget();
