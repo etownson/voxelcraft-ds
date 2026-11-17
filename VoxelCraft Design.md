@@ -484,38 +484,172 @@ textures, icons and sounds, and no new files or build step.
 
 ### Mining speed and tool wear
 
-- Break time is `hardness * 1.5 / speed` with the right tool at the right tier, `hardness * 5 / speed` with anything else, with a floor of 0.05 seconds.
-- Mining speeds are 2 for wood, 4 for stone, 6 for iron, 8 for diamond, and 1 for anything that is not the right tool. Tiers are wood 1, stone 2, iron 3, diamond 4.
-- A block whose tier outranks the tool in hand still breaks, but drops nothing — which is how diamond ore refuses a stone pickaxe.
-- Hardnesses are Minecraft's own: dirt 0.5, grass 0.6, stone 1.5, cobblestone 2.0, iron and diamond ore 3.0.
-- Tool durability is 60 uses for wood, 132 for stone, 251 for iron, 1561 for diamond. Only swings that break something, and blows that land, spend it. A broken tool vanishes with a toast.
+Break time is `hardness * 1.5 / speed` with the right tool at the right tier, and
+`hardness * 5 / speed` with anything else, with a floor of 0.05 seconds. A block whose tier
+outranks the tool in hand still breaks, but drops nothing — which is how diamond ore refuses
+a stone pickaxe. Durability is only spent by swings that break something and blows that
+land; a broken tool vanishes with a toast.
+
+Tool tiers, from `TOOL_TIERS`:
+
+| Tool | Mining speed | Tier | Durability (uses) |
+| --- | --- | --- | --- |
+| hand, or the wrong kind of tool | 1 | — | — |
+| Wood | 2 | 1 | 60 |
+| Stone | 4 | 2 | 132 |
+| Iron | 6 | 3 | 251 |
+| Diamond | 8 | 4 | 1561 |
+
+Hardnesses and tier gates are Minecraft's own:
+
+| Block | Hardness | Correct tool | Minimum tool tier | Drops |
+| --- | --- | --- | --- | --- |
+| Dirt | 0.5 | shovel | — | Dirt |
+| Grass Block | 0.6 | shovel | — | Dirt, plus 1–2 seeds at 25% |
+| Sand | 0.5 | shovel | — | Sand |
+| Snow Block | 0.2 | shovel | — | Snow |
+| Farmland | 0.6 | shovel | — | Dirt |
+| Oak Leaves | 0.2 | — | — | nothing |
+| Torch | 0 | — | — | Torch |
+| Oak Log | 2.0 | axe | — | Oak Log |
+| Oak Planks | 2.0 | axe | — | Oak Planks |
+| Crafting Table | 2.5 | axe | — | Crafting Table |
+| Stone | 1.5 | pickaxe | 1 (wood) | Cobblestone |
+| Cobblestone | 2.0 | pickaxe | 1 (wood) | Cobblestone |
+| Coal Ore | 3.0 | pickaxe | 1 (wood) | 1–2 Coal |
+| Iron Ore | 3.0 | pickaxe | 2 (stone) | Raw Iron |
+| Diamond Ore | 3.0 | pickaxe | 3 (iron) | Diamond |
+| Glass | 0.3 | pickaxe | — | Glass |
+| Furnace | 3.5 | pickaxe | 1 (wood) | Furnace |
+| Bedrock | ∞ | — | — | never breaks |
+
+Resulting break times, in seconds. Each tool column assumes that tier's correct kind of
+tool for the row; ✗ means the block breaks but drops nothing, and those entries carry the
+five-times penalty. Bedrock is unbreakable, and the 0.05 second floor is what holds snow at
+0.05 in the diamond column and pins the whole torch row to 0.05.
+
+| Block (hardness) | hand | wood | stone | iron | diamond |
+| --- | --- | --- | --- | --- | --- |
+| Dirt (0.5) | 0.75 | 0.375 | 0.1875 | 0.125 | 0.09375 |
+| Grass Block (0.6) | 0.9 | 0.45 | 0.225 | 0.15 | 0.1125 |
+| Sand (0.5) | 0.75 | 0.375 | 0.1875 | 0.125 | 0.09375 |
+| Snow Block (0.2) | 0.3 | 0.15 | 0.075 | 0.05 | 0.05 |
+| Farmland (0.6) | 0.9 | 0.45 | 0.225 | 0.15 | 0.1125 |
+| Oak Leaves (0.2) | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 |
+| Torch (0) | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
+| Oak Log (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
+| Oak Planks (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
+| Crafting Table (2.5) | 3.75 | 1.875 | 0.9375 | 0.625 | 0.46875 |
+| Stone (1.5) | 7.5 ✗ | 1.125 | 0.5625 | 0.375 | 0.28125 |
+| Cobblestone (2.0) | 10 ✗ | 1.5 | 0.75 | 0.5 | 0.375 |
+| Coal Ore (3.0) | 15 ✗ | 2.25 | 1.125 | 0.75 | 0.5625 |
+| Iron Ore (3.0) | 15 ✗ | 7.5 ✗ | 1.125 | 0.75 | 0.5625 |
+| Diamond Ore (3.0) | 15 ✗ | 7.5 ✗ | 3.75 ✗ | 0.75 | 0.5625 |
+| Glass (0.3) | 0.45 | 0.225 | 0.1125 | 0.075 | 0.05625 |
+| Furnace (3.5) | 17.5 ✗ | 2.625 | 1.3125 | 0.875 | 0.65625 |
 
 ### Furnaces and smelting
 
-- Ten seconds per item: raw iron → iron ingot, raw beef → steak, sand → glass, cobblestone → stone, logs → charcoal.
-- Fuel buys heat — coal and charcoal 80 seconds (eight items each), planks, logs and crafting tables 15, sticks 5.
-- A burning furnace is a second block id and gives off light level 13, which is what makes a mine shaft readable.
-- Contents and the direction a furnace faces live in a block entity keyed by position. Only furnaces within 32 blocks of the player, plus the one on screen, tick.
+Every item takes ten seconds. A burning furnace is a second block id and gives off light
+level 13, which is what makes a mine shaft readable. Contents and the direction a furnace
+faces live in a block entity keyed by position; only furnaces within 32 blocks of the
+player, plus the one on screen, tick.
+
+| Input | Output | Seconds |
+| --- | --- | --- |
+| Raw Iron | Iron Ingot | 10 |
+| Raw Beef | Steak | 10 |
+| Sand | Glass | 10 |
+| Cobblestone | Stone | 10 |
+| Oak Log | Charcoal | 10 |
+
+Fuel buys heat, and heat carries over between items, so a stick only covers half of one:
+
+| Fuel | Seconds of heat | Items per unit |
+| --- | --- | --- |
+| Coal | 80 | 8 |
+| Charcoal | 80 | 8 |
+| Oak Planks | 15 | 1.5 |
+| Oak Log | 15 | 1.5 |
+| Crafting Table | 15 | 1.5 |
+| Stick | 5 | 0.5 |
 
 ### Armour
 
-- Leather, iron and diamond sets, one piece per slot. Defence for helmet, chestplate, leggings and boots is 1/3/2/1, 2/6/5/2 and 3/8/6/3, and durability 55/80/75/65, 165/240/225/195 and 363/528/495/429.
-- Damage absorbed is `amount * min(20, max(defence / 5, defence - amount / 2)) / 25`. Each hit costs one random worn piece four durability per point absorbed, so a set wears unevenly, and a piece that runs out un-equips itself.
-- The HUD draws the set as ten shields above the hunger bar.
+Leather, iron and diamond sets, one piece per slot.
+
+| Material | Helmet | Chestplate | Leggings | Boots |
+| --- | --- | --- | --- | --- |
+| Leather — defence | 1 | 3 | 2 | 1 |
+| Iron — defence | 2 | 6 | 5 | 2 |
+| Diamond — defence | 3 | 8 | 6 | 3 |
+| Leather — durability | 55 | 80 | 75 | 65 |
+| Iron — durability | 165 | 240 | 225 | 195 |
+| Diamond — durability | 363 | 528 | 495 | 429 |
+
+Damage absorbed is
+
+```text
+amount * min(20, max(defence / 5, defence - amount / 2)) / 25
+```
+
+Each hit costs one random worn piece four durability per point absorbed, so a set wears
+unevenly, and a piece that runs out un-equips itself. The HUD draws the set as ten shields
+above the hunger bar.
 
 ### Hunger
 
-- Twenty points, no saturation. Every exhaustion point costs one bite.
-- Costs: walking 0.004 per block, sprinting 0.02, jumping 0.1, mining a block 0.05, attacking 0.1, taking a hit 0.1, regenerating health 0.1.
-- Health only regenerates at hunger 18 or above. An empty bar costs half a heart every four seconds and will kill you.
-- A bite takes 0.6 seconds. Wheat 2 points, bread 5, raw beef 3, steak 8.
+Twenty points, no saturation. Every exhaustion point costs one bite. Health only
+regenerates at hunger 18 or above, and an empty bar costs half a heart every four seconds
+and will kill you. A bite takes 0.6 seconds.
+
+| Constant | Value |
+| --- | --- |
+| Hunger maximum | 20 points |
+| Health regenerates at | hunger 18 or above |
+| Starvation | half a heart every 4 seconds at hunger 0 |
+| Time per bite | 0.6 seconds |
+
+What each activity costs, in exhaustion points:
+
+| Activity | Exhaustion |
+| --- | --- |
+| Walking | 0.004 per block |
+| Sprinting | 0.02 per block |
+| Jumping | 0.1 per jump |
+| Mining a block | 0.05 |
+| Attacking | 0.1 per swing |
+| Taking a hit | 0.1 |
+| Regenerating health | 0.1 per half heart |
+
+| Food | Hunger restored |
+| --- | --- |
+| Wheat | 2 |
+| Bread | 5 |
+| Raw Beef | 3 |
+| Steak | 8 |
 
 ### Wheat
 
 - Seeds come from breaking grass: 25% chance of one or two. Farmland is made by hoeing grass or dirt.
 - Eight growth stages, drawn as two crossed quads that grow taller, leaf out, and turn gold at the tip.
-- One growth attempt per crop per second at a 1.2% chance, and only where sky or lamp light reaches 9, so an unlit field never ripens. Roughly ten real minutes in the open.
-- Ripe wheat drops one wheat and one or two seeds; an unripe crop gives back its seed and leaves the furrow tilled. Digging the farmland out from under a crop kills the crop.
+
+One growth attempt per crop per second at a 1.2% chance, and only where sky or lamp light
+reaches 9, so an unlit field never ripens. Roughly ten real minutes in the open.
+
+| Constant | Value |
+| --- | --- |
+| Growth tick | 1 second per crop |
+| Chance per tick | 1.2% |
+| Light needed | 9 or higher, sky or block |
+| Stages | 8, block ids 21–28 |
+| Ripe time in the open | about 10 real minutes |
+
+| Harvest | Drops |
+| --- | --- |
+| Ripe wheat | 1 wheat and 1–2 seeds |
+| Unripe crop | its seed, and the furrow stays tilled |
+| Farmland dug out from under a crop | the crop is destroyed |
 
 ### Notes for whoever picks this up next
 
