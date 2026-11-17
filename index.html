@@ -3815,12 +3815,58 @@ const miningState = {
   duration: 0
 };
 
+/** How often a swing lands while breaking; drives both the arm and its sound. */
+const MINING_SWING_INTERVAL = 0.3;
+let miningHitTimer = 0;
+let miningHitKey = '';
+
+/** Repeated contact sound for the block under the crosshair, per swing. */
+function updateMiningHitSound(dt, target) {
+  const stack = getSelectedStack();
+  const key = target.x + ',' + target.y + ',' + target.z + ',' + (stack ? stack.id : '');
+  if (key !== miningHitKey) {
+    miningHitKey = key;
+    miningHitTimer = MINING_SWING_INTERVAL; // the first swing makes noise at once
+  }
+
+  miningHitTimer += dt;
+  if (miningHitTimer < MINING_SWING_INTERVAL) return false;
+  miningHitTimer = 0;
+  return playMiningHitSound(
+    target.id, target.x + 0.5, target.y + 0.5, target.z + 0.5
+  );
+}
+
 function hideMiningFeedback() {
   miningState.active = false;
   miningState.itemId = null;
   miningState.progress = 0;
+  miningHitKey = '';
+  miningHitTimer = 0;
   crackMesh.visible = false;
   crackStage = -1;
+}
+
+/** Points the swing loop at a block, restarting progress when it changes. */
+function startMiningOn(target) {
+  const stack = getSelectedStack();
+  const itemId = stack ? stack.id : null;
+
+  if (miningState.active &&
+      miningState.x === target.x &&
+      miningState.y === target.y &&
+      miningState.z === target.z &&
+      miningState.itemId === itemId) {
+    return;
+  }
+
+  miningState.active = true;
+  miningState.x = target.x;
+  miningState.y = target.y;
+  miningState.z = target.z;
+  miningState.itemId = itemId;
+  miningState.progress = 0;
+  miningState.duration = miningDuration(target.id);
 }
 
 function miningDuration(blockId) {
@@ -3869,26 +3915,15 @@ function updateMining(dt, held) {
   const target = currentTarget;
   const block = BLOCKS[target.id];
   if (!block.breakable || !isFinite(block.hardness)) {
-    hideMiningFeedback();
+    // Unbreakable blocks never crack, but swinging at them still thuds.
+    startMiningOn(target);
+    crackMesh.visible = false;
+    crackStage = -1;
+    updateMiningHitSound(dt, target);
     return;
   }
 
-  const selected = getSelectedStack();
-  const selectedId = selected ? selected.id : null;
-
-  if (!miningState.active ||
-      miningState.x !== target.x ||
-      miningState.y !== target.y ||
-      miningState.z !== target.z ||
-      miningState.itemId !== selectedId) {
-    miningState.active = true;
-    miningState.x = target.x;
-    miningState.y = target.y;
-    miningState.z = target.z;
-    miningState.itemId = selectedId;
-    miningState.progress = 0;
-    miningState.duration = miningDuration(target.id);
-  }
+  startMiningOn(target);
 
   miningState.progress += dt;
   const progress = clamp(miningState.progress / miningState.duration, 0, 1);
@@ -3897,6 +3932,7 @@ function updateMining(dt, held) {
   crackMesh.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
   crackMesh.visible = true;
   setCrackStage(stage);
+  updateMiningHitSound(dt, target);
 
   if (miningState.progress >= miningState.duration) {
     breakBlockAt(target.x, target.y, target.z, target.id);
@@ -5008,7 +5044,7 @@ function updateHeldItem(dt) {
     heldMiningSwingTimer -= dt;
     if (heldMiningSwingTimer <= 0) {
       triggerHeldSwing();
-      heldMiningSwingTimer = 0.3;
+      heldMiningSwingTimer = MINING_SWING_INTERVAL;
     }
   } else {
     heldMiningSwingTimer = 0;
@@ -7459,6 +7495,19 @@ function playBreakSound(blockId, x, y, z) {
   });
 }
 
+/**
+ * Contact noise for each swing while a block is being broken, like the
+ * repeated digging sounds Minecraft plays. Quieter than the break itself.
+ */
+function playMiningHitSound(blockId, x, y, z) {
+  return playMaterialNoise(blockSoundMaterial(blockId), x, y, z, {
+    pitch: 0.76 + Math.random() * 0.2,
+    volume: 0.45,
+    durationScale: 0.8,
+    range: 16
+  });
+}
+
 function playPlaceSound(blockId, x, y, z) {
   return playMaterialNoise(blockSoundMaterial(blockId), x, y, z, {
     pitch: 0.68 + Math.random() * 0.1,
@@ -7705,6 +7754,14 @@ function playSound(name, options = {}) {
           pitch: 0.92 + Math.random() * 0.16, range: 22
         })
         : playBreakSound(options.blockId ?? B.STONE, x, y, z);
+    case 'hit':
+    case 'dig':
+      return options.material
+        ? playMaterialNoise(String(options.material).toLowerCase(), x, y, z, {
+          pitch: 0.76 + Math.random() * 0.2, volume: 0.45,
+          durationScale: 0.8, range: 16
+        })
+        : playMiningHitSound(options.blockId ?? B.STONE, x, y, z);
     case 'place':
       return options.material
         ? playMaterialNoise(String(options.material).toLowerCase(), x, y, z, {
