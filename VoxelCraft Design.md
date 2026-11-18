@@ -282,18 +282,19 @@ approach. Passive animals:
 
 Hostile mobs:
 
-- Zombies spawn on solid ground at night or in dark caves, within a radius band around the player, with a global cap; with the voxel lighting system, "dark" means the light level at the spawn spot is below a threshold, so unlit caves can spawn zombies even during the day, and torch-lit areas are safe
+- Zombies spawn on solid ground at night or in dark caves, in a band 20 to 48 blocks around the player, within a cap of their own; with the voxel lighting system, "dark" means the light level at the spawn spot is below a threshold, so unlit caves can spawn zombies even during the day, and torch-lit areas are safe
+- Night arrives in batches: a spawn pass after dark may place up to three hostiles, so dusk turns dangerous within seconds instead of one zombie at a time, while daytime cave spawning keeps to its trickle
 - Creepers spawn rarely under the same conditions
 - Zombies path toward the player when within detection range (simple direct-walk steering with one-block step-up is acceptable; full pathfinding not required), and deal contact damage on touch with a cooldown
 - Creepers approach the player, then hiss, flash, and explode after a short fuse, damaging the player and destroying nearby non-bedrock blocks (destroyed blocks drop as items)
 - Hostile mobs take damage from player attacks (left click while looking at a mob within reach), with knockback
-- Hostile mobs burn/despawn at dawn (mobs sheltered underground in darkness are exempt)
-- Mobs must not spawn inside blocks or in water, and despawn when the player is very far away
+- Hostile mobs burn/despawn at dawn (mobs sheltered underground in darkness are exempt), but an idle hostile more than 32 blocks off in three dimensions keeps rolling until it gives up and vanishes, so a cave under the player's base cannot hold the entire hostile budget
+- Mobs must not spawn inside blocks or in water, and despawn when the player is 96 blocks away measured in three dimensions, not just horizontally
 
 Mob management:
 
 - Mobs are entities separate from the voxel grid, updated each frame
-- Cap total live mobs for performance
+- Cap total live mobs for performance, and split that cap into a passive half and a hostile half that add up to no more than the total. Caps that overlap put the two groups in competition for the last few slots, and animals win that fight: a healthy herd left room for nine zombies and nights never filled
 - Mobs persist while their area is loaded and are removed when their chunk unloads
 - A chunk's herd roll is spent only while the player is close enough to have seen it, and a timer draws on the rolls still unspent around the player, so herds arrive as the player travels rather than only around the first spawn point
 
@@ -856,3 +857,73 @@ no table can arm themselves for a flock.
   regrows, sleeping always ends at 11:16 rather than at sunrise, the respawn point sits on
   top of the bed rather than in the cell beside it, and shears will not wound a sheep at all —
   killing one for its wool takes any other tool in the hotbar.
+
+## Mob budget addendum — why nights were empty
+
+Nights were too quiet, and the report was that animals were crowding hostiles out. That was true,
+and a second cause was hiding behind it. Everything below was measured by driving the frame loop
+through `window.__voxelcraft.tick()` with the clock frozen, not by reading the spawn code and
+guessing.
+
+### What the numbers said
+
+| Situation, before the change | Hostiles | Why |
+| --- | --- | --- |
+| Midnight, world cleared of mobs | 13 within 40 s | The spawn machinery was never broken |
+| Midnight with the herd at its cap of 20 | 9, forever | 20 animals plus a `MOB_CAP - 1` reservation, against a total of 30 |
+| Bright noon on the surface, world cleared | 13 within 160 s, all of them underground | Caves pass the darkness test at noon |
+| The night after that noon | nothing new at all | Those 13 never burn, and never counted as far away |
+
+The last two rows were the actual complaint. Sheltered hostiles are exempt from burning, and the
+despawn test measured horizontal distance only, so a zombie sixty blocks under the player's base
+read as standing right next to them and stayed for the rest of the session. A cave network under a
+house therefore held the entire hostile budget from noon onwards, and night had nothing left to
+spawn.
+
+### What changed
+
+| Knob | Was | Now |
+| --- | --- | --- |
+| `MOB_CAP` / `PASSIVE_CAP` / `HOSTILE_CAP` | 30 / 20 / 13 | 32 / 16 / 16 |
+| Reservations off the total | `-1` for hostiles, `-2` for herds | none; the two group caps fit inside the total |
+| Columns probed per pass | 4 | 8 |
+| Night spawn pass | one hostile per 1.9 s | up to three per 1.4 s |
+| Spawn band | 17–42 blocks | 20–48 blocks |
+| Surface candidates after dark | 62% of rolls | 85%, and 35% by day, when only caves can pass anyway |
+| Despawn distance | 96 blocks, horizontal | 96 blocks in three dimensions |
+| Idle hostiles past 32 blocks | stay forever | a 25% chance every 5 s to give up and vanish |
+
+The caps no longer overlap, which is what stops a healthy herd from deciding how dangerous the
+night is. `spawnMob` still refuses anything past `MOB_CAP`, so those reservations were only ever
+compensating for caps that did not add up. The despawn roll cannot interrupt a chase: both
+detection ranges sit inside 32 blocks.
+
+### Measured afterwards
+
+| Situation, after the change | Result |
+| --- | --- |
+| Midnight, world cleared | hostile cap in 10 s, 13 of the 16 on the surface, 10 within 32 blocks |
+| Midnight with the herd full at 16 | hostile cap in 8 s; the total peaked at exactly 32 and never past it |
+| Bright noon above caves, 300 s | hostiles hover between 4 and 7, and `hostile_cap` refusals: 0 all day |
+| Dusk after that noon | five fresh surface hostiles within 4 s; 11 of 13 living hostiles new since dark |
+| 32 mobs on screen | 0.06 ms of simulation per frame, about 3 draw calls a mob against 214 for the terrain |
+
+Mobs were never the expensive part — the terrain alone draws 1.8 M triangles — so the two extra
+slots cost nothing measurable.
+
+### Notes for whoever picks this up next
+
+- `__voxelcraft.spawnReport()` answers the question this whole addendum is about: the live caps,
+  and a tally of why hostile spawns are being refused (`hostile_cap`, `no_chunk`, `terrain`,
+  `light`), with `resetSpawnTally()` to zero it between runs. `stats().mobs` now carries the caps
+  beside the counts. A rising `hostile_cap` with nothing on screen means invisible mobs are holding
+  slots; a high `light` count means torches are doing their job.
+- `spawnHostile()` runs one hostile pass on demand, the way `spawnPassive()` already did.
+- Freeze the clock first (`setTimeScale(0)`, then `setTime()`). The frame loop advances time on its
+  own, and an unfrozen test measures dusk when it meant to measure midnight.
+- `tick()` runs the real `updateMobs`, spawn timers included, so a whole night compresses into
+  about a second of wall time. Heal the player between rounds: sixteen hostiles will otherwise
+  kill them halfway through a run, and the creepers will leave craters in the test site.
+- Accepted behaviour changes: idle hostiles now vanish well before 96 blocks, so a cave the player
+  walks away from empties out instead of seasoning the walk back; and animals are capped at 16
+  rather than 20, so a very green valley now holds a thinner herd than it used to.
