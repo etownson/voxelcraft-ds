@@ -596,7 +596,11 @@ const B = Object.freeze({
   // Wheat keeps eight growth stages in the block id itself, because a chunk
   // cell is one byte and has nowhere else to hold a growth value.
   WHEAT_0: 21, WHEAT_1: 22, WHEAT_2: 23, WHEAT_3: 24,
-  WHEAT_4: 25, WHEAT_5: 26, WHEAT_6: 27, WHEAT_7: 28
+  WHEAT_4: 25, WHEAT_5: 26, WHEAT_6: 27, WHEAT_7: 28,
+  // A door spans two cells and keeps its open and closed states in separate
+  // ids, the same trick the lit furnace uses. The open ids are not solid,
+  // which is what makes a doorway walk-through.
+  DOOR: 29, DOOR_TOP: 30, DOOR_OPEN: 31, DOOR_OPEN_TOP: 32
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -783,6 +787,44 @@ for (let stage = 0; stage < 8; stage++) {
   });
 }
 
+/**
+ * A door is one item across two cells, and the open pair are separate ids
+ * so collision sees them as air, the same trick the lit furnace uses. Which
+ * way the leaf hangs is its facing, stored per position just like a
+ * furnace's front. Appended after the wheat stages, which already own the
+ * ids before them.
+ */
+BLOCKS.push(
+  {
+    id: B.DOOR, key: 'door', name: 'Wooden Door',
+    tiles: { top: 'planks', bottom: 'planks', side: 'door_lower' },
+    solid: true, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    facings: true, door: 'lower',
+    drops: [{ item: 'door', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.DOOR_TOP, key: 'door_top', name: 'Wooden Door',
+    tiles: { top: 'planks', bottom: 'planks', side: 'door_upper' },
+    solid: true, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    facings: true, door: 'upper',
+    drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
+  },
+  {
+    id: B.DOOR_OPEN, key: 'door_open', name: 'Wooden Door',
+    tiles: { top: 'planks', bottom: 'planks', side: 'door_lower' },
+    solid: false, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    facings: true, door: 'lower', doorOpen: true,
+    drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
+  },
+  {
+    id: B.DOOR_OPEN_TOP, key: 'door_open_top', name: 'Wooden Door',
+    tiles: { top: 'planks', bottom: 'planks', side: 'door_upper' },
+    solid: false, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    facings: true, door: 'upper', doorOpen: true,
+    drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
+  }
+);
+
 const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -794,6 +836,8 @@ for (const block of BLOCKS) {
   block.facings ??= false;
   block.blockEntity ??= null;
   block.crop ??= null;
+  block.door ??= null;
+  block.doorOpen ??= false;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }
@@ -960,7 +1004,7 @@ const TILE_ORDER = [
   'planks', 'leaves', 'snow', 'crafting_table_top',
   'crafting_table_side', 'torch', 'bedrock',
   'furnace_top', 'furnace_side', 'furnace_front', 'furnace_front_lit',
-  'glass', 'farmland_top'
+  'glass', 'farmland_top', 'door_upper', 'door_lower'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 // One tile per wheat growth stage, painted in a loop like the crack stages.
@@ -1531,6 +1575,47 @@ function generateAtlas() {
     };
   }
 
+  // A door leaf painted across two tiles that meet at the cell boundary:
+  // upright stiles down the sides, a rail across the top, a planked panel,
+  // and a brass knob on the lower leaf. The wood runs a shade darker than
+  // planks so a door does not merge into the wall beside it.
+  function paintDoorLeaf(paint, rand, isTop) {
+    const frame = [110, 80, 46];
+    const base = [162, 124, 76];
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        paint(x, y, vary(rand, base, 5));
+      }
+    }
+    // Vertical planking through the middle of the leaf, a thin seam every
+    // four pixels. The upper leaf leaves room for the top rail to return.
+    for (let y = isTop ? 2 : 0; y < 16; y++) {
+      for (let x = 2; x < 14; x++) {
+        if (x % 4 === 3) paint(x, y, vary(rand, [130, 98, 58], 4));
+      }
+    }
+    for (let y = 0; y < 16; y++) {
+      for (const x of [0, 1, 14, 15]) paint(x, y, vary(rand, frame, 4));
+    }
+    if (isTop) {
+      for (let x = 0; x < 16; x++) paint(x, 0, vary(rand, frame, 4));
+      paint(3, 1, vary(rand, frame, 4));
+      paint(12, 1, vary(rand, frame, 4));
+    } else {
+      // A bottom rail and the knob sitting at mid-door height.
+      for (let y = 13; y < 16; y++) {
+        for (let x = 0; x < 16; x++) paint(x, y, vary(rand, frame, 4));
+      }
+      for (let y = 4; y < 7; y++) {
+        paint(12, y, [210, 172, 84]);
+        paint(13, y, [186, 148, 68]);
+      }
+      paint(12, 4, [240, 210, 130]);
+    }
+  }
+  painters.door_lower = (paint, rand) => paintDoorLeaf(paint, rand, false);
+  painters.door_upper = (paint, rand) => paintDoorLeaf(paint, rand, true);
+
   for (const name of TILE_ORDER) {
     const index = TILES[name];
     const tx = index % ATLAS_GRID;
@@ -1918,6 +2003,15 @@ function makeBlockItemIcon(block) {
     const sx = (block.tileSide % ATLAS_GRID) * ATLAS_TILE;
     const sy = ((block.tileSide / ATLAS_GRID) | 0) * ATLAS_TILE;
     ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 8, 4, 48, 56);
+    return canvas;
+  }
+
+  // A door item shows the leaf itself rather than a cube wearing it, so the
+  // knob and stiles stay readable in the hotbar.
+  if (block.door) {
+    const sx = (block.tileSide % ATLAS_GRID) * ATLAS_TILE;
+    const sy = ((block.tileSide / ATLAS_GRID) | 0) * ATLAS_TILE;
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 14, 3, 36, 58);
     return canvas;
   }
 
@@ -2381,24 +2475,42 @@ class World {
   /**
    * Keeps block entities and orientations in step with block edits. Swapping
    * a furnace for its lit variant keeps the same state, which is how burning
-   * furnaces survive being redrawn.
+   * furnaces survive being redrawn. Doors keep an orientation without being
+   * block entities, so facings outlive the blockEntity check here.
    */
   trackBlockEntity(gx, gy, gz, oldId, newId, facing = null) {
     const key = gx + ',' + gy + ',' + gz;
     const oldBlock = BLOCKS[oldId];
     const newBlock = BLOCKS[newId];
 
-    if (!newBlock.blockEntity) {
+    if (!newBlock.blockEntity && !newBlock.facings) {
       if (oldBlock.blockEntity) this.blockEntities.delete(key);
       this.facings.delete(key);
       return;
     }
-    if (oldBlock.blockEntity !== newBlock.blockEntity) this.blockEntities.delete(key);
-    if (!this.blockEntities.has(key)) {
-      this.blockEntities.set(key, createBlockEntity(newBlock.blockEntity));
+    if (!newBlock.blockEntity) {
+      if (oldBlock.blockEntity) this.blockEntities.delete(key);
+    } else {
+      if (oldBlock.blockEntity !== newBlock.blockEntity) this.blockEntities.delete(key);
+      if (!this.blockEntities.has(key)) {
+        this.blockEntities.set(key, createBlockEntity(newBlock.blockEntity));
+      }
     }
     if (facing) this.facings.set(key, facing);
     else if (!this.facings.has(key)) this.facings.set(key, [0, 1]);
+  }
+
+  /**
+   * A door is one item across two cells. Whenever one half is destroyed by
+   * something that bypasses normal breaking (an explosion), the far half
+   * goes with it rather than hanging in the air.
+   */
+  clearDoorPartner(gx, gy, gz, id) {
+    const half = BLOCKS[id].door;
+    if (!half) return;
+    const otherY = half === 'lower' ? gy + 1 : gy - 1;
+    const other = this.getBlock(gx, otherY, gz);
+    if (BLOCKS[other].door) this.setBlock(gx, otherY, gz, B.AIR);
   }
 
   /** Furnace state at a position, creating an empty one if it is missing. */
@@ -2507,6 +2619,9 @@ class World {
       this.trackTorch(gx, gy, gz, oldId, id);
       this.trackBlockEntity(gx, gy, gz, oldId, id);
       this.trackCrop(gx, gy, gz, oldId, id);
+      if (oldId !== id && BLOCKS[oldId].door && !BLOCKS[id].door) {
+        this.clearDoorPartner(gx, gy, gz, oldId);
+      }
       const chunk = this.chunks.get(chunkKey(cx, cz));
       if (!chunk || !chunk.generated) continue;
 
@@ -3572,6 +3687,10 @@ function buildChunkMesh(world, chunk) {
           appendCropQuads(cutout, world, x, y, z, wx, wz, block);
           continue;
         }
+        if (block.door) {
+          appendDoorPanel(cutout, world, x, y, z, wx, wz, block);
+          continue;
+        }
         const target = block.cutout ? cutout : opaque;
 
         for (const face of FACES) {
@@ -3722,6 +3841,71 @@ function appendCropQuads(builder, world, x, y, z, wx, wz, block) {
   ];
   builder.quad(planeA, rect, sky, blockLight, shades);
   builder.quad(planeB, rect, sky, blockLight, shades);
+}
+
+/**
+ * A door leaf is a thin wood panel in its cell, textured on both broad faces
+ * so it reads the same from inside and out. Closed it spans the doorway;
+ * open it lies flat against the jamb its hinge is on. The upper half draws
+ * the same box one cell up, so two cells read as one tall door.
+ */
+function appendDoorPanel(builder, world, x, y, z, wx, wz, block) {
+  const rect = tileRect(block.tileSide);
+  const capRect = tileRect(TILES.planks);
+  const sky = skyBrightness(world.getSkyLight(wx, y, wz));
+  const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
+
+  const facing = world.facingAt(wx, y, wz) ?? [0, 1];
+  const nx = facing[0];
+  const nz = facing[1];
+  // Across the doorway, hinge end first: a runs along the leaf's width and
+  // b along the facing normal, both in 0..1 cell coordinates.
+  const hx = -nz;
+  const hz = nx;
+  const T = 0.18;
+
+  let aMin = 0;
+  let aMax = 1;
+  let bMin = 0.5 - T / 2;
+  let bMax = 0.5 + T / 2;
+  if (block.doorOpen) {
+    aMax = T;
+    bMin = 0;
+    bMax = 1;
+  }
+
+  const corner = (a, b, py) => [
+    x + 0.5 + (a - 0.5) * hx + (b - 0.5) * nx,
+    py,
+    z + 0.5 + (a - 0.5) * hz + (b - 0.5) * nz
+  ];
+  const flat = (shade) => [shade, shade, shade, shade];
+
+  // Both broad faces, then the thin edges: jambs, top and bottom.
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMax, bMin, y),
+    corner(aMax, bMin, y + 1), corner(aMin, bMin, y + 1)
+  ], rect, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMax, y), corner(aMax, bMax, y),
+    corner(aMax, bMax, y + 1), corner(aMin, bMax, y + 1)
+  ], rect, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMin, bMax, y),
+    corner(aMin, bMax, y + 1), corner(aMin, bMin, y + 1)
+  ], capRect, sky, blockLight, flat(0.62));
+  builder.quad([
+    corner(aMax, bMin, y), corner(aMax, bMax, y),
+    corner(aMax, bMax, y + 1), corner(aMax, bMin, y + 1)
+  ], capRect, sky, blockLight, flat(0.62));
+  builder.quad([
+    corner(aMin, bMin, y + 1), corner(aMax, bMin, y + 1),
+    corner(aMax, bMax, y + 1), corner(aMin, bMax, y + 1)
+  ], capRect, sky, blockLight, flat(1));
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMax, bMin, y),
+    corner(aMax, bMax, y), corner(aMin, bMax, y)
+  ], capRect, sky, blockLight, flat(0.55));
 }
 
 function commitChunkMesh(chunk, builder, material, name) {
@@ -3986,6 +4170,12 @@ const RECIPES = [
     // 2x2 grid carried in the inventory.
     id: 'bread', pattern: ['WWW'], key: { W: 'wheat' },
     result: { id: 'bread', count: 1 }
+  },
+  {
+    // Six planks in two columns, three leaves tall: Minecraft's own door
+    // pattern, and three doors out of it like the original gives.
+    id: 'door', pattern: ['PP', 'PP', 'PP'], key: { P: 'planks' },
+    result: { id: 'door', count: 3 }
   }
 ];
 
@@ -4844,6 +5034,10 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   // smelting away in there is lost.
   if (block.blockEntity) spillFurnaceContents(x, y, z);
 
+  // Whichever half of a door the player broke, the far half comes away with
+  // it, and the single door item drops from the half that was broken.
+  if (block.door) world.clearDoorPartner(x, y, z, id);
+
   world.setBlock(x, y, z, B.AIR);
   addExhaustion(EXHAUSTION.mine);
   if (canHarvest) {
@@ -4912,6 +5106,12 @@ function tryPlaceSelectedBlock() {
     return false;
   }
 
+  // And a door swings open or shut under the crosshair, whatever is held.
+  if (BLOCKS[currentTarget.id].door) {
+    toggleDoor(currentTarget.x, currentTarget.y, currentTarget.z);
+    return false;
+  }
+
   // And a hoe in hand tilling soil is a use, not a placement.
   if (useHoeOnTarget()) return true;
 
@@ -4938,6 +5138,9 @@ function tryPlaceSelectedBlock() {
     if (currentTarget.normal.y !== 1) return false;
     if (!BLOCKS[world.getBlock(px, py - 1, pz)].solid) return false;
   }
+
+  // A door is a two-cell block and needs its own room check for both halves.
+  if (block.door) return placeDoor(px, py, pz);
 
   if (block.solid && blockIntersectsPlayer(px, py, pz)) {
     showToast('Not enough room to place that');
@@ -5012,6 +5215,67 @@ function plantSeedsOnTarget() {
   world.setBlock(x, y, z, item.plants);
   consumeSelectedItem();
   playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/* ---------- Doors ---------- */
+
+/** The id a door half swaps to when the leaf swings. */
+const DOOR_SWINGS = {
+  [B.DOOR]: B.DOOR_OPEN, [B.DOOR_OPEN]: B.DOOR,
+  [B.DOOR_TOP]: B.DOOR_OPEN_TOP, [B.DOOR_OPEN_TOP]: B.DOOR_TOP
+};
+
+/** True when a block id belongs to any half of a door. */
+function isDoorBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && !!block.door;
+}
+
+/**
+ * Places one door across two cells: the leaf's foot at (x, y, z) and its top
+ * directly above. Both halves share the facing the placer stood behind, so
+ * the leaf always hangs against the same jamb when it swings.
+ */
+function placeDoor(x, y, z) {
+  if (!BLOCKS[world.getBlock(x, y - 1, z)].solid) {
+    showToast('Doors need solid ground beneath them');
+    return false;
+  }
+  if (y + 1 >= WORLD_HEIGHT || world.getBlock(x, y + 1, z) !== B.AIR) {
+    showToast('Needs a clear block above for the door');
+    return false;
+  }
+  if (blockIntersectsPlayer(x, y, z) || blockIntersectsPlayer(x, y + 1, z)) {
+    showToast('Not enough room to place that');
+    return false;
+  }
+
+  const facing = frontFacingTowardsPlayer(x, z);
+  if (!world.setBlock(x, y, z, B.DOOR, facing)) return false;
+  world.setBlock(x, y + 1, z, B.DOOR_TOP, facing);
+  consumeSelectedItem();
+  playPlaceSound(B.DOOR, x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/**
+ * Swings the door whose half is at this position. Both halves change id
+ * together and keep the facing they were placed with, which is the jamb the
+ * leaf rests against. A half standing alone still swings on its own.
+ */
+function toggleDoor(x, y, z) {
+  const id = world.getBlock(x, y, z);
+  const block = BLOCKS[id];
+  if (!block.door) return false;
+
+  const otherY = block.door === 'lower' ? y + 1 : y - 1;
+  const otherId = world.getBlock(x, otherY, z);
+  const facing = world.facingAt(x, y, z) ?? world.facingAt(x, otherY, z);
+
+  world.setBlock(x, y, z, DOOR_SWINGS[id], facing);
+  if (BLOCKS[otherId].door) world.setBlock(x, otherY, z, DOOR_SWINGS[otherId], facing);
+  playDoorSound(x + 0.5, y + 0.5, z + 0.5);
   return true;
 }
 
@@ -6313,7 +6577,7 @@ function updateHeldItemModel() {
 
   if (item.kind === 'block') {
     const block = BLOCKS[item.blockId];
-    if (block.key !== 'torch') {
+    if (block.key !== 'torch' && !block.door) {
       const mesh = new THREE.Mesh(
         buildItemCubeGeometry(block),
         block.cutout ? heldCutoutMaterial : heldCubeMaterial
@@ -7002,6 +7266,8 @@ function explodeCreeper(mob) {
   const radius = 3.2;
   const edits = [];
   const drops = [];
+  // One door spread over two cells should only pay out its item once.
+  const blastDoors = new Set();
 
   for (let dy = -3; dy <= 3; dy++) {
     for (let dz = -3; dz <= 3; dz++) {
@@ -7019,6 +7285,11 @@ function explodeCreeper(mob) {
         if (block.blockEntity) spillFurnaceContents(x, y, z);
         edits.push({ x, y, z, id: B.AIR });
         for (const drop of block.drops || []) {
+          if (block.door) {
+            const base = x + ',' + (block.door === 'upper' ? y - 1 : y) + ',' + z;
+            if (blastDoors.has(base)) continue;
+            blastDoors.add(base);
+          }
           drops.push({
             id: drop.item,
             count: drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1)),
@@ -9304,7 +9575,11 @@ function blockSoundMaterial(blockId) {
     case 'log':
     case 'planks':
     case 'crafting_table':
-    case 'torch': return 'wood';
+    case 'torch':
+    case 'door':
+    case 'door_top':
+    case 'door_open':
+    case 'door_open_top': return 'wood';
     case 'leaves': return 'leaves';
     case 'glass': return 'glass';
     case 'farmland': return 'dirt';
@@ -9399,6 +9674,19 @@ function playPlaceSound(blockId, x, y, z) {
     pitch: 0.68 + Math.random() * 0.1,
     volume: 0.62,
     durationScale: 0.72,
+    range: 18
+  });
+}
+
+/**
+ * A stretched wooden creak for the hinge, drawn out compared with a placed
+ * block so a swinging door sounds like movement rather than an impact.
+ */
+function playDoorSound(x, y, z) {
+  return playMaterialNoise('wood', x, y, z, {
+    pitch: 0.42 + Math.random() * 0.1,
+    volume: 0.42,
+    durationScale: 1.7,
     range: 18
   });
 }
