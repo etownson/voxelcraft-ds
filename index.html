@@ -6464,7 +6464,13 @@ document.addEventListener('mousedown', (event) => {
     triggerHeldSwing();
     updateTarget();
     updateMobTarget();
-    if (currentMobTarget) attackMob(currentMobTarget);
+    // Shears snip rather than strike, and the attack button is no exception:
+    // a player who means to hit an animal has anything else in hand.
+    if (tryShearMob('swing')) {
+      player.attackCooldown = 0.38;
+    } else if (currentMobTarget) {
+      attackMob(currentMobTarget);
+    }
     if (fallbackControls) {
       fallbackLooking = true;
       fallbackDragMoved = false;
@@ -6534,7 +6540,11 @@ document.addEventListener('mousemove', (event) => {
     const dx = event.clientX - lastFallbackMouseX;
     const dy = event.clientY - lastFallbackMouseY;
     fallbackDragDistance += Math.abs(dx) + Math.abs(dy);
-    if (fallbackDragDistance > 4) fallbackDragMoved = true;
+    // The drag still turns the camera from the first pixel; this only decides
+    // whether the press counts as a use when it comes up. Four pixels was tight
+    // enough that a hand tremor swallowed every right click, and a swallowed
+    // use is silent, which reads as the held item doing nothing at all.
+    if (fallbackDragDistance > 10) fallbackDragMoved = true;
     lastFallbackMouseX = event.clientX;
     lastFallbackMouseY = event.clientY;
     yaw -= dx * 0.0032;
@@ -6777,7 +6787,11 @@ function beginPadMining() {
   triggerHeldSwing();
   updateTarget();
   updateMobTarget();
-  if (currentMobTarget) attackMob(currentMobTarget);
+  if (tryShearMob('swing')) {
+    player.attackCooldown = 0.38;
+  } else if (currentMobTarget) {
+    attackMob(currentMobTarget);
+  }
 }
 
 /** Shared dispatch so real presses and the debug API behave identically. */
@@ -8440,7 +8454,7 @@ function tryEatSelectedItem() {
 /** Right-click with something held: eat first, then use it on the world. */
 function tryUseSelectedItem() {
   if (tryEatSelectedItem()) return true;
-  if (tryShearMob()) return true;
+  if (tryShearMob('use')) return true;
   return tryPlaceSelectedBlock();
 }
 
@@ -8676,25 +8690,76 @@ function shearMob(mob) {
 }
 
 /**
- * Shears under the crosshair on a woolly sheep are the one right-click that
- * works on a mob rather than a block.
+ * Steps the crosshair ray and reports whether anything solid gets in the way
+ * of a mob that the mob ray already said it touched.
  */
-function tryShearMob() {
+function airClearTo(distance) {
+  const step = 0.12;
+  for (let t = step; t < distance - step; t += step) {
+    if (world.isOpaque(
+      Math.floor(camera.position.x + rayDirection.x * t),
+      Math.floor(camera.position.y + rayDirection.y * t),
+      Math.floor(camera.position.z + rayDirection.z * t)
+    )) return false;
+  }
+  return true;
+}
+
+/**
+ * The mob the crosshair is on, ignoring which target the mining pass would
+ * prefer. updateMobTarget gives up on an animal as soon as a block face is
+ * nearer than it, which is right for a pickaxe — the ore behind the cow is the
+ * better target — and wrong for a pair of shears. Aiming low at a sheep on a
+ * slope puts the ground in front of it nearer than the animal's own box, so
+ * every one of those shots was a snip that failed without even a sound.
+ *
+ * Clear air still has to reach the animal, so a sheep on the other side of a
+ * wall stays out of reach until the player walks in.
+ */
+function mobUnderCrosshair() {
+  if (activeScreen || player.dead) return null;
+  camera.getWorldDirection(rayDirection);
+  const hit = raycastMob(camera.position, rayDirection, FOCUS_REACH);
+  if (!hit || !airClearTo(hit.distance)) return null;
+  return hit;
+}
+
+/**
+ * Shears on a sheep: the one interaction that answers to a mob rather than a
+ * block, and the one tool that never strikes an animal, on either button.
+ *
+ * @param mode 'use' for a right click, 'swing' for the left button coming down,
+ *             and 'held' for the left button staying down. Only 'held' keeps
+ *             quiet, because it would otherwise repeat one refusal several
+ *             times a second.
+ */
+function tryShearMob(mode = 'use') {
   const stack = getSelectedStack();
   if (!stack || stack.id !== 'shears') return false;
 
-  updateMobTarget();
-  const mob = currentMobTarget;
-  if (!mob || mob.dead || mob.type !== 'sheep') return false;
+  updateTarget();
+  const hit = mobUnderCrosshair();
+  if (!hit) return false;
+
+  const mob = hit.mob;
+  if (mob.dead || mob.type !== 'sheep') {
+    // A block in front still wins, so a crafting table with a cow behind it
+    // opens rather than being told what it is not.
+    if (mode !== 'use') return false;
+    if (currentTarget && hit.distance >= currentTarget.distance - 0.04) return false;
+    showToast('Nothing to shear here');
+    return true;
+  }
 
   triggerHeldSwing();
   if (mob.sheared) {
-    showToast('That sheep is already sheared');
+    if (mode !== 'held') showToast('That sheep is already sheared');
     return true;
   }
   shearMob(mob);
   wearHeldTool(1);
   addExhaustion(EXHAUSTION.mine);
+  if (mode !== 'held') showToast('Sheared');
   return true;
 }
 
@@ -8704,6 +8769,12 @@ function updateCombat(dt) {
   if (player.dead || activeScreen || !isMiningHeld()) return;
 
   updateMobTarget();
+  // 'held', so holding the button on a sheep already shorn costs nothing but a
+  // swing rather than filling the screen with the same refusal.
+  if (tryShearMob('held')) {
+    player.attackCooldown = 0.38;
+    return;
+  }
   if (currentMobTarget) attackMob(currentMobTarget);
 }
 
@@ -12114,6 +12185,9 @@ window.__voxelcraft = {
       world.updateStreaming(player.pos.x, player.pos.z);
       updateTarget();
       updateMobTarget();
+      // Combat belongs here as much as it belongs in the frame loop: without it
+      // there is no way to assert what the left button does while it is held.
+      updateCombat(dt);
       updateMobs(dt);
       updateHealth(dt);
       updateHunger(dt);

@@ -696,22 +696,41 @@ something spends none of their durability.
 | --- | --- |
 | Craft | 2 iron ingots, either diagonal |
 | Durability | 64 uses, one per sheep |
-| Swing damage | 2, the improvised-weapon floor any non-sword tool swings at |
-| Wear per blow that lands | 2 |
+| Swing damage | 2, the improvised-weapon floor any non-sword tool swings at — but never against a sheep |
+| Wear per blow that lands | 2, and a blow only lands on something that is not a sheep |
 | Stack size | 1 |
 | Mining speed | 1, the same as a hand |
 | Wears while mining | never |
 
-Right-clicking with shears in hand and the crosshair on a sheep takes its fleece off in one
-go. The animal is not harmed, bleats, and trots away bare.
+Either button shears. Right-click is the deliberate use, and the left button answers to it too,
+because a pair of shears reads as a tool you swing, and a player who means to kill a sheep has
+something sharper in hand. With the crosshair on a fleecy sheep the fleece comes off in one go:
+the animal is not harmed, bleats, and trots away bare.
 
-| Shearing a sheep | Result |
+| Shearing | Result |
 | --- | --- |
-| Woolly sheep | 1–3 wool, sheep becomes shorn, 1 durability, 0.05 exhaustion |
-| Already shorn | toast `That sheep is already sheared`, no durability spent |
-| Cow, pig, chicken, creeper | shears do nothing, the right-click falls through to placing |
+| Woolly sheep, either button | 1–3 wool, sheep becomes shorn, 1 durability, 0.05 exhaustion, toast `Sheared` |
+| Already shorn, either button | toast `That sheep is already sheared`, no durability spent |
+| Cow, pig, chicken, creeper — left button | takes the swing: 2 damage, 2 durability, as any other tool |
+| Cow, pig, chicken, creeper — right button | toast `Nothing to shear here`, nothing spent, and the click is not handed on to placing |
+| Sheep behind a solid cell | out of reach: the left button mines the cell in front, the right click uses it |
 | Sheared sheep killed | meat only |
 | Woolly sheep killed | meat plus 1 wool |
+
+Shears are the one tool that never strikes a sheep, on either button. Holding the left button
+down is an exception on noise only: the press toasts and every frame after it swings in silence,
+so standing on a shorn sheep with the button held does not fill the screen with the same
+refusal.
+
+The reach is judged twice, once for the animal and once for the air in front of it. The mining
+pass drops a mob as a target as soon as any block face is nearer, which is right for a pickaxe —
+the ore behind the cow is the better target — and wrong for shears: aiming even slightly low at a
+sheep on a slope puts the ground in front of the animal nearer than the animal's own box, so
+every one of those shots was a snip that failed without even a sound. `mobUnderCrosshair` casts
+the mob ray on its own and then steps `airClearTo` back along it, so clear air still has to
+reach the fleece and a sheep on the other side of a wall stays out of reach until the player
+walks in. A nearer block still wins a right click outright: a crafting table with a cow pressed
+in behind it opens rather than being told what it is not.
 
 A shorn sheep stays shorn: fleece never grows back, so a fleecy hillside is worth fencing.
 The bare model is rebuilt from the same parts minus the fleece — seven pieces become six, the
@@ -787,6 +806,19 @@ no table can arm themselves for a flock.
 - `tryUseSelectedItem` now runs in this order: eat, shear a mob, then whatever right-clicking a
   block does. Shearing is the only use aimed at an entity rather than a cell, and it wins over
   placement, so a sheep standing in a doorway cannot be accidentally built over.
+- `tryShearMob(mode)` is the one interaction wired to both buttons, and the mode only changes how
+  loudly it answers: `'use'` for a right click, `'swing'` for the left button coming down (mouse
+  and pad alike), and `'held'` for the left button staying down in `updateCombat`, which is the
+  one that keeps quiet and the one that will never claim a mob that is not a sheep — otherwise a
+  creeper at the crosshair would stop taking the swing. Either left-button path sets
+  `player.attackCooldown` when it takes the shot, so one press cannot shear twice, and the right
+  click keeps no cooldown the way it never did.
+- Reported by playing, not by the harness: `updateMobTarget` was the only target check, so shears
+  attacked sheep whenever a block face sat nearer than the animal, which on anything but flat
+  ground is most shots. The debug API could not show this, because `use()` went through the same
+  call and agreed with it. Assert these things through `document.dispatchEvent` on real
+  `mousedown`/`mouseup` instead, and zero `player.attackCooldown` between sub-tests — a stale
+  throttle swallows the next hit silently and reads as a bug in the new code.
 - Beds clear their partner cell in both `breakBlockAt` and `World.setBlocksBatch`, the same hooks
   the door uses, so an explosion, a piston-less mass set, or a pickaxe on the pillow all take the
   whole bed with them.
@@ -803,7 +835,16 @@ no table can arm themselves for a flock.
   the already-sheared refusal, so durability is the thing to watch there.
 - The mouse path was driven separately from the API, because fallback controls treat a right
   drag as looking and a right click as using: a drag of 60 px turned the camera 0.19 radians and
-  left the spawn point alone, while the same click without movement set it.
+  left the spawn point alone, while the same click without movement set it. The drag threshold
+  for that decision was raised from 4 px to 10 px — the camera still turns from the first pixel,
+  the threshold only decides whether the press also counts as a use, and a swallowed use is
+  silent, which reads as the held item being dead rather than as the click having been lost. A
+  6 px jiggle now shears and turns 0.019 radians; 60 px still only looks.
+- `simulate()` now runs `updateCombat` alongside the frame loop. Without it there was no way at
+  all to say what a held left button does, since a hidden tab never runs a real frame. Note that
+  a held shear on a shorn sheep re-arms `attackCooldown` every frame, so the cooldown staying at
+  0.38 is proof the combat path ran, not that it stalled; probe it on empty air instead.
 - Accepted behaviour changes: sheep give wool when killed as well as when shorn, fleece never
-  regrows, sleeping always ends at 11:16 rather than at sunrise, and the respawn point sits on
-  top of the bed rather than in the cell beside it.
+  regrows, sleeping always ends at 11:16 rather than at sunrise, the respawn point sits on
+  top of the bed rather than in the cell beside it, and shears will not wound a sheep at all —
+  killing one for its wool takes any other tool in the hotbar.
