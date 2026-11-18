@@ -576,6 +576,10 @@ Fuel buys heat, and heat carries over between items, so a stick only covers half
 | Crafting Table | 15 | 1.5 |
 | Stick | 5 | 0.5 |
 
+The Raw Beef row is what puts a cooker in the food chain: meat dropped by a cow, pig or sheep
+is not edible until it has been through a furnace, so steak, and the eight points it restores,
+are gated behind the same ten seconds and one piece of fuel as an iron ingot.
+
 ### Armour
 
 Leather, iron and diamond sets, one piece per slot.
@@ -628,8 +632,12 @@ What each activity costs, in exhaustion points:
 | --- | --- |
 | Wheat | 2 |
 | Bread | 5 |
-| Raw Beef | 3 |
 | Steak | 8 |
+
+Raw meat is not on that list, because it feeds nobody as it comes. Cows, pigs and sheep drop
+Raw Beef, and only a furnace turns it into steak: right-clicking it costs the click, not the
+item, and answers `Raw Beef needs cooking in a furnace` while there is room left to eat. The
+slot tooltip carries the same reminder.
 
 ### Wheat
 

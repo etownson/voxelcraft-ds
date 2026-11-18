@@ -899,7 +899,9 @@ defineItem({ id: 'iron_ingot', name: 'Iron Ingot', kind: 'material', stack: 64 }
 defineItem({ id: 'leather', name: 'Leather', kind: 'material', stack: 64 });
 defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
-defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, hunger: 3 });
+// Raw meat is food in name only: it carries no hunger value of its own, because
+// a furnace has to turn it into steak before anyone can eat it.
+defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, needsCooking: true });
 defineItem({ id: 'cooked_beef', name: 'Steak', kind: 'food', stack: 64, hunger: 8 });
 defineItem({ id: 'wheat', name: 'Wheat', kind: 'food', stack: 64, hunger: 2 });
 defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5 });
@@ -8433,7 +8435,15 @@ function tryEatSelectedItem() {
   if (!stack) return false;
 
   const item = ITEMS.get(stack.id);
-  if (!item || item.kind !== 'food' || !item.hunger) return false;
+  if (!item || item.kind !== 'food') return false;
+
+  // Raw meat feeds nobody straight out of a cow: the furnace is the only way
+  // past it, so say so instead of silently swallowing the right click.
+  if (item.needsCooking) {
+    if (player.hunger < HUNGER_MAX) showToast(item.name + ' needs cooking in a furnace');
+    return false;
+  }
+  if (!item.hunger) return false;
 
   if (player.hunger >= HUNGER_MAX) {
     showToast("You're already full");
@@ -8854,11 +8864,15 @@ let selectedSlot = 0;
 let fps = 0;
 let toastTimer = 0;
 
-/** Tooltip text for a stack, including the durability left on tools and armour. */
+/**
+ * Tooltip text for a stack: the name, a note on anything a furnace still owes
+ * it, and the durability left on tools and armour.
+ */
 function stackTitle(stack) {
   if (!stack) return '';
   const item = ITEMS.get(stack.id);
-  const name = item ? item.name : stack.id;
+  let name = item ? item.name : stack.id;
+  if (item && item.needsCooking) name += ' — needs cooking in a furnace';
   const info = stackDurability(stack);
   return info ? name + ' — ' + info.current + '/' + info.max : name;
 }
