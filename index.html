@@ -8008,13 +8008,22 @@ function updateHealth(dt) {
   }
 }
 
-function mobBounds(mob) {
-  const half = mob.def.width / 2;
+/**
+ * Picking uses a slightly larger box than the collision box. A zombie's
+ * outstretched arms, ears and head all sit outside its 0.62-wide body, and at
+ * arm's length they cover a big part of the screen. Without the padding a
+ * point-blank click on what looks like the mob goes through it, and a mob
+ * standing flush against a wall loses the tie with the block behind it.
+ */
+const MOB_PICK_PADDING = 0.12;
+
+function mobBounds(mob, padding = 0) {
+  const half = mob.def.width / 2 + padding;
   return {
     minX: mob.pos.x - half,
     maxX: mob.pos.x + half,
-    minY: mob.pos.y,
-    maxY: mob.pos.y + mob.def.height,
+    minY: mob.pos.y - padding,
+    maxY: mob.pos.y + mob.def.height + padding,
     minZ: mob.pos.z - half,
     maxZ: mob.pos.z + half
   };
@@ -8022,7 +8031,7 @@ function mobBounds(mob) {
 
 /** Slab ray/AABB intersection; returns the entry distance or null. */
 function rayMobDistance(origin, direction, mob, maxDistance) {
-  const box = mobBounds(mob);
+  const box = mobBounds(mob, MOB_PICK_PADDING);
   let tMin = 0;
   let tMax = maxDistance;
 
