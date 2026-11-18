@@ -584,7 +584,8 @@ const SKY_HORIZON = 0xc3dbef;
 const FOG_COLOR = 0xc3dbef;
 
 const LIGHT_MAX = 15;
-const DAY_LENGTH_SECONDS = 720;
+/** A full day is 20 real minutes, the same length Minecraft runs on. */
+const DAY_LENGTH_SECONDS = 1200;
 const DAY_START = 0.22;
 
 const B = Object.freeze({
@@ -11665,7 +11666,8 @@ window.__voxelcraft = {
       clock: formatClock(),
       daylight,
       night: isNight(),
-      timeScale
+      timeScale,
+      dayLength: DAY_LENGTH_SECONDS
     };
   },
   setTimeScale(scale) {
@@ -11733,7 +11735,8 @@ window.__voxelcraft = {
         clock: formatClock(),
         daylight,
         night: isNight(),
-        timeScale
+        timeScale,
+        dayLength: DAY_LENGTH_SECONDS
       },
       health: {
         points: player.health,

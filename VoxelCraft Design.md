@@ -351,6 +351,7 @@ Add:
 
 Implement a slow day/night cycle:
 
+- One full cycle takes 20 real minutes, the length Minecraft runs on: the sun is up about 10 minutes and down about 10, with roughly half a minute of dusk and dawn at each end
 - Sky color transitions from daytime blue to sunset colors to dark navy/black
 - Directional light rotates to simulate the sun
 - Ambient light dims at night
