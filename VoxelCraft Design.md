@@ -184,7 +184,7 @@ Collision detection must work across chunk boundaries. The player has health:
 - 10 hearts (20 health points) shown as a heart bar above the hotbar
 - Damage from hostile mobs and fall damage from falls greater than 3 blocks
 - Health slowly regenerates over time
-- On death, show a respawn screen and respawn the player at the spawn point with full health; inventory may be kept for simplicity
+- On death, show a respawn screen and respawn the player at the spawn point with full health and a full hunger bar; inventory may be kept for simplicity
 
 ## Block interaction
 
@@ -606,39 +606,68 @@ above the hunger bar.
 
 ### Hunger
 
-Twenty points, no saturation. Every exhaustion point costs one bite. Health only
-regenerates at hunger 18 or above, and an empty bar costs half a heart every four seconds
-and will kill you. A bite takes 0.6 seconds.
+Twenty points of food, with Minecraft's hidden saturation counter sitting on top of it.
+Exhaustion spends saturation first and food only once the cushion is gone, and it has to
+reach 4.0 before it spends either of them. Health only regenerates on a nearly full stomach,
+and an empty bar costs half a heart every four seconds and will kill you. A bite takes 0.6
+seconds. Death ends the empty stomach: respawn fills the bar back to 20, sets Minecraft's own
+five points of saturation, and zeroes the exhaustion counter, so hunger can kill you once but
+never twice in a row.
 
 | Constant | Value |
 | --- | --- |
 | Hunger maximum | 20 points |
-| Health regenerates at | hunger 18 or above |
-| Starvation | half a heart every 4 seconds at hunger 0 |
+| Saturation | hidden, 0-20, never above the food it cushions |
+| Exhaustion per point spent | 4.0, saturation before food |
+| Health regenerates at | hunger 18 or above, or any saturation left |
+| Slow heal | half a heart every 4 seconds, 6 exhaustion each |
+| Saturation boost | half a heart every 0.5 seconds at a full bar, 1.5 saturation each |
+| Wait after a hit | 6 seconds, on the slow heal only |
+| Starvation | half a heart every 4 seconds at hunger 0, straight through armour |
 | Time per bite | 0.6 seconds |
+| Food on respawn | 20 points, 5 saturation, exhaustion 0 |
 
-What each activity costs, in exhaustion points:
+Saturation has no bar of its own, so the food bar jitters whenever there is food left and no
+cushion under it, which is Minecraft's only tell. It is also the reason to eat early: a meal
+at a half-empty stomach wastes most of its saturation, and a full bar refuses a bite even
+with nothing cushioning it, which leaves only the four-second heal until something is eaten
+at 19 or below.
+
+The two heal paths never run at once. At a full bar with saturation left, the half-second
+boost pays for the health and the slow heal waits, which is the only way a steak's 12.8
+saturation is worth the 8⅓ hearts it is worth in Minecraft.
+
+What each activity costs, in exhaustion points — Minecraft Java 1.21's table, unchanged:
 
 | Activity | Exhaustion |
 | --- | --- |
-| Walking | 0.004 per block |
-| Sprinting | 0.02 per block |
-| Jumping | 0.1 per jump |
-| Mining a block | 0.05 |
-| Attacking | 0.1 per swing |
+| Walking | nothing |
+| Sprinting | 0.1 per block |
+| Swimming | 0.01 per block |
+| Jumping | 0.05 per jump |
+| Sprint-jumping | 0.2 per jump |
+| Mining a block | 0.005 |
+| Attacking | 0.1 per landed swing |
 | Taking a hit | 0.1 |
-| Regenerating health | 0.1 per half heart |
+| Regenerating health | 6.0 per half heart |
 
-| Food | Hunger restored |
-| --- | --- |
-| Wheat | 2 |
-| Bread | 5 |
-| Steak | 8 |
+Walking is free, so exploring costs nothing and a meal buys work rather than footsteps. There
+is no sprint-swimming here, so water always charges the swim rate. Mending is the dearest
+thing in the game by a wide margin: twelve health back is 72 exhaustion, more than a full day
+of sprinting, mining, swinging and taking hits put together.
+
+| Food | Hunger | Saturation |
+| --- | --- | --- |
+| Wheat | 2 | 1.2 |
+| Bread | 5 | 6.0 |
+| Steak | 8 | 12.8 |
 
 Raw meat is not on that list, because it feeds nobody as it comes. Cows, pigs and sheep drop
 Raw Beef, and only a furnace turns it into steak: right-clicking it costs the click, not the
 item, and answers `Raw Beef needs cooking in a furnace` while there is room left to eat. The
-slot tooltip carries the same reminder.
+slot tooltip carries the same reminder. Minecraft gives raw beef 3 food and 1.8 saturation
+and relies on hunger alone to push players toward a cooker; withholding both is what makes
+the furnace the only road past it here.
 
 ### Wheat
 
@@ -681,7 +710,7 @@ stack, above the sound state.
 
 ### Notes for whoever picks this up next
 
-- The save format is schema 3 under the key `voxelcraft:world:v3`. v1 and v2 saves are deliberately not migrated: the game starts a fresh world and says so on screen.
+- The save format is schema 4 under the key `voxelcraft:world:v4`. Older saves are deliberately not migrated: the game starts a fresh world and says so on screen. v1 and v2 fell to the furnace update, and v3 to the hunger parity pass below.
 - New block ids are appended from 16 upwards and never renumbered, enforced by a runtime assertion. The eight wheat stages are block ids 21–28 rather than block entities, so crop stage survives chunk unloads with no change to the save format.
 - `window.__voxelcraft` gained `breakTime`, `mine`, `give`, `durability`, `hunger`, `setHunger`, `eat`, `armour`, `equip`, `openFurnace`, `furnace`, `furnaceList`, `setFurnaceSlots`, `smelting`, `tillDirt`, `plantSeed`, `crops`, `growCrops`, `setSprint` and `sprintState`; `stats()` reports `sprintLatched` next to `sprinting`. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
 - Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, sprint is tapped on and off instead of held, and any world saved before this milestone resets.
@@ -718,7 +747,7 @@ the animal is not harmed, bleats, and trots away bare.
 
 | Shearing | Result |
 | --- | --- |
-| Woolly sheep, either button | 1–3 wool, sheep becomes shorn, 1 durability, 0.05 exhaustion, toast `Sheared` |
+| Woolly sheep, either button | 1–3 wool, sheep becomes shorn, 1 durability, 0.005 exhaustion, toast `Sheared` |
 | Already shorn, either button | toast `That sheep is already sheared`, no durability spent |
 | Cow, pig, chicken, creeper — left button | takes the swing: 2 damage, 2 durability, as any other tool |
 | Cow, pig, chicken, creeper — right button | toast `Nothing to shear here`, nothing spent, and the click is not handed on to placing |
@@ -786,7 +815,7 @@ Right-clicking either half of a bed claims it, whatever else is being held.
 | Daytime, or the hour before dusk | spawn point moves to the foot cell, toast `Spawn point set`, clock untouched |
 | Night | spawn point moves, the screen fades to black, the clock is set to `DAY_START` (0.22, 11:16) and the toast reads `Good morning` |
 | Second click while falling asleep | spawn point moves again, the night is not skipped twice |
-| Death afterwards | respawn on the bed with full health and, as ever, the inventory kept |
+| Death afterwards | respawn on the bed with full health, a full hunger bar and, as ever, the inventory kept |
 
 Night is the same test the sky already uses: the sun below −0.04. The fade takes 0.7 seconds
 out and the world wakes 1.4 seconds after it goes dark. It is a blackout rather than a
@@ -927,3 +956,197 @@ slots cost nothing measurable.
 - Accepted behaviour changes: idle hostiles now vanish well before 96 blocks, so a cave the player
   walks away from empties out instead of seasoning the walk back; and animals are capped at 16
   rather than 20, so a very green valley now holds a thinner herd than it used to.
+
+---
+
+## Respawn feeding addendum — hunger can kill you once
+
+The report was that death by hunger was unfair: the player starved at night, respawned at full
+health with an empty bar, and lost health faster than a cow could be found, cooked and eaten. The
+rate was not the problem. Where the food came back was.
+
+### What the report was and was not
+
+| Claim | Measured |
+| --- | --- |
+| "Health drains too quickly" | Not the bug. The real starvation clock, run through `tick()`: first bite at 4 s, 1 HP each, 20 bites, death at 80.5 s from full health. That is Minecraft's Hard difficulty, unchanged |
+| "I respawned with hunger at 0" | True, and the whole bug: `respawnPlayer()` restored health, velocity and timers but never touched `player.hunger`, so an empty stomach restarted its 80-second countdown at the spawn point |
+| Minecraft | resets food to 20 (and saturation to 5) on every respawn. Starvation also floors at 1 HP on Normal and 10 HP on Easy, so only Hard ever kills. This game keeps the lethal floor on purpose |
+
+### What changed
+
+`respawnPlayer()` now fills the bar back to `HUNGER_MAX`, zeroes `player.exhaustion` so leftover
+exhaustion cannot spend a bite off a stomach that was just filled, redraws the hunger bar, and
+marks the save dirty. One edit, and every respawn path goes through it: the respawn button, the `A`
+key, the gamepad A button and `__voxelcraft.respawn()`.
+
+The save mark is load-bearing rather than tidy. A death and a respawn change nothing in the world,
+so the save was still clean afterwards: starve, respawn, close the tab before the next autosave, and
+the save came back holding the empty bar the death had earned.
+
+| Situation | Result |
+| --- | --- |
+| Starved to death for real, then respawned | 20 food, 0 exhaustion, 20 health, 10 of 10 haunches lit; 20 s standing at the spawn point costs nothing |
+| Leftover exhaustion at death (0.1 from a hit) | 0 after respawn |
+| Clean save holding hunger 0 → die → respawn | `saveInfo().dirty` flips to true, and a reload boots at 20 food with the bar drawn full |
+| Clean save holding hunger 7, no death | boots at 7: respawning feeds, loading a save still does not |
+
+### Notes for whoever picks this up next
+
+- Two deliberate divergences from Minecraft survived what came after this. Armour no longer
+  absorbs starvation damage — the hunger parity addendum below routes that bite straight
+  through the plate — and nothing still stops a sprint below hunger 7, where Minecraft does.
+  Every other divergence listed here was closed by that pass: there is now a saturation buffer,
+  exhaustion spends a bite at Minecraft's 4.0 rather than 1.0, and mining, jumping, attacking
+  and walking are priced the way Minecraft prices them. The starvation clock measured above is
+  untouched, and still correct.
+- Found while screenshotting this, not fixed: `#armor.hidden` has no CSS rule, while every other
+  `.hidden` in the file does. `renderArmourBar` sets the class, but the empty row still paints as
+  ten dark shields above the food bar whenever nothing is worn.
+
+
+---
+
+## Hunger parity addendum — Minecraft's stomach, whole
+
+Recorded after the fact. Hunger already had the right shape and the wrong arithmetic: a
+20-point bar, a private price list, and an exhaustion counter that spent a whole bite for every
+1.0 it accumulated. Walking cost food, a sword fight cost a fortune, and eating was a chore to
+grind through rather than a decision about when to eat. This pass moves the economy onto
+Minecraft Java 1.21's numbers and adds the one counter that was missing. Content the game does
+not have — the hunger effect, pufferfish, chorus fruit, a spear's Lunge — is not priced.
+
+### The counter that was missing
+
+`player.saturation` is Minecraft's hidden buffer, on the same 0-20 scale, never allowed above
+the food it cushions. Exhaustion spends it before it spends food, so a good meal is what carries
+a busy day and an empty cushion is what makes the next hard job cost food. A new world and every
+respawn start at food 20 with saturation 5, which is Minecraft's own starting cushion.
+
+Saturation has no bar of its own, so the food bar jitters whenever food is left and the cushion
+is not: the CSS animation is on `#hunger.jitter`, toggled by `renderHunger()`, and it is the
+player's only tell. `__voxelcraft.hunger().jittering` reads it back.
+
+The ordering matters more than the numbers. Food now only moves once saturation is gone, which
+turns eating into timing: a steak eaten at 3 food loses 1.8 of its saturation to the cap, and a
+full bar refuses a bite outright even with nothing cushioning it, which leaves the player on the
+four-second heal until something is eaten at 19 or below.
+
+### Two ways to mend, and never both at once
+
+- **Saturation boost.** At a completely full bar with saturation left, half a heart every half
+  second, 1.5 saturation each. Eight times the speed of the slow heal, and paid out of a pocket
+  food never sees.
+- **Slow heal.** Half a heart every four seconds while the bar is at 18 or above, or while any
+  saturation is left at a lower bar, and 6 exhaustion each — 1.5 saturation while there is any,
+  otherwise 1.5 food.
+
+The boost takes precedence and returns before the slow heal is considered. That is not tidiness:
+a steak's 12.8 saturation is worth exactly 8⅓ hearts in Minecraft, which only works out arithmetically
+if the boost is the one paying for them. Twelve health back on the slow heal is 72 exhaustion,
+which is more food than a whole day of work, and is the point.
+
+A hit still starts a six-second wait, but it gates the slow heal only. Minecraft resets its own
+food clock on damage without pausing the boost, and so does this.
+
+Starvation, at hunger 0: half a heart every four seconds, straight through any armour, charging
+no exhaustion — Minecraft only exhausts a player for damage armour was in a position to block.
+There is no difficulty setting and no floor to stop at, so the bar can kill you, which is
+Minecraft's Hard difficulty on purpose and keeps `VoxelCraft Design`'s own promise that an empty
+hunger bar is a slow way to die.
+
+### What everything costs, and how each figure was read
+
+Values are Minecraft's. Each one was measured through `__voxelcraft` against the live player,
+summing distance frame by frame because exhaustion is charged frame by frame.
+
+| Action | Minecraft | Measured |
+| --- | --- | --- |
+| Walking | free | 11.66 blocks walked, 0.000 exhaustion |
+| Sprinting | 0.1 per block | 20.54 blocks, 2.054 |
+| Swimming | 0.01 per block | 30.48 m over 2,734 frames, 0.305 |
+| Jumping | 0.05 per jump | one frame, 0.050 |
+| Sprint-jumping | 0.2 per jump | one frame, 0.200 |
+| Mining a block | 0.005 | three dirt blocks, 0.005 each |
+| Landed swing | 0.1 | 25 swings, 2.500 between them |
+| Swing at nothing | nothing | 0.000 |
+| Taking a hit | 0.1 | 0.1, armour wearing as usual |
+| Starvation bite | nothing, and no armour | 0.000, durability untouched |
+| Slow heal | 6.0 per half heart | two health mended, food 20 → 17 |
+| Threshold | 4.0 | 40 hits spent four points, saturation first |
+
+Swimming was the trap: a jump held against the seabed is a ground jump and charges 0.05, so the
+figures above hold forward down and never touch jump. Walking is free, which means exploring
+costs nothing and a meal buys work rather than footsteps.
+
+### A worked day, end to end
+
+Sprinting 302 m, swimming 8 m, mining 100 blocks, 40 jumps and 17 hits taken, starting from a
+fresh world's stomach of 20 food and 5 saturation:
+
+| | Exhaustion |
+| --- | --- |
+| Sprint 302 m | 30.25 |
+| Swim 8 m | 0.08 |
+| Mine 100 blocks | 0.50 |
+| 40 jumps | 2.00 |
+| 17 hits | 1.70 |
+| **Expected** | **34.62** |
+| **Measured** | **34.61** |
+
+Eight points spent: the five of saturation first, then three of food, ending on food 17 with
+3.088 exhaustion banked and the bar jittering. One steak covers that day twice over — 8 food
+plus 12.8 saturation is 20.8 points, or 83 exhaustion — which is what makes hunger a planning
+problem rather than a tax.
+
+Then, bleeding on that food 17: nothing. Twelve seconds of a wounded player at hunger 17 with no
+saturation left mends exactly nothing, because the slow heal needs 18 or a cushion. One steak
+brings the bar to 20 — four points of it wasted, which is the whole argument for eating early —
+and its saturation mends nine health in four and a half seconds, after which the slow heal takes
+two more health and stalls at 19 when the bar drops through 17. The tenth point needs another
+bite. That sequence is the economy working as designed, not a bug.
+
+### Save format
+
+Schema 4 under `voxelcraft:world:v4`, because saturation has no honest default for a stomach
+that is already half empty and every food value changed underneath it. v3 joins v1 and v2 as a
+world that stays in storage, cannot be read, and gets announced: such a save boots as a new
+world with `A world from an older version exists and can't be loaded`.
+
+Both counters are pulled back inside their invariants on the way in: saturation is clamped to the
+food it cushions, and exhaustion that arrives at or past a whole bite, or below zero, starts over
+rather than spending food the instant the world opens. A stored stomach of hunger 13 / saturation
+9.5 / exhaustion 7.4 boots as hunger 13 / saturation 9.5 / exhaustion 0.
+
+### Divergences left in place on purpose
+
+- **Raw Beef feeds nobody**, where Minecraft gives it 3 food and 1.8 saturation. Minecraft trusts
+  hunger alone to push players toward a cooker; here the furnace is already the gate and taking
+  both values keeps it that way.
+- **Wheat is edible**, at 2 food and 1.2 saturation, where Minecraft has no edible wheat item at
+  all. Farming has to feed you or it is decoration; the food value is this game's own and the
+  saturation borrows Minecraft's 2-food tier.
+- **Sprinting is never gated by hunger.** Minecraft stops a sprint at 6 food or less and drops the
+  latch. Nothing here does, and it was measured: hunger 4, latch armed, sprint runs and spends
+  0.822 exhaustion a second. The `Too hungry to sprint` row in the sprint-latch table above
+  describes a floor this game has never had.
+- **No difficulty setting**, so starvation is always lethal with no 1 HP floor, and the six-second
+  post-hit wait stays six seconds where Minecraft's food clock uses ten.
+- **No sprint-swimming**, so water always charges the swim rate rather than the sprint rate.
+- **Shearing charges mining's 0.005**, and the row for it in the shears table used to say 0.05.
+
+### Notes for whoever picks this up next
+
+- `__voxelcraft.hunger()` gained `saturation`, `biteCost` and `jittering`; `setSaturation()` is
+  new; `setHunger()` drags saturation down with a lowered bar instead of leaving an invisible
+  cushion on an empty stomach; `stats().health` reports saturation next to food and exhaustion.
+- `simulate()` runs `updatePlayer` and nothing else, so the swing cooldown never cools under it:
+  25 swings in a row need `player.attackCooldown = 0` between them, or 24 of them quietly miss and
+  charge nothing. `tick()` runs the whole loop, which is a trap of its own — a wounded player at a
+  full bar with saturation left mends through the boost mid-measurement and burns the very
+  saturation being counted. Pin health, or make movement the only exhaustion source.
+- Judge distance per frame. Endpoint distance under-reads a curving run badly enough to make a
+  correct 0.1-per-block rate look like 0.45, and a run that wanders into water pays the swim rate
+  for those metres, so track `player.inWater` per frame or the totals will not close.
+- Still true and still unfixed: `#armor.hidden` has no CSS rule, so an unworn armour row paints
+  ten dark shields above the food bar.
