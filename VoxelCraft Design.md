@@ -676,3 +676,134 @@ stack, above the sound state.
 - New block ids are appended from 16 upwards and never renumbered, enforced by a runtime assertion. The eight wheat stages are block ids 21–28 rather than block entities, so crop stage survives chunk unloads with no change to the save format.
 - `window.__voxelcraft` gained `breakTime`, `mine`, `give`, `durability`, `hunger`, `setHunger`, `eat`, `armour`, `equip`, `openFurnace`, `furnace`, `furnaceList`, `setFurnaceSlots`, `smelting`, `tillDirt`, `plantSeed`, `crops`, `growCrops`, `setSprint` and `sprintState`; `stats()` reports `sprintLatched` next to `sprinting`. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
 - Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, sprint is tapped on and off instead of held, and any world saved before this milestone resets.
+
+---
+
+## Milestone 12 addendum — beds and shears
+
+Recorded after the fact. Milestone 12 gives the world somewhere to wake up in and a reason to
+keep a flock: shears take wool off a sheep, that wool becomes a bed, and a bed owns the respawn
+point. After dark a bed also ends the night. Everything below is still the same single HTML
+file, with textures, icons and sounds generated in code as before.
+
+### Shearing
+
+Shears are the first tool with no tier. They match no block's `tool`, so mining is untouched:
+a log takes the same three seconds with shears as with a bare hand, and a swing that breaks
+something spends none of their durability.
+
+| Shears | Value |
+| --- | --- |
+| Craft | 2 iron ingots, either diagonal |
+| Durability | 64 uses, one per sheep |
+| Swing damage | 2, the improvised-weapon floor any non-sword tool swings at |
+| Wear per blow that lands | 2 |
+| Stack size | 1 |
+| Mining speed | 1, the same as a hand |
+| Wears while mining | never |
+
+Right-clicking with shears in hand and the crosshair on a sheep takes its fleece off in one
+go. The animal is not harmed, bleats, and trots away bare.
+
+| Shearing a sheep | Result |
+| --- | --- |
+| Woolly sheep | 1–3 wool, sheep becomes shorn, 1 durability, 0.05 exhaustion |
+| Already shorn | toast `That sheep is already sheared`, no durability spent |
+| Cow, pig, chicken, creeper | shears do nothing, the right-click falls through to placing |
+| Sheared sheep killed | meat only |
+| Woolly sheep killed | meat plus 1 wool |
+
+A shorn sheep stays shorn: fleece never grows back, so a fleecy hillside is worth fencing.
+The bare model is rebuilt from the same parts minus the fleece — seven pieces become six, the
+body drops from 0.86 × 0.74 × 1.16 to 0.66 × 0.52 × 0.94, and a new `sheep_skin` texture
+replaces the wool on the body and legs while the face keeps its own texture. Wool has no other
+use yet, which is the point: it is the bed's ingredient.
+
+### The bed
+
+A bed is one item across two cells, the arrangement the door already uses. The foot cell takes
+the block the player aims at, the head cell sits one step along the facing, and the facing is
+pointed away from whoever places it so the pillow always lands at the far end. Both cells carry
+the facing, so a bed keeps its direction across a save.
+
+| Bed | Value |
+| --- | --- |
+| Block ids | 33 foot, 34 head, appended after the door's 29–32 |
+| Hardness | 0.3, correct tool axe |
+| Drops | 1 bed from either half; the half that was not broken is cleared outright, so a bed never pays out twice |
+| Collision | full solid cell, both halves — you walk on a bed, not through it |
+| Light | none |
+| Sound | wood |
+| New atlas tiles | `bed_top`, `bed_side`, `bed_end`, `bed_pillow` |
+
+Plotted as geometry rather than cubes: a mattress slab half a block tall across both cells,
+blanket red on the top and along the length with a wooden rail along the frame, plank boards
+across the two ends, and a white pillow riding the far end of the head cell a little above the
+mattress. It is drawn in the cutout pass, which is double-sided like a door leaf, so the bed
+reads the same from the foot and from the head.
+
+| Placing a bed | Result |
+| --- | --- |
+| Solid ground under both cells, head cell clear | bed laid, one item spent |
+| Air, water or a block over the ground | toast `Beds need solid ground beneath them` |
+| Head cell occupied | toast `Needs a clear cell beside for the bed` |
+| Either cell inside the player | toast `Not enough room to place that` |
+
+### Sleeping, and who owns the respawn point
+
+Right-clicking either half of a bed claims it, whatever else is being held.
+
+| Situation | Result |
+| --- | --- |
+| Daytime, or the hour before dusk | spawn point moves to the foot cell, toast `Spawn point set`, clock untouched |
+| Night | spawn point moves, the screen fades to black, the clock is set to `DAY_START` (0.22, 11:16) and the toast reads `Good morning` |
+| Second click while falling asleep | spawn point moves again, the night is not skipped twice |
+| Death afterwards | respawn on the bed with full health and, as ever, the inventory kept |
+
+Night is the same test the sky already uses: the sun below −0.04. The fade takes 0.7 seconds
+out and the world wakes 1.4 seconds after it goes dark. It is a blackout rather than a
+fast-forward: the hours in between are never run through, the clock is simply set to `DAY_START`
+when the world wakes. Nothing else is paused either — mobs within the usual 96 blocks keep
+walking, so anything that was close when you lay down is still close when you get up. Because a
+bed is solid all the way up, waking and dying both put the player standing on top of it.
+
+The respawn point outlives the bed that set it. The save gained a `spawn: { x, z }` field beside
+the player's own position; it is optional, so a world saved before this milestone loads
+unchanged and keeps the world spawn. Schema stays 3 under `voxelcraft:world:v3`.
+
+### Two recipes
+
+| Result | Pattern | Grid |
+| --- | --- | --- |
+| Red Bed ×1 | `WWW` / `PPP` — three wool over three planks | 3×3 |
+| Shears ×1 | `I.` / `.I`, and `.I` / `I.` — two ingots point to point | 2×2 |
+
+The matcher reads a pattern exactly and never mirrors one, so shears are written down twice,
+once for each diagonal. Both come out of the 2×2 grid, which means a miner with two ingots and
+no table can arm themselves for a flock.
+
+### Notes for whoever picks this up next
+
+- `tryUseSelectedItem` now runs in this order: eat, shear a mob, then whatever right-clicking a
+  block does. Shearing is the only use aimed at an entity rather than a cell, and it wins over
+  placement, so a sheep standing in a doorway cannot be accidentally built over.
+- Beds clear their partner cell in both `breakBlockAt` and `World.setBlocksBatch`, the same hooks
+  the door uses, so an explosion, a piston-less mass set, or a pickaxe on the pillow all take the
+  whole bed with them.
+- `window.__voxelcraft` gained `use()`, which right-clicks whatever the crosshair is on, and
+  `mobInfo` now reports `sheared`. Every claim in this addendum was asserted through that API:
+  placement and the facing it stores, breaking either half for exactly one bed, a night sleep
+  that rolled the clock from 02:24 to 11:16, respawn landing on the bed at full health, shearing
+  for 2 wool and one point of durability with the model swap verified from the scene graph, death
+  drops for both a fleecy and a shorn sheep, and a save-reload round trip that brought back both
+  cells, their facing, and the spawn point.
+- Read the effect of a bed rather than its return value: right-clicking a bed, a door or a table
+  answers `false`, because those paths claim, toggle or open instead of placing. A claimed bed
+  shows up in `spawnColumn` and, after dark, in the clock. Shearing does answer `true`, including
+  the already-sheared refusal, so durability is the thing to watch there.
+- The mouse path was driven separately from the API, because fallback controls treat a right
+  drag as looking and a right click as using: a drag of 60 px turned the camera 0.19 radians and
+  left the spawn point alone, while the same click without movement set it.
+- Accepted behaviour changes: sheep give wool when killed as well as when shorn, fleece never
+  regrows, sleeping always ends at 11:16 rather than at sunrise, and the respawn point sits on
+  top of the bed rather than in the cell beside it.

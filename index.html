@@ -376,6 +376,13 @@
     opacity: 0; transition: opacity 0.22s ease-out;
   }
 
+  #sleep-fade {
+    position: fixed; inset: 0; z-index: 34; pointer-events: none;
+    background: #04050a;
+    opacity: 0; transition: opacity 0.7s ease-in;
+  }
+  #sleep-fade.active { opacity: 1; transition: opacity 0.7s ease-in; }
+
   #death-screen {
     position: fixed; inset: 0; z-index: 35;
     display: flex; align-items: center; justify-content: center;
@@ -465,6 +472,7 @@
 </div>
 <div id="cursor-stack" class="hidden"><div class="icon"></div><span class="count"></span></div>
 <div id="damage-flash"></div>
+<div id="sleep-fade"></div>
 
 <div id="death-screen" class="hidden">
   <div class="panel">
@@ -477,14 +485,14 @@
 <div id="overlay">
   <div class="panel">
     <h1>VOXELCRAFT</h1>
-    <p class="subtitle">Milestone 11 &middot; Tools, Furnaces &amp; Farming</p>
+    <p class="subtitle">Milestone 12 &middot; Beds &amp; Shears</p>
     <div class="controls">
       <div><kbd>Mouse</kbd><span>Look around</span></div>
       <div><kbd>W A S D</kbd><span>Walk</span></div>
       <div><kbd>Space</kbd><span>Jump / swim up / climb out</span></div>
       <div><kbd>Shift</kbd><span>Sprint on / off</span></div>
       <div><kbd>Left click</kbd><span>Break blocks / attack mobs</span></div>
-      <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow</span></div>
+      <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow &middot; shear &middot; sleep</span></div>
       <div><kbd>1&ndash;9</kbd><span>Select hotbar slot</span></div>
       <div><kbd>Wheel</kbd><span>Cycle hotbar</span></div>
       <div><kbd>E</kbd><span>Inventory &amp; crafting</span></div>
@@ -601,7 +609,10 @@ const B = Object.freeze({
   // A door spans two cells and keeps its open and closed states in separate
   // ids, the same trick the lit furnace uses. The open ids are not solid,
   // which is what makes a doorway walk-through.
-  DOOR: 29, DOOR_TOP: 30, DOOR_OPEN: 31, DOOR_OPEN_TOP: 32
+  DOOR: 29, DOOR_TOP: 30, DOOR_OPEN: 31, DOOR_OPEN_TOP: 32,
+  // A bed spans two cells side by side, foot first along the facing it was
+  // placed with. Like the door it is one item across two ids.
+  BED: 33, BED_HEAD: 34
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -823,6 +834,24 @@ BLOCKS.push(
     solid: false, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
     facings: true, door: 'upper', doorOpen: true,
     drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
+  },
+  // A bed is one item across two cells: the foot where it is placed and a
+  // head cell one step along the facing. Either half pays the item out, and
+  // the half that is not broken is cleared outright rather than mined, so a
+  // bed never yields two beds. Same arrangement as the door.
+  {
+    id: B.BED, key: 'bed', name: 'Red Bed',
+    tiles: { top: 'bed_top', bottom: 'planks', side: 'bed_side' },
+    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'axe',
+    facings: true, bed: 'foot',
+    drops: [{ item: 'bed', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.BED_HEAD, key: 'bed_head', name: 'Red Bed',
+    tiles: { top: 'bed_top', bottom: 'planks', side: 'bed_side' },
+    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'axe',
+    facings: true, bed: 'head',
+    drops: [{ item: 'bed', min: 1, max: 1 }], placeable: false
   }
 );
 
@@ -839,6 +868,7 @@ for (const block of BLOCKS) {
   block.crop ??= null;
   block.door ??= null;
   block.doorOpen ??= false;
+  block.bed ??= null;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }
@@ -877,6 +907,10 @@ defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5 });
 // the stage they plant as rather than a block id of their own.
 defineItem({ id: 'wheat_seeds', name: 'Wheat Seeds', kind: 'seed', stack: 64, plants: B.WHEAT_0 });
 defineItem({ id: 'feather', name: 'Feather', kind: 'material', stack: 64 });
+defineItem({ id: 'wool', name: 'Wool', kind: 'material', stack: 64 });
+// Shears are the one tool with no tier: they mine nothing, swing for next to
+// nothing, and exist to take wool off a sheep without hurting it.
+defineItem({ id: 'shears', name: 'Shears', kind: 'tool', tool: 'shears', stack: 1, durability: 64, damage: 1 });
 
 /* ---------- Item stacks ---------- */
 
@@ -1005,7 +1039,8 @@ const TILE_ORDER = [
   'planks', 'leaves', 'snow', 'crafting_table_top',
   'crafting_table_side', 'torch', 'bedrock',
   'furnace_top', 'furnace_side', 'furnace_front', 'furnace_front_lit',
-  'glass', 'farmland_top', 'door_upper', 'door_lower'
+  'glass', 'farmland_top', 'door_upper', 'door_lower',
+  'bed_top', 'bed_side', 'bed_end', 'bed_pillow'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 // One tile per wheat growth stage, painted in a loop like the crack stages.
@@ -1617,6 +1652,73 @@ function generateAtlas() {
   painters.door_lower = (paint, rand) => paintDoorLeaf(paint, rand, false);
   painters.door_upper = (paint, rand) => paintDoorLeaf(paint, rand, true);
 
+  // A bed reads in three tiles: a red blanket for the top and long sides,
+  // a plain wooden board for the foot and head ends, and a white pillow for
+  // the head cell. The blanket keeps a fold line so the slab has a grain.
+  const BED_BLANKET = [178, 46, 46];
+  const BED_WOOD = [122, 90, 54];
+  function paintBedSide(paint, rand) {
+    // Wooden rail along the bottom, blanket over the rest.
+    for (let y = 12; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, BED_WOOD, 5));
+    }
+    for (let y = 1; y < 12; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, BED_BLANKET, 7));
+    }
+    for (let x = 0; x < 16; x++) paint(x, 12, vary(rand, [142, 106, 64], 4));
+    // A hem where the blanket hangs over the frame, and one fold seam.
+    for (let x = 0; x < 16; x++) paint(x, 11, vary(rand, [152, 36, 38], 4));
+    for (let y = 1; y < 11; y++) paint(11, y, vary(rand, [156, 38, 40], 4));
+    for (let x = 0; x < 16; x++) paint(x, 0, vary(rand, BED_WOOD, 5));
+  }
+  painters.bed_side = paintBedSide;
+
+  function paintBedTop(paint, rand) {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, BED_BLANKET, 7));
+    }
+    // Wooden rims at the two ends of the cell, fold across the middle.
+    for (let x = 0; x < 16; x++) {
+      paint(x, 0, vary(rand, BED_WOOD, 5));
+      paint(x, 15, vary(rand, BED_WOOD, 5));
+    }
+    for (let y = 1; y < 15; y++) paint(11, y, vary(rand, [156, 38, 40], 4));
+    for (let y = 1; y < 15; y++) paint(3, y, vary(rand, [196, 60, 56], 5));
+  }
+  painters.bed_top = paintBedTop;
+
+  function paintBedEnd(paint, rand) {
+    // Vertical plank boards with a rail across the top, like a small fence.
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, BED_WOOD, 5));
+    }
+    for (let x = 3; x < 16; x += 4) {
+      for (let y = 0; y < 16; y++) paint(x, y, vary(rand, [100, 72, 42], 4));
+    }
+    for (let x = 0; x < 16; x++) {
+      paint(x, 0, vary(rand, [142, 106, 64], 4));
+      paint(x, 1, vary(rand, [142, 106, 64], 4));
+    }
+  }
+  painters.bed_end = paintBedEnd;
+
+  function paintBedPillow(paint, rand) {
+    // A plump white pillow: pale centre, soft grey edges, a seam near the top.
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, [214, 216, 222], 6));
+    }
+    for (let x = 0; x < 16; x++) {
+      paint(x, 0, vary(rand, [188, 190, 198], 5));
+      paint(x, 1, vary(rand, [232, 234, 240], 5));
+    }
+    for (let y = 0; y < 16; y++) {
+      paint(0, y, vary(rand, [188, 190, 198], 5));
+      paint(15, y, vary(rand, [188, 190, 198], 5));
+    }
+    for (let x = 2; x < 14; x++) paint(x, 5, vary(rand, [240, 242, 246], 4));
+  }
+  painters.bed_pillow = paintBedPillow;
+
   for (const name of TILE_ORDER) {
     const index = TILES[name];
     const tx = index % ATLAS_GRID;
@@ -2016,6 +2118,22 @@ function makeBlockItemIcon(block) {
     return canvas;
   }
 
+  // A bed item is a little side elevation: the blanket along the length, the
+  // top edge above it, and a pillow riding the head end.
+  if (block.bed) {
+    const tile = (name) => [
+      (TILES[name] % ATLAS_GRID) * ATLAS_TILE,
+      ((TILES[name] / ATLAS_GRID) | 0) * ATLAS_TILE
+    ];
+    let [sx, sy] = tile('bed_side');
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 4, 30, 56, 22);
+    [sx, sy] = tile('bed_top');
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 4, 22, 56, 10);
+    [sx, sy] = tile('bed_pillow');
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 38, 12, 20, 12);
+    return canvas;
+  }
+
   drawBlockFace(ctx, block.tileSide, 3, 20, 29, 14, 0, 25, 'rgba(0,0,0,0.18)');
   drawBlockFace(ctx, block.tileSide, 32, 34, 29, -14, 0, 25, 'rgba(0,0,0,0.32)');
   drawBlockFace(ctx, block.tileTop, 3, 20, 29, -14, 29, 14, 'rgba(255,255,255,0.08)');
@@ -2156,6 +2274,31 @@ const MATERIAL_ICON_PAINTERS = {
     px(6, 4, '#eafdff', 2, 1);
     px(5, 5, '#c6f7fb', 1, 1);
     px(9, 6, '#9ceef8', 1, 1);
+  },
+  wool(px) {
+    // A fluffy ball of raw fleece: pale body, grey belly, a few locks.
+    px(5, 3, '#f2f0e6', 6, 1);
+    px(3, 4, '#f2f0e6', 10, 6);
+    px(4, 10, '#e4e1d4', 8, 2);
+    px(5, 12, '#cfccbe', 6, 1);
+    px(5, 5, '#ffffff', 3, 2);
+    px(6, 7, '#d8d5c8', 2, 1);
+    px(9, 8, '#d8d5c8', 2, 1);
+    px(4, 4, '#c9c6b8', 1, 1);
+    px(11, 6, '#c9c6b8', 1, 1);
+  },
+  shears(px) {
+    // Two steel blades crossing over looped finger rings, the same glyph
+    // doodled into the crafting table top.
+    paintIconLine(px, 3, 3, 10, 10, '#b9b9c2');
+    paintIconLine(px, 4, 3, 11, 10, '#e0e0e8');
+    paintIconLine(px, 12, 3, 5, 10, '#b9b9c2');
+    paintIconLine(px, 11, 3, 4, 10, '#e0e0e8');
+    px(7, 7, '#8b8b93', 2, 2);
+    px(3, 11, '#7d7d86', 3, 3);
+    px(4, 12, '#c9ccd4', 1, 1);
+    px(11, 11, '#7d7d86', 3, 3);
+    px(12, 12, '#c9ccd4', 1, 1);
   }
 };
 
@@ -2176,6 +2319,10 @@ for (const [itemId, item] of ITEMS) {
   let canvas;
   if (item.kind === 'block') {
     canvas = makeBlockItemIcon(BLOCKS[item.blockId]);
+  } else if (item.kind === 'tool' && MATERIAL_ICON_PAINTERS[itemId]) {
+    // Tierless tools like shears carry their own painter instead of a
+    // sprite wearing a tier palette.
+    canvas = makePixelIcon(MATERIAL_ICON_PAINTERS[itemId]);
   } else if (item.kind === 'tool') {
     canvas = makeToolIcon(item);
   } else if (item.kind === 'armor') {
@@ -2518,6 +2665,22 @@ class World {
     if (BLOCKS[other].door) this.setBlock(gx, otherY, gz, B.AIR);
   }
 
+  /**
+   * The bed's counterpart to clearDoorPartner: the far cell lies along the
+   * facing rather than above, but a bed destroyed by an explosion loses
+   * both cells all the same.
+   */
+  clearBedPartner(gx, gy, gz, id) {
+    const part = BLOCKS[id].bed;
+    if (!part) return;
+    const facing = this.facings.get(gx + ',' + gy + ',' + gz) ?? [0, 1];
+    const sign = part === 'foot' ? 1 : -1;
+    const otherX = gx + sign * facing[0];
+    const otherZ = gz + sign * facing[1];
+    const other = this.getBlock(otherX, gy, otherZ);
+    if (BLOCKS[other].bed) this.setBlock(otherX, gy, otherZ, B.AIR);
+  }
+
   /** Furnace state at a position, creating an empty one if it is missing. */
   blockEntityAt(gx, gy, gz, kind = null) {
     const key = gx + ',' + gy + ',' + gz;
@@ -2626,6 +2789,9 @@ class World {
       this.trackCrop(gx, gy, gz, oldId, id);
       if (oldId !== id && BLOCKS[oldId].door && !BLOCKS[id].door) {
         this.clearDoorPartner(gx, gy, gz, oldId);
+      }
+      if (oldId !== id && BLOCKS[oldId].bed && !BLOCKS[id].bed) {
+        this.clearBedPartner(gx, gy, gz, oldId);
       }
       const chunk = this.chunks.get(chunkKey(cx, cz));
       if (!chunk || !chunk.generated) continue;
@@ -3696,6 +3862,10 @@ function buildChunkMesh(world, chunk) {
           appendDoorPanel(cutout, world, x, y, z, wx, wz, block);
           continue;
         }
+        if (block.bed) {
+          appendBedBoxes(cutout, world, x, y, z, wx, wz, block);
+          continue;
+        }
         const target = block.cutout ? cutout : opaque;
 
         for (const face of FACES) {
@@ -3911,6 +4081,92 @@ function appendDoorPanel(builder, world, x, y, z, wx, wz, block) {
     corner(aMin, bMin, y), corner(aMax, bMin, y),
     corner(aMax, bMax, y), corner(aMin, bMax, y)
   ], capRect, sky, blockLight, flat(0.55));
+}
+
+/**
+ * A bed is a low mattress slab across both cells, half a block tall, with a
+ * pillow riding the far end of the head cell. Along the length the blanket
+ * tile shows (wooden rail along its bottom edge), the two ends read as plain
+ * boards, and the cutout material is double-sided like the door's, so a bed
+ * seen from the foot and from the head is the same bed.
+ */
+function appendBedBoxes(builder, world, x, y, z, wx, wz, block) {
+  const sideRect = tileRect(TILES.bed_side);
+  const topRect = tileRect(TILES.bed_top);
+  const endRect = tileRect(TILES.bed_end);
+  const pillowRect = tileRect(TILES.bed_pillow);
+  const capRect = tileRect(TILES.planks);
+  const sky = skyBrightness(world.getSkyLight(wx, y, wz));
+  const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
+
+  const facing = world.facingAt(wx, y, wz) ?? [0, 1];
+  const nx = facing[0];
+  const nz = facing[1];
+  // b runs along the bed towards the head, a across it.
+  const hx = -nz;
+  const hz = nx;
+  const corner = (a, b, py) => [
+    x + 0.5 + (a - 0.5) * hx + (b - 0.5) * nx,
+    py,
+    z + 0.5 + (a - 0.5) * hz + (b - 0.5) * nz
+  ];
+  const flat = (shade) => [shade, shade, shade, shade];
+
+  const aMin = 0.03;
+  const aMax = 0.97;
+  const bMin = 0.02;
+  const bMax = 0.98;
+  const top = y + 0.5;
+
+  // Mattress slab: blanket on top and along the length, boards at the ends.
+  builder.quad([
+    corner(aMin, bMin, top), corner(aMax, bMin, top),
+    corner(aMax, bMax, top), corner(aMin, bMax, top)
+  ], topRect, sky, blockLight, flat(1));
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMax, bMin, y),
+    corner(aMax, bMax, y), corner(aMin, bMax, y)
+  ], capRect, sky, blockLight, flat(0.55));
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMax, bMin, y),
+    corner(aMax, bMin, top), corner(aMin, bMin, top)
+  ], sideRect, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMax, y), corner(aMax, bMax, y),
+    corner(aMax, bMax, top), corner(aMin, bMax, top)
+  ], sideRect, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMin, y), corner(aMin, bMax, y),
+    corner(aMin, bMax, top), corner(aMin, bMin, top)
+  ], endRect, sky, blockLight, flat(0.62));
+  builder.quad([
+    corner(aMax, bMin, y), corner(aMax, bMax, y),
+    corner(aMax, bMax, top), corner(aMax, bMin, top)
+  ], endRect, sky, blockLight, flat(0.62));
+
+  // The pillow sits only on the head cell, pushed to the far end of it.
+  if (block.bed === 'head') {
+    const pMin = 0.18;
+    const pMax = 0.82;
+    const qMin = 0.6;
+    const pillowTop = y + 0.66;
+    builder.quad([
+      corner(pMin, qMin, pillowTop), corner(pMax, qMin, pillowTop),
+      corner(pMax, bMax, pillowTop), corner(pMin, bMax, pillowTop)
+    ], pillowRect, sky, blockLight, flat(1));
+    builder.quad([
+      corner(pMin, qMin, top), corner(pMax, qMin, top),
+      corner(pMax, qMin, pillowTop), corner(pMin, qMin, pillowTop)
+    ], pillowRect, sky, blockLight, flat(0.85));
+    builder.quad([
+      corner(pMin, qMin, top), corner(pMin, bMax, top),
+      corner(pMin, bMax, pillowTop), corner(pMin, qMin, pillowTop)
+    ], pillowRect, sky, blockLight, flat(0.62));
+    builder.quad([
+      corner(pMax, qMin, top), corner(pMax, bMax, top),
+      corner(pMax, bMax, pillowTop), corner(pMax, qMin, pillowTop)
+    ], pillowRect, sky, blockLight, flat(0.62));
+  }
 }
 
 function commitChunkMesh(chunk, builder, material, name) {
@@ -4181,6 +4437,24 @@ const RECIPES = [
     // pattern, and three doors out of it like the original gives.
     id: 'door', pattern: ['PP', 'PP', 'PP'], key: { P: 'planks' },
     result: { id: 'door', count: 3 }
+  },
+  {
+    // Two ingots laid point to point: the shears glyph already carved into
+    // the crafting table top finally earns its keep.
+    id: 'shears', pattern: ['I.', '.I'], key: { I: 'iron_ingot' },
+    result: { id: 'shears', count: 1 }
+  },
+  {
+    // The same shears from the other hand: the matcher is exact, so both
+    // diagonals need listing.
+    id: 'shears_alt', pattern: ['.I', 'I.'], key: { I: 'iron_ingot' },
+    result: { id: 'shears', count: 1 }
+  },
+  {
+    // Blanket over boards: three wool laid across three planks, the table's
+    // own pattern for a bed.
+    id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' },
+    result: { id: 'bed', count: 1 }
   }
 ];
 
@@ -5042,6 +5316,7 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   // Whichever half of a door the player broke, the far half comes away with
   // it, and the single door item drops from the half that was broken.
   if (block.door) world.clearDoorPartner(x, y, z, id);
+  if (block.bed) world.clearBedPartner(x, y, z, id);
 
   world.setBlock(x, y, z, B.AIR);
   addExhaustion(EXHAUSTION.mine);
@@ -5117,6 +5392,12 @@ function tryPlaceSelectedBlock() {
     return false;
   }
 
+  // And a bed claims the spawn point and, after dark, ends the night.
+  if (BLOCKS[currentTarget.id].bed) {
+    useBed(currentTarget.x, currentTarget.y, currentTarget.z);
+    return false;
+  }
+
   // And a hoe in hand tilling soil is a use, not a placement.
   if (useHoeOnTarget()) return true;
 
@@ -5146,6 +5427,7 @@ function tryPlaceSelectedBlock() {
 
   // A door is a two-cell block and needs its own room check for both halves.
   if (block.door) return placeDoor(px, py, pz);
+  if (block.bed) return placeBed(px, py, pz);
 
   if (block.solid && blockIntersectsPlayer(px, py, pz)) {
     showToast('Not enough room to place that');
@@ -5282,6 +5564,97 @@ function toggleDoor(x, y, z) {
   if (BLOCKS[otherId].door) world.setBlock(x, otherY, z, DOOR_SWINGS[otherId], facing);
   playDoorSound(x + 0.5, y + 0.5, z + 0.5);
   return true;
+}
+
+/* ---------- Beds ---------- */
+
+/**
+ * Lays a bed across two cells: the foot at (x, y, z) and the head one step
+ * along the facing, which points away from whoever places it so the pillow
+ * always lands at the far end from the door they walked in through.
+ */
+function placeBed(x, y, z) {
+  if (!BLOCKS[world.getBlock(x, y - 1, z)].solid) {
+    showToast('Beds need solid ground beneath them');
+    return false;
+  }
+  const towards = frontFacingTowardsPlayer(x, z);
+  const facing = [-towards[0], -towards[1]];
+  const headX = x + facing[0];
+  const headZ = z + facing[1];
+
+  if (world.getBlock(headX, y, headZ) !== B.AIR) {
+    showToast('Needs a clear cell beside for the bed');
+    return false;
+  }
+  if (!BLOCKS[world.getBlock(headX, y - 1, headZ)].solid) {
+    showToast('Beds need solid ground beneath them');
+    return false;
+  }
+  if (blockIntersectsPlayer(x, y, z) || blockIntersectsPlayer(headX, y, headZ)) {
+    showToast('Not enough room to place that');
+    return false;
+  }
+
+  if (!world.setBlock(x, y, z, B.BED, facing)) return false;
+  world.setBlock(headX, y, headZ, B.BED_HEAD, facing);
+  consumeSelectedItem();
+  playPlaceSound(B.BED, x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/**
+ * Right-clicking either cell of a bed moves the respawn point onto it.
+ * After dark it also ends the night: the screen goes black, and the world
+ * wakes with the sun back up. Only the sky is skipped, so anything that was
+ * outside when the player lay down is still outside when they get up.
+ */
+function useBed(x, y, z) {
+  const id = world.getBlock(x, y, z);
+  const block = BLOCKS[id];
+  if (!block.bed) return false;
+
+  // The spawn point is the foot cell, so the player wakes at the end they
+  // got in from even when they clicked the pillow.
+  const facing = world.facingAt(x, y, z) ?? [0, 1];
+  let footX = x;
+  let footZ = z;
+  if (block.bed === 'head') {
+    const backX = x - facing[0];
+    const backZ = z - facing[1];
+    if (BLOCKS[world.getBlock(backX, y, backZ)].bed === 'foot') {
+      footX = backX;
+      footZ = backZ;
+    }
+  }
+
+  spawnColumn.x = footX;
+  spawnColumn.z = footZ;
+  playDoorSound(x + 0.5, y + 0.5, z + 0.5);
+
+  if (isNight() && !sleeping) {
+    sleepThroughNight();
+  } else {
+    showToast('Spawn point set');
+  }
+  return true;
+}
+
+/** Set while the night is skipping, so a second click moves the spawn but does not skip twice. */
+let sleeping = false;
+
+function sleepThroughNight() {
+  sleeping = true;
+  sleepFadeEl.classList.add('active');
+  showToast('You fall asleep...');
+  setTimeout(() => {
+    dayTime = DAY_START;
+    applyDayNight();
+    updateDebug();
+    sleeping = false;
+    sleepFadeEl.classList.remove('active');
+    showToast('Good morning');
+  }, 1400);
 }
 
 /* ---------- Crops ---------- */
@@ -6622,7 +6995,7 @@ function updateHeldItemModel() {
 
   if (item.kind === 'block') {
     const block = BLOCKS[item.blockId];
-    if (block.key !== 'torch' && !block.door) {
+    if (block.key !== 'torch' && !block.door && !block.bed) {
       const mesh = new THREE.Mesh(
         buildItemCubeGeometry(block),
         block.cutout ? heldCutoutMaterial : heldCubeMaterial
@@ -6751,7 +7124,7 @@ const MOB_DEFS = {
   },
   sheep: {
     hostile: false, health: 8, speed: 1.2, width: 0.86, height: 1.34,
-    drops: [{ id: 'raw_beef', min: 1, max: 2 }]
+    drops: [{ id: 'raw_beef', min: 1, max: 2 }, { id: 'wool', min: 1, max: 1 }]
   },
   chicken: {
     hostile: false, health: 4, speed: 1.5, width: 0.46, height: 0.82,
@@ -6865,6 +7238,13 @@ const MOB_TEXTURES = {
     px(6, 9, [126, 92, 76], 4, 2);
     px(7, 10, vary([150, 112, 94], 7), 2, 2);
   }),
+  sheep_skin: mobTexture('sheep_skin', ({ px, rand, vary, fill }) => {
+    // A shorn sheep: pinkish skin where the fleece used to be.
+    fill([228, 184, 180], 8);
+    for (let i = 0; i < 14; i++) {
+      px((rand() * 16) | 0, (rand() * 16) | 0, vary([208, 160, 158], 7));
+    }
+  }),
   chicken_skin: mobTexture('chicken_skin', ({ px, rand, vary, fill }) => {
     fill([244, 242, 235], 7);
     for (let i = 0; i < 12; i++) {
@@ -6974,7 +7354,7 @@ function mobLeg(w, h, d, material, x, y, z) {
   return pivot;
 }
 
-function createMobModel(type) {
+function createMobModel(type, sheared = false) {
   const group = new THREE.Group();
   let legs = [];
   let head = null;
@@ -7005,17 +7385,32 @@ function createMobModel(type) {
       mobLeg(0.19, 0.4, 0.19, skin, 0.25, 0.4, 0.32)
     ];
   } else if (type === 'sheep') {
-    const wool = mobMaterial('sheep_wool');
-    group.add(mobBox(0.86, 0.74, 1.16, wool, 0, 0.88, 0));
-    group.add(mobBox(0.7, 0.18, 0.94, wool, 0, 1.29, -0.03));
-    head = mobBox(0.44, 0.44, 0.46, mobHeadMaterials('sheep_wool', 'sheep_face'), 0, 1.08, 0.64);
-    group.add(head);
-    legs = [
-      mobLeg(0.18, 0.5, 0.18, wool, -0.26, 0.5, -0.36),
-      mobLeg(0.18, 0.5, 0.18, wool, 0.26, 0.5, -0.36),
-      mobLeg(0.18, 0.5, 0.18, wool, -0.26, 0.5, 0.36),
-      mobLeg(0.18, 0.5, 0.18, wool, 0.26, 0.5, 0.36)
-    ];
+    if (sheared) {
+      // Shorn: fleece gone, the pink skin shows, and the outline slims down
+      // by the depth of all that wool.
+      const skin = mobMaterial('sheep_skin');
+      group.add(mobBox(0.66, 0.52, 0.94, skin, 0, 0.76, 0));
+      head = mobBox(0.4, 0.4, 0.42, mobHeadMaterials('sheep_skin', 'sheep_face'), 0, 1.0, 0.6);
+      group.add(head);
+      legs = [
+        mobLeg(0.16, 0.5, 0.16, skin, -0.2, 0.5, -0.3),
+        mobLeg(0.16, 0.5, 0.16, skin, 0.2, 0.5, -0.3),
+        mobLeg(0.16, 0.5, 0.16, skin, -0.2, 0.5, 0.3),
+        mobLeg(0.16, 0.5, 0.16, skin, 0.2, 0.5, 0.3)
+      ];
+    } else {
+      const wool = mobMaterial('sheep_wool');
+      group.add(mobBox(0.86, 0.74, 1.16, wool, 0, 0.88, 0));
+      group.add(mobBox(0.7, 0.18, 0.94, wool, 0, 1.29, -0.03));
+      head = mobBox(0.44, 0.44, 0.46, mobHeadMaterials('sheep_wool', 'sheep_face'), 0, 1.08, 0.64);
+      group.add(head);
+      legs = [
+        mobLeg(0.18, 0.5, 0.18, wool, -0.26, 0.5, -0.36),
+        mobLeg(0.18, 0.5, 0.18, wool, 0.26, 0.5, -0.36),
+        mobLeg(0.18, 0.5, 0.18, wool, -0.26, 0.5, 0.36),
+        mobLeg(0.18, 0.5, 0.18, wool, 0.26, 0.5, 0.36)
+      ];
+    }
   } else if (type === 'chicken') {
     const skin = mobMaterial('chicken_skin');
     group.add(mobBox(0.44, 0.44, 0.58, skin, 0, 0.48, 0));
@@ -7085,11 +7480,12 @@ function spawnMob(type, x, y, z, options = {}) {
   const def = MOB_DEFS[type];
   if (!def || mobs.length >= MOB_CAP) return null;
 
-  const model = createMobModel(type);
+  const model = createMobModel(type, !!options.sheared);
   const mob = {
     serial: mobSerial++,
     type,
     def,
+    sheared: !!options.sheared,
     pos: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(),
     yaw: options.yaw ?? Math.random() * Math.PI * 2,
@@ -7159,6 +7555,8 @@ function spawnBurstParticles(x, y, z, color, count = 8, spread = 3.2) {
 
 function dropMobLoot(mob) {
   for (const drop of mob.def.drops || []) {
+    // A shorn sheep has nothing left to give but its meat.
+    if (mob.sheared && drop.id === 'wool') continue;
     const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
     // A hide roll can come up empty, which is how Minecraft spreads out loot.
     if (count <= 0) continue;
@@ -7812,6 +8210,7 @@ function trySpawnPassive() {
 
 const healthBarEl = document.getElementById('health');
 const damageFlashEl = document.getElementById('damage-flash');
+const sleepFadeEl = document.getElementById('sleep-fade');
 const deathScreenEl = document.getElementById('death-screen');
 const deathCauseEl = document.getElementById('death-cause');
 const respawnButton = document.getElementById('respawn-button');
@@ -8041,6 +8440,7 @@ function tryEatSelectedItem() {
 /** Right-click with something held: eat first, then use it on the world. */
 function tryUseSelectedItem() {
   if (tryEatSelectedItem()) return true;
+  if (tryShearMob()) return true;
   return tryPlaceSelectedBlock();
 }
 
@@ -8243,6 +8643,58 @@ function attackMob(mob) {
   const stack = getSelectedStack();
   const item = stack ? ITEMS.get(stack.id) : null;
   if (item && item.kind === 'tool') wearHeldTool(item.tool === 'sword' ? 1 : 2);
+  return true;
+}
+
+/* ---------- Shearing ---------- */
+
+/**
+ * Takes a sheep's fleece off in one go: the model is rebuilt bare, wool
+ * bounces out of it, and the animal trots away unharmed. Sheep never grow
+ * it back, so a fleecy hillside is worth protecting.
+ */
+function shearMob(mob) {
+  mob.sheared = true;
+
+  const model = createMobModel(mob.type, true);
+  scene.remove(mob.group);
+  for (const material of mob.materials) material.dispose();
+  mob.group = model.group;
+  mob.legs = model.legs;
+  mob.head = model.head;
+  mob.headBaseY = model.headBaseY;
+  mob.materials = model.materials;
+  mob.group.position.copy(mob.pos);
+  mob.group.rotation.y = mob.yaw;
+  scene.add(mob.group);
+
+  const count = 1 + Math.floor(Math.random() * 3);
+  spawnItemDrop('wool', count, mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z);
+
+  playShearSound(mob.pos.x, mob.pos.y + 0.8, mob.pos.z);
+  playAnimalSound('sheep', mob.pos.x, mob.pos.y + mob.def.height * 0.6, mob.pos.z);
+}
+
+/**
+ * Shears under the crosshair on a woolly sheep are the one right-click that
+ * works on a mob rather than a block.
+ */
+function tryShearMob() {
+  const stack = getSelectedStack();
+  if (!stack || stack.id !== 'shears') return false;
+
+  updateMobTarget();
+  const mob = currentMobTarget;
+  if (!mob || mob.dead || mob.type !== 'sheep') return false;
+
+  triggerHeldSwing();
+  if (mob.sheared) {
+    showToast('That sheep is already sheared');
+    return true;
+  }
+  shearMob(mob);
+  wearHeldTool(1);
+  addExhaustion(EXHAUSTION.mine);
   return true;
 }
 
@@ -9716,7 +10168,9 @@ function blockSoundMaterial(blockId) {
     case 'door':
     case 'door_top':
     case 'door_open':
-    case 'door_open_top': return 'wood';
+    case 'door_open_top':
+    case 'bed':
+    case 'bed_head': return 'wood';
     case 'leaves': return 'leaves';
     case 'glass': return 'glass';
     case 'farmland': return 'dirt';
@@ -9825,6 +10279,19 @@ function playDoorSound(x, y, z) {
     volume: 0.42,
     durationScale: 1.7,
     range: 18
+  });
+}
+
+/**
+ * The dry snip of fleece giving way: a wooden contact pushed well above its
+ * usual pitch, brief and light.
+ */
+function playShearSound(x, y, z) {
+  return playMaterialNoise('wood', x, y, z, {
+    pitch: 1.9 + Math.random() * 0.25,
+    volume: 0.32,
+    durationScale: 0.35,
+    range: 16
   });
 }
 
@@ -10580,6 +11047,9 @@ function serializeWorldSave() {
     },
     slot: selectedSlot,
     time: dayTime,
+    // Where a bed last claimed the player, if anywhere: the respawn point
+    // outlives both the session and the bed that set it.
+    spawn: { x: spawnColumn.x, z: spawnColumn.z },
     inventory: inventory.map((slot) => stackRecord(slot)),
     armour: armorSlots.map((slot) => stackRecord(slot)),
     entities: serializeBlockEntities(),
@@ -10910,6 +11380,11 @@ if (loadedSave && restoreSavedPlayer(loadedSave)) {
   restoreSavedInventory(loadedSave);
   restoreSavedArmour(loadedSave);
   if (Number.isFinite(loadedSave.time)) dayTime = ((loadedSave.time % 1) + 1) % 1;
+  const savedSpawn = loadedSave.spawn;
+  if (savedSpawn && Number.isFinite(savedSpawn.x) && Number.isFinite(savedSpawn.z)) {
+    spawnColumn.x = Math.trunc(savedSpawn.x);
+    spawnColumn.z = Math.trunc(savedSpawn.z);
+  }
 } else {
   spawnPlayer(spawnColumn);
 }
@@ -10930,7 +11405,7 @@ if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
 }
 
 window.__voxelcraft = {
-  version: '0.1.0-milestone-11',
+  version: '0.1.0-milestone-12',
   seed: WORLD_SEED,
   world,
   camera,
@@ -11070,7 +11545,8 @@ window.__voxelcraft = {
       hostile: mob.def.hostile,
       pos: [mob.pos.x, mob.pos.y, mob.pos.z],
       onGround: mob.onGround,
-      fuse: mob.fuse
+      fuse: mob.fuse,
+      sheared: mob.sheared
     };
   },
   mobs() {
@@ -11544,6 +12020,14 @@ window.__voxelcraft = {
     updateTarget();
     return placed;
   },
+  /** Right-clicks whatever the crosshair is on: place, eat, shear, sleep. */
+  use() {
+    updateTarget();
+    updateMobTarget();
+    const used = tryUseSelectedItem();
+    updateTarget();
+    return { used, target: currentTarget ? { ...currentTarget } : null };
+  },
   /** Tills the block under the crosshair with the hoe in hand. */
   tillDirt() {
     updateTarget();
@@ -11702,7 +12186,7 @@ window.__voxelcraft = {
     const selected = getSelectedStack();
     const craftRecipe = currentCraftRecipe();
     return {
-      version: '0.1.0-milestone-11',
+      version: '0.1.0-milestone-12',
       seed: WORLD_SEED,
       position: [camera.position.x, camera.position.y, camera.position.z],
       feet: [pos.x, pos.y, pos.z],
