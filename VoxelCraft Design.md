@@ -295,6 +295,7 @@ Mob management:
 - Mobs are entities separate from the voxel grid, updated each frame
 - Cap total live mobs for performance
 - Mobs persist while their area is loaded and are removed when their chunk unloads
+- A chunk's herd roll is spent only while the player is close enough to have seen it, and a timer draws on the rolls still unspent around the player, so herds arrive as the player travels rather than only around the first spawn point
 
 ## Block changes and persistence
 

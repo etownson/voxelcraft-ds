@@ -2401,7 +2401,11 @@ class Chunk {
     this.lightSettled = false;
     this.meshed = false;
     this.meshes = [];
-    /** Set once the passive-mob spawn roll for this chunk has run. */
+    /**
+     * Set once this chunk's passive-mob spawn roll has been spent while the
+     * player was close enough to see it. Unloading a chunk clears the flag, so
+     * a grass field the player walks back over is free to be stocked again.
+     */
     this.mobSpawnChecked = false;
     this.group = new THREE.Group();
     this.group.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
@@ -6721,9 +6725,19 @@ const MOB_CAP = 30;
 const PASSIVE_CAP = 20;
 const HOSTILE_CAP = 13;
 const MOB_SALT = 0x4D0B5A17;
+/**
+ * A chunk only earns its herd roll while the player is this close, which is
+ * well inside render distance: chunks are meshed about 136 blocks out, long
+ * before anyone is around to see animals arrive.
+ */
+const PASSIVE_SPAWN_RADIUS = 76;
+/** Never roll a herd under the player's own feet; save it for a chunk ahead. */
+const PASSIVE_SPAWN_MIN_RADIUS = 20;
+const PASSIVE_SPAWN_INTERVAL = 3;
 const mobs = [];
 let mobSerial = 0;
 let hostileSpawnTimer = 2.5;
+let passiveSpawnTimer = 1.2;
 
 const MOB_DEFS = {
   cow: {
@@ -7611,6 +7625,12 @@ function updateMobs(dt) {
     hostileSpawnTimer = isNight() ? 1.9 : 3.6;
     trySpawnHostile();
   }
+
+  passiveSpawnTimer -= dt;
+  if (passiveSpawnTimer <= 0) {
+    passiveSpawnTimer = PASSIVE_SPAWN_INTERVAL;
+    trySpawnPassive();
+  }
 }
 
 function countMobs(hostile) {
@@ -7667,25 +7687,43 @@ function trySpawnHostile() {
 }
 
 /**
- * Passive-animal spawn roll. Runs once per chunk the first time it is meshed;
- * keeps a small herd on the grass of each nearby plains/forest/jungle chunk.
+ * Rolls the passive herd a chunk was allotted. The roll is keyed to the chunk
+ * coordinates, so trying again later gives the same answer and costs nothing.
+ * Returns true when at least one animal appeared.
+ *
+ * Only a roll the player could actually have watched is spent, which is what
+ * `mobSpawnChecked` means. Chunks are meshed at the edge of render distance,
+ * over a hundred blocks away, and mobs despawn past 96, so a chunk that bailed
+ * out because the player was far away, or because the mob caps were full, has
+ * to be free to try again once someone is standing in it. Burning the roll in
+ * those cases left every chunk the player walked towards permanently checked:
+ * the starting herd walked out of range and the rest of the world was empty.
  */
-function onChunkMeshed(chunk) {
-  if (chunk.mobSpawnChecked) return;
-  chunk.mobSpawnChecked = true;
-  if (mobs.length >= MOB_CAP - 2) return;
-  if (countMobs(false) >= PASSIVE_CAP) return;
+function rollChunkHerd(chunk) {
+  if (chunk.mobSpawnChecked) return false;
+  if (mobs.length >= MOB_CAP - 2) return false;
+  if (countMobs(false) >= PASSIVE_CAP) return false;
 
   const centerX = chunk.cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const centerZ = chunk.cz * CHUNK_SIZE + CHUNK_SIZE / 2;
-  if (Math.hypot(centerX - player.pos.x, centerZ - player.pos.z) > 76) return;
+  if (Math.hypot(centerX - player.pos.x, centerZ - player.pos.z) > PASSIVE_SPAWN_RADIUS) {
+    return false;
+  }
 
   const column = sampleColumn(Math.floor(centerX), Math.floor(centerZ));
-  if (column.biome !== 'plains' && column.biome !== 'forest' &&
-      column.biome !== 'rainforest') return;
+  const grassy = column.biome === 'plains' || column.biome === 'forest' ||
+    column.biome === 'rainforest';
+  if (!grassy) {
+    // Desert, snow and ocean columns never hold a herd, whoever is nearby, so
+    // this roll really is used up.
+    chunk.mobSpawnChecked = true;
+    return false;
+  }
+
+  chunk.mobSpawnChecked = true;
 
   const rand = chunkRandom(chunk.cx, chunk.cz, MOB_SALT);
-  if (rand() > 0.62) return;
+  if (rand() > 0.62) return false;
 
   let spot = null;
   for (let attempt = 0; attempt < 22; attempt++) {
@@ -7703,7 +7741,7 @@ function onChunkMeshed(chunk) {
     spot = { x: wx + 0.5, y: y + 1, z: wz + 0.5 };
     break;
   }
-  if (!spot) return;
+  if (!spot) return false;
 
   let type;
   const roll = rand();
@@ -7715,14 +7753,56 @@ function onChunkMeshed(chunk) {
     type = roll < 0.4 ? 'cow' : roll < 0.72 ? 'pig' : 'sheep';
   }
 
+  let spawned = false;
   const herd = 1 + Math.floor(rand() * 2);
   for (let i = 0; i < herd && mobs.length < MOB_CAP - 1; i++) {
     const ox = spot.x + (rand() - 0.5) * 1.8;
     const oz = spot.z + (rand() - 0.5) * 1.8;
-    spawnMob(type, ox, spot.y + 0.02, oz, {
+    const mob = spawnMob(type, ox, spot.y + 0.02, oz, {
       spawnChunk: chunkKey(chunk.cx, chunk.cz)
     });
+    if (mob) spawned = true;
   }
+  return spawned;
+}
+
+/** Gives a freshly meshed chunk its herd, if the player is close enough for it. */
+function onChunkMeshed(chunk) {
+  rollChunkHerd(chunk);
+}
+
+/**
+ * Keeps animals coming while the player travels. Chunk meshing alone cannot do
+ * it: a chunk is meshed once, far off in the distance, and animals on grass the
+ * player was never near are gone again by the time they walk up. So every so
+ * often this looks for a loaded chunk around the player that still has its roll
+ * unspent and spends one of them.
+ */
+function trySpawnPassive() {
+  if (countMobs(false) >= PASSIVE_CAP) return null;
+  if (mobs.length >= MOB_CAP - 2) return null;
+  // Grazing animals should not arrive on a dark landscape.
+  if (daylight < 0.35) return null;
+
+  const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
+  const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const cx = pcx + Math.floor(Math.random() * 9) - 4;
+    const cz = pcz + Math.floor(Math.random() * 9) - 4;
+    const dx = (cx - pcx) * CHUNK_SIZE;
+    const dz = (cz - pcz) * CHUNK_SIZE;
+    const distance = Math.hypot(dx, dz);
+    if (distance < PASSIVE_SPAWN_MIN_RADIUS || distance > PASSIVE_SPAWN_RADIUS) continue;
+
+    // A meshed chunk is a hard requirement: an ungenerated column reads as air
+    // all the way down, and the animal would fall straight out of the world.
+    const chunk = world.getChunk(cx, cz);
+    if (!chunk || !chunk.meshed || chunk.mobSpawnChecked) continue;
+
+    if (rollChunkHerd(chunk)) return mobs[mobs.length - 1];
+  }
+  return null;
 }
 
 /* ============================================================
@@ -10994,6 +11074,22 @@ window.__voxelcraft = {
   },
   mobs() {
     return mobs.map((mob) => this.mobInfo(mob));
+  },
+  /** Runs one passive-spawn pass immediately, the way the timer does. */
+  spawnPassive() {
+    const mob = trySpawnPassive();
+    return mob ? this.mobInfo(mob) : null;
+  },
+  /** Loaded chunks around the player whose herd roll has not been spent yet. */
+  unspentSpawnChunks() {
+    let count = 0;
+    for (const chunk of world.chunks.values()) {
+      if (!chunk.meshed || chunk.mobSpawnChecked) continue;
+      const dx = chunk.cx * CHUNK_SIZE + CHUNK_SIZE / 2 - player.pos.x;
+      const dz = chunk.cz * CHUNK_SIZE + CHUNK_SIZE / 2 - player.pos.z;
+      if (Math.hypot(dx, dz) <= PASSIVE_SPAWN_RADIUS) count++;
+    }
+    return count;
   },
   clearMobs() {
     const removed = mobs.length;
