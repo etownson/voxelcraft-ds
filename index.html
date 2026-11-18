@@ -5840,11 +5840,7 @@ function updatePlayer(dt, input) {
 
   // Keep the player out of the void if a chunk somehow fails to generate.
   if (player.pos.y < -4) {
-    const surface = world.surfaceY(
-      Math.floor(player.pos.x),
-      Math.floor(player.pos.z)
-    );
-    player.pos.y = surface + 1;
+    player.pos.y = safeGroundY(Math.floor(player.pos.x), Math.floor(player.pos.z));
     player.vel.set(0, 0, 0);
   }
 
@@ -5907,9 +5903,53 @@ function chooseSpawnColumn() {
   return { x: 0, z: 0 };
 }
 
+/** How far up to look for air when a chosen standing spot turns out to be worn. */
+const MAX_UNSTUCK_LIFT = 16;
+
+/**
+ * The surface height the player should be dropped onto at a column, measured
+ * honestly. Two traps make this more than a surfaceY call. An ungenerated chunk
+ * reads as pure air, and surfaceY answers sea level for such a column, so a
+ * spawn point on a hill resolves twenty-odd blocks *inside* that hill — where
+ * collision has nowhere to push the player and they can never move again. And a
+ * surface can be wearing something: a tree the player planted, a wall built over
+ * the spawn point. So the patch around the column is generated first, and the
+ * height is raised until the body fits.
+ */
+function safeGroundY(gx, gz) {
+  const cx = Math.floor(gx / CHUNK_SIZE);
+  const cz = Math.floor(gz / CHUNK_SIZE);
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) world.ensureGenerated(cx + dx, cz + dz);
+  }
+
+  let y = world.surfaceY(gx, gz) + 1;
+  for (let lift = 0; lift < MAX_UNSTUCK_LIFT; lift++) {
+    if (!playerCollidesAt(gx + 0.5, y, gz + 0.5)) break;
+    y += 1;
+  }
+  return y;
+}
+
+/**
+ * Generates a 3x3 patch and meshes the middle chunk with settled light, which
+ * is the only way to hand the player ground they can see on the very first
+ * frame after a teleport. Streaming fills the rest in behind it.
+ */
+function prepareSpawnChunks(cx, cz) {
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) world.ensureGenerated(cx + dx, cz + dz);
+  }
+  world.spreadLightAround(cx, cz);
+
+  const chunk = world.getChunk(cx, cz);
+  chunk.lightSettled = true;
+  buildChunkMesh(world, chunk);
+  chunk.group.visible = true;
+}
+
 function spawnPlayer(column) {
-  const surface = world.surfaceY(column.x, column.z);
-  player.pos.set(column.x + 0.5, surface + 1, column.z + 0.5);
+  player.pos.set(column.x + 0.5, safeGroundY(column.x, column.z), column.z + 0.5);
   player.vel.set(0, 0, 0);
   player.onGround = true;
   yaw = -2.4;
@@ -7844,6 +7884,13 @@ function respawnPlayer() {
   renderHealth();
 
   spawnPlayer(spawnColumn);
+  // The spawn area was almost certainly unloaded while the player was out
+  // exploring, so mesh it here: without this they come back to an empty sky and
+  // a world that streams in a second later around them.
+  prepareSpawnChunks(
+    Math.floor(spawnColumn.x / CHUNK_SIZE),
+    Math.floor(spawnColumn.z / CHUNK_SIZE)
+  );
   heldLastYaw = yaw;
   heldLastPitch = pitch;
   ensurePlayerChunks();
@@ -10612,6 +10659,14 @@ function restoreSavedPlayer(save) {
   player.pos.set(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0);
   player.vel.set(0, 0, 0);
   player.onGround = false;
+  // Nothing around a restored position exists yet, so nothing can be trusted
+  // until its chunks are made: an older build could write the player into solid
+  // ground, and a read that sees only air would keep them buried there.
+  ensurePlayerChunks();
+  if (playerCollidesAt(player.pos.x, player.pos.y, player.pos.z)) {
+    player.pos.y = safeGroundY(Math.floor(player.pos.x), Math.floor(player.pos.z));
+    player.onGround = true;
+  }
   if (Number.isFinite(p.yaw)) yaw = p.yaw;
   if (Number.isFinite(p.pitch)) pitch = clamp(p.pitch, -1.55, 1.55);
   player.health = clamp(Number(p.health) || player.maxHealth, 1, player.maxHealth);
@@ -10765,18 +10820,10 @@ if (loadedSave) {
 // Pick a dry spawn column, then prepare a 3x3 patch synchronously so the spawn
 // chunk can mesh with correct borders.
 const spawnColumn = chooseSpawnColumn();
-const spawnCx = Math.floor(spawnColumn.x / CHUNK_SIZE);
-const spawnCz = Math.floor(spawnColumn.z / CHUNK_SIZE);
-for (let dz = -1; dz <= 1; dz++) {
-  for (let dx = -1; dx <= 1; dx++) {
-    world.ensureGenerated(spawnCx + dx, spawnCz + dz);
-  }
-}
-const spawnChunk = world.getChunk(spawnCx, spawnCz);
-world.spreadLightAround(spawnCx, spawnCz);
-spawnChunk.lightSettled = true;
-buildChunkMesh(world, spawnChunk);
-spawnChunk.group.visible = true;
+prepareSpawnChunks(
+  Math.floor(spawnColumn.x / CHUNK_SIZE),
+  Math.floor(spawnColumn.z / CHUNK_SIZE)
+);
 
 if (loadedSave && restoreSavedPlayer(loadedSave)) {
   restoreSavedInventory(loadedSave);
