@@ -390,6 +390,13 @@
     opacity: 0; transition: opacity 0.22s ease-out;
   }
 
+  /* ---------- Underwater tint ---------- */
+  #water-tint {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(28, 96, 150, 0.34) 34%, rgba(5, 30, 60, 0.8) 100%);
+    opacity: 0;
+  }
+
   #sleep-fade {
     position: fixed; inset: 0; z-index: 34; pointer-events: none;
     background: #04050a;
@@ -486,6 +493,7 @@
 </div>
 <div id="cursor-stack" class="hidden"><div class="icon"></div><span class="count"></span></div>
 <div id="damage-flash"></div>
+<div id="water-tint"></div>
 <div id="sleep-fade"></div>
 
 <div id="death-screen" class="hidden">
@@ -4723,12 +4731,30 @@ const TERRAIN_VERTEX_SHADER = `
   varying float vBlock;
   varying float vShade;
   varying float vFogDepth;
+  #ifdef WATER
+    uniform float uTime;
+    varying vec3 vWorldPos;
+  #endif
   void main() {
     vUv = uv;
     vSky = aSky;
     vBlock = aBlock;
     vShade = aShade;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec3 pos = position;
+    #ifdef WATER
+      // Swells read the world position, not the cell's own corner, so two chunks
+      // meeting on an edge lift it the same way at the same instant. It is the
+      // same promise the blended corner heights already make: shared edges move as one.
+      vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+      float swell = sin(worldPos.x * 0.7 + worldPos.z * 0.4 + uTime * 1.15)
+                  + 0.5 * sin(worldPos.z * 1.3 - uTime * 0.85)
+                  + 0.35 * sin((worldPos.x - worldPos.z) * 2.1 + uTime * 1.9);
+      // The whole body rides the swell together — surface, skirt and all — so a
+      // wave never tears a surface off the sides it was drawn with.
+      pos.y += swell * 0.016;
+      vWorldPos = worldPos;
+    #endif
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     vFogDepth = -mvPosition.z;
     gl_Position = projectionMatrix * mvPosition;
   }
@@ -4741,13 +4767,35 @@ const TERRAIN_FRAGMENT_SHADER = `
   uniform float uFogNear;
   uniform float uFogFar;
   uniform float uOpacity;
+  #ifdef WATER
+    uniform float uTime;
+    uniform vec4 uWaterTile;
+    varying vec3 vWorldPos;
+  #endif
   varying vec2 vUv;
   varying float vSky;
   varying float vBlock;
   varying float vShade;
   varying float vFogDepth;
   void main() {
-    vec4 texel = texture2D(uMap, vUv);
+    vec2 sampleUv = vUv;
+    #ifdef WATER
+      // Ripples wander in world space, so the shimmer runs across a whole sea
+      // instead of restarting at every block seam, and the clamp keeps it inside
+      // the water tile so a wave never smears a neighbour's pixels into the surface.
+      vec2 ripple = vec2(
+        sin(vWorldPos.z * 1.6 + uTime * 1.4)
+          + 0.6 * sin(vWorldPos.z * 3.7 - vWorldPos.x * 1.1 - uTime * 2.2),
+        cos(vWorldPos.x * 1.5 - uTime * 1.2)
+          + 0.6 * cos(vWorldPos.x * 3.3 + vWorldPos.z * 0.9 + uTime * 1.8)
+      );
+      sampleUv = clamp(
+        vUv + ripple * ${(1.5 * HALF_TEXEL).toFixed(6)},
+        uWaterTile.xy + vec2(${HALF_TEXEL.toFixed(6)}),
+        uWaterTile.zw - vec2(${HALF_TEXEL.toFixed(6)})
+      );
+    #endif
+    vec4 texel = texture2D(uMap, sampleUv);
     #ifdef CUTOUT
       if (texel.a < 0.5) discard;
     #endif
@@ -4814,6 +4862,8 @@ scene.add(skyDome);
 const terrainMaterials = [];
 
 function createTerrainMaterial(options = {}) {
+  const defines = (options.cutout ? '#define CUTOUT\n' : '')
+    + (options.water ? '#define WATER\n' : '');
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: atlasTexture },
@@ -4821,10 +4871,12 @@ function createTerrainMaterial(options = {}) {
       uFogColor: { value: fogColor },
       uFogNear: { value: FOG_NEAR },
       uFogFar: { value: FOG_FAR },
-      uOpacity: { value: options.opacity ?? 1 }
+      uOpacity: { value: options.opacity ?? 1 },
+      uTime: { value: 0 },
+      uWaterTile: { value: options.waterTile ?? new THREE.Vector4(0, 0, 1, 1) }
     },
-    vertexShader: TERRAIN_VERTEX_SHADER,
-    fragmentShader: (options.cutout ? '#define CUTOUT\n' : '') + TERRAIN_FRAGMENT_SHADER,
+    vertexShader: defines + TERRAIN_VERTEX_SHADER,
+    fragmentShader: defines + TERRAIN_FRAGMENT_SHADER,
     transparent: !!options.transparent,
     depthWrite: options.depthWrite !== false,
     side: options.doubleSide ? THREE.DoubleSide : THREE.FrontSide
@@ -4835,11 +4887,18 @@ function createTerrainMaterial(options = {}) {
 
 const opaqueMaterial = createTerrainMaterial();
 const cutoutMaterial = createTerrainMaterial({ cutout: true, doubleSide: true });
+// All water depths share one atlas tile, so one rect bounds the shimmer for every
+// surface, skirt and stream the meshers draw with this material.
+const waterTileRect = tileRect(BLOCKS[B.WATER].tileSide);
 const waterMaterial = createTerrainMaterial({
   transparent: true,
   opacity: 0.74,
   doubleSide: true,
-  depthWrite: false
+  depthWrite: false,
+  water: true,
+  waterTile: new THREE.Vector4(
+    waterTileRect.u0, waterTileRect.vBottom, waterTileRect.u1, waterTileRect.vTop
+  )
 });
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -11051,6 +11110,55 @@ function updateDayNight(dt) {
   applyDayNight();
 }
 
+/**
+ * The water's living look: the clock the swells and ripples run on, and the murk
+ * that closes in once the camera goes under. Both keep running behind a paused
+ * screen, so the sea seen through the instructions never hangs mid-swell.
+ */
+let waterTime = 0;
+let underwaterBlend = 0;
+let waterTintShown = -1;
+const UNDERWATER_FOG_COLOR = new THREE.Color(0x0e3a5c);
+const underwaterScratch = new THREE.Color();
+const waterTintEl = document.getElementById('water-tint');
+const UNDERWATER_FOG_NEAR = 0.5;
+const UNDERWATER_FOG_FAR = 24;
+
+function updateWaterLook(dt) {
+  waterTime += dt;
+
+  const target = player.headInWater ? 1 : 0;
+  underwaterBlend += (target - underwaterBlend) * Math.min(1, dt * 5);
+  if (Math.abs(target - underwaterBlend) < 0.003) underwaterBlend = target;
+  const b = underwaterBlend;
+
+  // The day/night pass hands over the sky's own fog, and this sits the water's
+  // murk on top of it, pulling the view in to a few blocks. The colour is
+  // recomputed whole from the sky each frame rather than nudged from the last,
+  // so a paused frame — where the sky pass stays away — can never compound the blend.
+  const fogNear = lerp(FOG_NEAR, UNDERWATER_FOG_NEAR, b);
+  const fogFar = lerp(FOG_FAR, UNDERWATER_FOG_FAR, b);
+  for (const material of terrainMaterials) {
+    material.uniforms.uTime.value = waterTime;
+    material.uniforms.uFogNear.value = fogNear;
+    material.uniforms.uFogFar.value = fogFar;
+  }
+  underwaterScratch.copy(UNDERWATER_FOG_COLOR).multiplyScalar(0.15 + 0.85 * daylight);
+  fogColor.copy(skyHorizonColor).lerp(underwaterScratch, b);
+  scene.fog.color.copy(fogColor);
+  scene.fog.near = fogNear;
+  scene.fog.far = fogFar;
+  renderer.setClearColor(fogColor, 1);
+
+  // The screen wash rides the same blend. Quantised so the style is only touched
+  // when it visibly changes, not every frame at full submersion.
+  const tint = Math.round(b * 30) / 30;
+  if (tint !== waterTintShown) {
+    waterTintEl.style.opacity = tint * 0.6;
+    waterTintShown = tint;
+  }
+}
+
 /* ============================================================
    18. PROCEDURAL AUDIO ENGINE
    ============================================================ */
@@ -13779,6 +13887,10 @@ function animate(now) {
       updateFurnaces(dt);
     }
   }
+
+  // Runs after the day/night pass so the water's murk sits on top of the sky's
+  // fog, and outside the pause branch so the sea keeps breathing behind a screen.
+  updateWaterLook(dt);
 
   world.updateStreaming(player.pos.x, player.pos.z);
   updateAudio(dt);
