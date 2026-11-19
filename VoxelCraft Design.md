@@ -512,7 +512,7 @@ Hardnesses and tier gates are Minecraft's own:
 | Sand | 0.5 | shovel | — | Sand |
 | Snow Block | 0.2 | shovel | — | Snow |
 | Farmland | 0.6 | shovel | — | Dirt |
-| Oak Leaves | 0.2 | — | — | nothing |
+| Oak Leaves | 0.2 | hoe | — | Apple at 2.5%, and never a leaf block |
 | Torch | 0 | — | — | Torch |
 | Oak Log | 2.0 | axe | — | Oak Log |
 | Oak Planks | 2.0 | axe | — | Oak Planks |
@@ -522,14 +522,18 @@ Hardnesses and tier gates are Minecraft's own:
 | Coal Ore | 3.0 | pickaxe | 1 (wood) | 1–2 Coal |
 | Iron Ore | 3.0 | pickaxe | 2 (stone) | Raw Iron |
 | Diamond Ore | 3.0 | pickaxe | 3 (iron) | Diamond |
-| Glass | 0.3 | pickaxe | — | Glass |
+| Glass | 0.3 | — | — | Glass |
 | Furnace | 3.5 | pickaxe | 1 (wood) | Furnace |
 | Bedrock | ∞ | — | — | never breaks |
+
+Two blocks outside that list carry Minecraft's numbers as well: a wooden door is 3.0 with an
+axe to speed it up, and a bed is 0.2 with no tool at all.
 
 Resulting break times, in seconds. Each tool column assumes that tier's correct kind of
 tool for the row; ✗ means the block breaks but drops nothing, and those entries carry the
 five-times penalty. Bedrock is unbreakable, and the 0.05 second floor is what holds snow at
-0.05 in the diamond column and pins the whole torch row to 0.05.
+0.05 in the diamond column and pins the whole torch row to 0.05. Glass has no tool at all in
+Minecraft, so its row is one flat 0.45: a diamond pickaxe chops it no faster than a fist.
 
 | Block (hardness) | hand | wood | stone | iron | diamond |
 | --- | --- | --- | --- | --- | --- |
@@ -538,7 +542,7 @@ five-times penalty. Bedrock is unbreakable, and the 0.05 second floor is what ho
 | Sand (0.5) | 0.75 | 0.375 | 0.1875 | 0.125 | 0.09375 |
 | Snow Block (0.2) | 0.3 | 0.15 | 0.075 | 0.05 | 0.05 |
 | Farmland (0.6) | 0.9 | 0.45 | 0.225 | 0.15 | 0.1125 |
-| Oak Leaves (0.2) | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 |
+| Oak Leaves (0.2) | 0.3 | 0.15 | 0.075 | 0.05 | 0.05 |
 | Torch (0) | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
 | Oak Log (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
 | Oak Planks (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
@@ -548,8 +552,39 @@ five-times penalty. Bedrock is unbreakable, and the 0.05 second floor is what ho
 | Coal Ore (3.0) | 15 ✗ | 2.25 | 1.125 | 0.75 | 0.5625 |
 | Iron Ore (3.0) | 15 ✗ | 7.5 ✗ | 1.125 | 0.75 | 0.5625 |
 | Diamond Ore (3.0) | 15 ✗ | 7.5 ✗ | 3.75 ✗ | 0.75 | 0.5625 |
-| Glass (0.3) | 0.45 | 0.225 | 0.1125 | 0.075 | 0.05625 |
+| Glass (0.3) | 0.45 | 0.45 | 0.45 | 0.45 | 0.45 |
 | Furnace (3.5) | 17.5 ✗ | 2.625 | 1.3125 | 0.875 | 0.65625 |
+
+### The gap between two blocks
+
+A held click does not chain breaks at full speed. Once a block gives way Minecraft waits six
+ticks before the next one starts to crack, so a row of dirt costs 1.05 seconds a block in a
+bare hand — 0.75 to break and 0.3 of nothing — and 0.675 with a wooden shovel. A block that
+shatters inside a single tick skips the gap outright, which is what lets an iron shovel tear
+through a snowfield and an iron hoe through a canopy. `MINING_BLOCK_DELAY` is the six ticks;
+`MINING_SWING_INTERVAL` stays what it was, the arm and its contact sound.
+
+Measured by holding the click over a row of four blocks and counting 1/60 second frames, so
+the chained column can sit a frame above the exact figure:
+
+| Block, in hand | Break | Chained, per block |
+| --- | --- | --- |
+| Dirt, hand | 0.75 | 1.05 |
+| Dirt, wooden shovel | 0.375 | 0.683 |
+| Oak Leaves, hand | 0.3 | 0.617 |
+| Oak Leaves, wooden hoe | 0.15 | 0.467 |
+| Oak Leaves, iron hoe | 0.05 | 0.067 |
+| Snow Block, iron shovel | 0.05 | 0.067 |
+
+The gap runs out whether or not the button is still held, so releasing it halfway through
+buys nothing on the next block, and swinging at bedrock — which never breaks — neither
+earns nor spends one.
+
+What is left unmapped is deliberate. Minecraft counts break progress in whole ticks and
+rounds up, so it can be a hair slower than the figures above; the times here are continuous,
+never above Minecraft's and at most one tick under. Sword speed (1.5 on everything), shears,
+the gold, netherite and copper tiers, and the five-fold penalty for mining with the head
+underwater or feet off the ground are not in the game at all.
 
 ### Furnaces and smelting
 
@@ -659,6 +694,7 @@ of sprinting, mining, swinging and taking hits put together.
 | Food | Hunger | Saturation |
 | --- | --- | --- |
 | Wheat | 2 | 1.2 |
+| Apple | 4 | 2.4 |
 | Bread | 5 | 6.0 |
 | Steak | 8 | 12.8 |
 
@@ -668,6 +704,12 @@ item, and answers `Raw Beef needs cooking in a furnace` while there is room left
 slot tooltip carries the same reminder. Minecraft gives raw beef 3 food and 1.8 saturation
 and relies on hunger alone to push players toward a cooker; withholding both is what makes
 the furnace the only road past it here.
+
+The apple is the other end of that design: the one food that needs no cooker, no field and no
+knife, because it is already hanging in the canopy. Breaking a leaf block rolls it at 2.5%, and
+a leaf gives up nothing else — no leaf block, ever. Both halves of that sentence diverge from
+Minecraft, and the apple addendum at the end of this document records which numbers are borrowed
+and which are this game's own.
 
 ### Wheat
 
@@ -786,7 +828,7 @@ the facing, so a bed keeps its direction across a save.
 | Bed | Value |
 | --- | --- |
 | Block ids | 33 foot, 34 head, appended after the door's 29–32 |
-| Hardness | 0.3, correct tool axe |
+| Hardness | 0.2, no correct tool — Minecraft gives a bed none |
 | Drops | 1 bed from either half; the half that was not broken is cleared outright, so a bed never pays out twice |
 | Collision | full solid cell, both halves — you walk on a bed, not through it |
 | Light | none |
@@ -1149,3 +1191,130 @@ rather than spending food the instant the world opens. A stored stomach of hunge
 - Judge distance per frame. Endpoint distance under-reads a curving run badly enough to make a
   correct 0.1-per-block rate look like 0.45, and a run that wanders into water pays the swim rate
   for those metres, so track `player.inWater` per frame or the totals will not close.
+
+## Apple addendum — the food that falls out of a tree
+
+Every calorie the game had before this passed a workshop: wheat needed a hoe, a furrow and ten
+minutes; bread needed three of those loaves and a crafting table; steak needed a cow and ten
+seconds of furnace. An apple needs nothing, which makes it the first food a player finds by
+accident rather than by plan.
+
+### What changed
+
+- An `apple` item at `kind: 'food'`: 4 hunger, 2.4 saturation, stacks to 64, bitten in the usual
+  0.6 seconds. Both food values are Minecraft's own.
+- `APPLE_DROP_CHANCE = 0.025`, and one entry on the leaf block's own drop list:
+  `{ item: 'apple', min: 1, max: 1, chance: APPLE_DROP_CHANCE }`. A leaf still never gives up a
+  leaf block.
+- The apple is a drop on a block definition rather than a case in the break handler, so every
+  path that destroys a block owes the same roll — the pickaxe and a creeper crater included.
+  That is what turned up the bug below.
+- A 16×16 icon: a red body, 704 pixels of it, a notch at the top for the stem, one leaf leaning
+  off to the right, a darker underbelly and a highlight down the left flank. Nothing falls back
+  to the grey placeholder, and the slot reads `Apple`.
+
+### The rate, measured
+
+3,850 leaf blocks broken one at a time through `mine()` in one session, with the pack emptied
+first so every apple had to be counted either in the pack or on the ground where it fell:
+
+| | |
+| --- | --- |
+| Leaf blocks broken | 3,850 |
+| Breaks that failed | 0 |
+| Apples | 108 |
+| Measured rate | 2.805% |
+| Expected at 2.5% | 96.3, so 1.21σ away |
+| Expected at Minecraft's 0.5% | 19.3, so 20.28σ away |
+| Leaf blocks collected | 0 |
+
+What a tree is worth, from 23 trees standing clear of every other trunk in their 9×9 footprint,
+so their canopies could not be each other's:
+
+| Canopy | Leaf cells | Apples at 2.5% | Apples at 0.5% |
+| --- | --- | --- | --- |
+| Lone oak, median | 96 | 2.4 | 0.5 |
+| Lone oak, range | 69–175 | 1.7–4.4 | 0.3–0.9 |
+| Jungle, counted in a ±4 box | 286 | 7.2 | 1.4 |
+
+A lone oak's 96 leaves are close to a minute of punching them — 0.617 seconds a leaf once
+Minecraft's six-tick gap between blocks is counted — or 45 seconds with a wooden hoe and six
+with an iron one, whose 0.05 second break skips the gap entirely.
+That is the whole case for 2.5%: Minecraft's rate pays half an apple per felled tree, which is a
+statistic rather than a discovery, and this one pays two and a half, which is a reason to clear
+the canopy before walking on.
+
+### A blast owes the same roll as a pickaxe
+
+Explosions build their drop list in their own loop, and that loop read `min` and `max` off every
+drop and ignored `chance`. Grass has carried a 25% seed drop since the farming pass, so for all
+that time a creeper landing in a field paid 1–2 seeds for *every* grass block in its crater
+rather than a quarter of them. Apples would have made it impossible to miss: one apple for every
+leaf in the canopy. The loop now skips a conditional drop exactly as `breakBlockAt` does.
+
+Three creepers detonated, each inside a shell of leaves built from the canopy air around it, with
+the cells they and the player stand in left open:
+
+| Blast | Blocks destroyed | Dropped | What the roll predicts |
+| --- | --- | --- | --- |
+| Leaves | 68 | 2 apples, 0 leaf blocks | 1.7 apples |
+| Grass and dirt | 24 grass, 56 dirt | 6 seeds, 83 dirt | a quarter of the grass, 1–2 seeds each |
+
+Before the fix those two rows read 68 apples and between 24 and 48 seeds. The dirt comes in three
+over the 80 cells the snapshot held, because the cells left open for the two parties to breathe
+were also in the crater and also dropped their dirt, and were never in the snapshot.
+
+### Eating one
+
+| Stomach | After the bite | |
+| --- | --- | --- |
+| Food 1, saturation 0 | Food 5, saturation 2.4 | Every point lands, none of it capped away |
+| Food 16, saturation 0 | Food 20, saturation 2.4 | The same, with saturation sitting just under its ceiling |
+| Food 20 | Refused | `You're already full`, and the apple stays in the hand |
+
+The cushion spends in Minecraft's order, and a 2.4 saturation apple is small enough to watch it
+happen. After an apple at food 16, a wounded player at pinned health spends exhaustion one wound
+of 0.1 at a time, and touches no food until the fourth whole bite:
+
+| Wounds taken | Saturation | Food |
+| --- | --- | --- |
+| 0 | 2.4 | 20 |
+| 40 | 1.4 | 20 |
+| 80 | 0.4 | 20 |
+| 120 | 0 | 20 |
+| 160 | 0 | 19 |
+
+It ends on food 19, saturation 0, 2.0 exhaustion banked and the bar jittering. A crossing spends
+one point of saturation *or* one of food, never a split of the two, so an apple's 2.4 saturation
+buys exactly three crossings — twelve exhaustion — and the third of them spends 0.4 of a point as
+though it were a whole one and lets the other 0.6 go.
+
+### Divergences left in place on purpose
+
+- **2.5% rather than Minecraft's 0.5%**, five times the rate, because a food nobody ever finds is
+  indistinguishable from a food that does not exist. The food values themselves are untouched.
+- **Every leaf block rolls.** Minecraft gates apples to oak and dark oak; jungle, birch and
+  spruce never drop one. There is one leaf block here, written by both the oak-shaped and the
+  jungle-shaped tree, so the 286-cell jungle canopy measured above rolls apples too. Gating it
+  would mean working out which tree a canopy belongs to, which has no honest answer for a canopy
+  overhanging a neighbour's chunk or for leaves the player set down by hand.
+- **Apples cannot be farmed.** There are no saplings, so the canopy is the only source and the
+  supply is whatever the forest that generated happens to hold. It is what keeps a 2.5% rate from
+  turning into an orchard.
+- **No other use at all.** Not fuel, not smeltable, not an ingredient. Food or nothing.
+
+### Notes for whoever picks this up next
+
+- Sum `count`, not entity length. An `itemEntities` entry is a stack: three apples on the ground
+  are one entry. Add the pack on top of that, because anything that lands within 2.5 m of the
+  player is already picked up by the time the trial looks.
+- Filter fresh drops by `serial`. Clearing the inventory does not clear the ground, and the
+  previous round's apples drift into this round's total.
+- A creeper sealed inside a leaf shell suffocates before it ever lights. The mob list goes quiet
+  about six and a half seconds later, not one block has moved, and the run reports an explosion
+  that destroyed nothing — which is exactly the shape of a false pass. Leave the cells within
+  about 1.2 m of both the creeper and the player open, and watch `fuse` rise rather than only
+  checking that the mob disappeared.
+- Scanning down from the top of the world for a tree finds the top of a canopy, after which the
+  trunk is always below where the scan started and never gets found. Walk up from
+  `sampleColumn(x, z).height` instead.

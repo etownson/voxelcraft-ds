@@ -601,6 +601,13 @@ const ORE_SALT_COAL = 0xC0A1;
 const ORE_SALT_IRON = 0x1F0E;
 const ORE_SALT_DIAMOND = 0xD1A40;
 
+/**
+ * Chance that a broken leaf block gives up the apple sitting in it. Minecraft's
+ * own roll is 0.5%, which is one apple per two hundred leaves, so this game pays
+ * out five times as often and makes felling a tree worth the trouble.
+ */
+const APPLE_DROP_CHANCE = 0.025;
+
 const SKY_ZENITH = 0x4f8fd8;
 const SKY_HORIZON = 0xc3dbef;
 const FOG_COLOR = 0xc3dbef;
@@ -719,8 +726,14 @@ const BLOCKS = [
   {
     id: B.LEAVES, key: 'leaves', name: 'Oak Leaves',
     tiles: { top: 'leaves', bottom: 'leaves', side: 'leaves' },
-    solid: true, opaque: false, cutout: true, hardness: 0.2,
-    drops: [], placeable: true
+    // A hoe is the tool Minecraft speeds leaves up with, and no tier is needed
+    // to keep whatever the canopy hands over, so punching still finds apples.
+    // Shears would take the leaves themselves, and this game has no shears.
+    solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'hoe',
+    // Leaves give up no leaf block, which is how Minecraft treats them too; the
+    // only thing they hand over is the occasional apple hiding in the canopy.
+    drops: [{ item: 'apple', min: 1, max: 1, chance: APPLE_DROP_CHANCE }],
+    placeable: true
   },
   {
     id: B.SNOW, key: 'snow', name: 'Snow Block',
@@ -780,7 +793,10 @@ const BLOCKS = [
   {
     id: B.GLASS, key: 'glass', name: 'Glass',
     tiles: { top: 'glass', bottom: 'glass', side: 'glass' },
-    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'pickaxe',
+    // Minecraft gives glass no tool at all, so no pickaxe makes it quicker. It
+    // still hands over the block here, since this game has no Silk Touch to
+    // withhold the drop behind.
+    solid: true, opaque: false, cutout: true, hardness: 0.3,
     drops: [{ item: 'glass', min: 1, max: 1 }], placeable: true
   },
   {
@@ -818,52 +834,54 @@ for (let stage = 0; stage < 8; stage++) {
  * so collision sees them as air, the same trick the lit furnace uses. Which
  * way the leaf hangs is its facing, stored per position just like a
  * furnace's front. Appended after the wheat stages, which already own the
- * ids before them.
+ * ids before them. All four carry Minecraft's own numbers for a wooden door:
+ * a hardness of 3, with an axe to speed it up.
  */
 BLOCKS.push(
   {
     id: B.DOOR, key: 'door', name: 'Wooden Door',
     tiles: { top: 'planks', bottom: 'planks', side: 'door_lower' },
-    solid: true, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    solid: true, opaque: false, cutout: true, hardness: 3.0, tool: 'axe',
     facings: true, door: 'lower',
     drops: [{ item: 'door', min: 1, max: 1 }], placeable: true
   },
   {
     id: B.DOOR_TOP, key: 'door_top', name: 'Wooden Door',
     tiles: { top: 'planks', bottom: 'planks', side: 'door_upper' },
-    solid: true, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    solid: true, opaque: false, cutout: true, hardness: 3.0, tool: 'axe',
     facings: true, door: 'upper',
     drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
   },
   {
     id: B.DOOR_OPEN, key: 'door_open', name: 'Wooden Door',
     tiles: { top: 'planks', bottom: 'planks', side: 'door_lower' },
-    solid: false, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    solid: false, opaque: false, cutout: true, hardness: 3.0, tool: 'axe',
     facings: true, door: 'lower', doorOpen: true,
     drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
   },
   {
     id: B.DOOR_OPEN_TOP, key: 'door_open_top', name: 'Wooden Door',
     tiles: { top: 'planks', bottom: 'planks', side: 'door_upper' },
-    solid: false, opaque: false, cutout: true, hardness: 1.0, tool: 'axe',
+    solid: false, opaque: false, cutout: true, hardness: 3.0, tool: 'axe',
     facings: true, door: 'upper', doorOpen: true,
     drops: [{ item: 'door', min: 1, max: 1 }], placeable: false
   },
   // A bed is one item across two cells: the foot where it is placed and a
   // head cell one step along the facing. Either half pays the item out, and
   // the half that is not broken is cleared outright rather than mined, so a
-  // bed never yields two beds. Same arrangement as the door.
+  // bed never yields two beds. Same arrangement as the door, but Minecraft
+  // gives a bed no tool at all: it goes as fast as a bare hand can swing.
   {
     id: B.BED, key: 'bed', name: 'Red Bed',
     tiles: { top: 'bed_top', bottom: 'planks', side: 'bed_side' },
-    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'axe',
+    solid: true, opaque: false, cutout: true, hardness: 0.2,
     facings: true, bed: 'foot',
     drops: [{ item: 'bed', min: 1, max: 1 }], placeable: true
   },
   {
     id: B.BED_HEAD, key: 'bed_head', name: 'Red Bed',
     tiles: { top: 'bed_top', bottom: 'planks', side: 'bed_side' },
-    solid: true, opaque: false, cutout: true, hardness: 0.3, tool: 'axe',
+    solid: true, opaque: false, cutout: true, hardness: 0.2,
     facings: true, bed: 'head',
     drops: [{ item: 'bed', min: 1, max: 1 }], placeable: false
   }
@@ -924,6 +942,11 @@ defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, needsCoo
 defineItem({ id: 'cooked_beef', name: 'Steak', kind: 'food', stack: 64, hunger: 8, saturation: 12.8 });
 defineItem({ id: 'wheat', name: 'Wheat', kind: 'food', stack: 64, hunger: 2, saturation: 1.2 });
 defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5, saturation: 6 });
+// The apple's food values are Minecraft's to the decimal. Where it comes from is
+// the divergence: Minecraft rolls an apple on 0.5% of broken leaves, one every two
+// hundred, which is effectively invisible, so this game rolls at 2.5% and makes
+// clearing a forest worth the pause.
+defineItem({ id: 'apple', name: 'Apple', kind: 'food', stack: 64, hunger: 4, saturation: 2.4 });
 // Seeds are the one item that turns into a block on right click, so they carry
 // the stage they plant as rather than a block id of their own.
 defineItem({ id: 'wheat_seeds', name: 'Wheat Seeds', kind: 'seed', stack: 64, plants: B.WHEAT_0 });
@@ -2284,6 +2307,24 @@ const MATERIAL_ICON_PAINTERS = {
     px(5, 10, '#a96f30', 6, 1);
     px(6, 6, '#a96f30', 1, 4);
     px(10, 6, '#a96f30', 1, 4);
+  },
+  apple(px) {
+    // A round red body with a notch at the top for the stem, one leaf leaning
+    // off to the right, and the pale corner that always catches the light.
+    px(4, 6, '#c8352f', 8, 6);
+    px(3, 7, '#c8352f', 1, 4);
+    px(12, 7, '#c8352f', 1, 4);
+    px(5, 5, '#c8352f', 2, 1);
+    px(9, 5, '#c8352f', 2, 1);
+    px(4, 12, '#8e2020', 8, 1);
+    px(5, 13, '#8e2020', 6, 1);
+    px(5, 6, '#e0605a', 2, 4);
+    px(6, 7, '#f08d84', 1, 2);
+    px(10, 7, '#a8282a', 2, 4);
+    px(8, 3, '#6d4d29', 1, 3);
+    px(9, 2, '#6d4d29', 1, 1);
+    px(10, 3, '#4f8f3a', 3, 1);
+    px(11, 4, '#6fb04a', 2, 1);
   },
   diamond(px) {
     px(6, 3, '#c6f7fb', 4, 1);
@@ -5218,11 +5259,21 @@ const miningState = {
   progress: 0,
   duration: 0,
   canHarvest: false,
+  instantBreak: false,
   wearsTool: false
 };
 
 /** How often a swing lands while breaking; drives both the arm and its sound. */
 const MINING_SWING_INTERVAL = 0.3;
+/** One Minecraft tick, the unit all its break times are counted in. */
+const MINING_TICK = 1 / 20;
+/**
+ * The gap Minecraft leaves between two broken blocks: six ticks in which the
+ * arm keeps swinging and nothing gives way. A block that shatters within a
+ * single tick skips the gap, which is how a shovel tears through a snowfield.
+ */
+const MINING_BLOCK_DELAY = 6 * MINING_TICK;
+let miningDelay = 0;
 let miningHitTimer = 0;
 let miningHitKey = '';
 
@@ -5275,6 +5326,7 @@ function startMiningOn(target) {
   miningState.progress = 0;
   miningState.duration = facts.duration;
   miningState.canHarvest = facts.canHarvest;
+  miningState.instantBreak = facts.instantBreak;
   miningState.wearsTool = facts.wearsTool;
 }
 
@@ -5287,7 +5339,10 @@ function startMiningOn(target) {
 function miningFacts(blockId, stack) {
   const block = BLOCKS[blockId];
   if (!block.breakable || !isFinite(block.hardness)) {
-    return { duration: Infinity, canHarvest: false, wearsTool: false };
+    return {
+      duration: Infinity, canHarvest: false,
+      instantBreak: false, wearsTool: false
+    };
   }
 
   const item = stack ? ITEMS.get(stack.id) : null;
@@ -5296,10 +5351,15 @@ function miningFacts(blockId, stack) {
   const canHarvest = !block.tier ||
     (correctTool && (tool.tierLevel || 0) >= block.tier);
   const speed = correctTool ? (tool.miningSpeed || 1) : 1;
+  const raw = block.hardness * (canHarvest ? 1.5 : 5) / speed;
 
   return {
-    duration: Math.max(0.05, block.hardness * (canHarvest ? 1.5 : 5) / speed),
+    duration: Math.max(MINING_TICK, raw),
     canHarvest,
+    // One tick's damage settles the block outright, and Minecraft sees no gap
+    // before the next one. The nudge keeps a hardness of 0.2 under an iron hoe,
+    // which is exactly one tick, from reading as a hair over it.
+    instantBreak: raw <= MINING_TICK * 1.000001,
     wearsTool: correctTool
   };
 }
@@ -5355,6 +5415,10 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
 }
 
 function updateMining(dt, held) {
+  // The gap after a block gives way runs out whether or not the button is
+  // still held, so letting go in the middle of it never banks free progress.
+  if (miningDelay > 0) miningDelay = Math.max(0, miningDelay - dt);
+
   if (!held || !currentTarget) {
     hideMiningFeedback();
     return;
@@ -5365,6 +5429,18 @@ function updateMining(dt, held) {
   if (!block.breakable || !isFinite(block.hardness)) {
     // Unbreakable blocks never crack, but swinging at them still thuds.
     startMiningOn(target);
+    crackMesh.visible = false;
+    crackStage = -1;
+    updateMiningHitSound(dt, target);
+    return;
+  }
+
+  if (miningDelay > 0) {
+    // Six ticks of swinging at nothing: the arm and its sound carry on, the
+    // block under the crosshair stays uncracked and starts from scratch once
+    // the gap is over.
+    miningState.active = false;
+    miningState.progress = 0;
     crackMesh.visible = false;
     crackStage = -1;
     updateMiningHitSound(dt, target);
@@ -5384,9 +5460,13 @@ function updateMining(dt, held) {
 
   if (miningState.progress >= miningState.duration) {
     const wearsTool = miningState.wearsTool;
+    const instant = miningState.instantBreak;
     breakBlockAt(target.x, target.y, target.z, target.id, miningState.canHarvest);
     hideMiningFeedback();
     if (wearsTool) wearHeldTool(1);
+    // Anything that took more than a tick to fell the block leaves the player
+    // six ticks short of the next one.
+    if (!instant) miningDelay = MINING_BLOCK_DELAY;
     updateTarget();
   }
 }
@@ -7844,6 +7924,10 @@ function explodeCreeper(mob) {
             if (blastDoors.has(base)) continue;
             blastDoors.add(base);
           }
+          // The same roll a pickaxe makes. Without it a blast pays out every
+          // conditional drop in the crater at once: seeds from every grass block,
+          // an apple from every leaf.
+          if (drop.chance != null && Math.random() >= drop.chance) continue;
           drops.push({
             id: drop.item,
             count: drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1)),
@@ -12393,7 +12477,11 @@ window.__voxelcraft = {
   },
   /** Snapshot of the mining loop, including the tool it is wearing down. */
   mining() {
-    return { ...miningState, held: slotInfo(getSelectedStack()) };
+    return {
+      ...miningState,
+      delay: Number(miningDelay.toFixed(3)),
+      held: slotInfo(getSelectedStack())
+    };
   },
   place() {
     const placed = tryPlaceSelectedBlock();
