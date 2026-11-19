@@ -589,6 +589,48 @@ const WATER_MANTLE_STEP = 0.05;
 const GROUND_ACCEL = 32;
 const AIR_ACCEL = 4.5;
 const WATER_ACCEL = 10;
+
+// Water flow. Only cells an edit disturbed ever get looked at, so an ocean is
+// as cheap as a puddle: the sea is a wall of sources that never re-evaluate,
+// and a hole dug beside it wakes up just enough of the coastline to fill in.
+const WATER_TICK_SECONDS = 0.15;
+/** Cells resolved per tick. The queue drains eventually however big the flood. */
+const WATER_TICK_BUDGET = 512;
+/** How far sideways a source can push water before the sheet goes too thin. */
+const WATER_MAX_FLOW = 7;
+/**
+ * Chunk meshes a single water tick will rebuild. Meshing is far more expensive
+ * than flowing, so a flood that dirties a dozen chunks at once spreads that
+ * work over the ticks that follow it.
+ */
+const WATER_REMESH_BUDGET = 2;
+/**
+ * Milliseconds a tick will spend meshing before it leaves the rest of the
+ * backlog for the next one. The chunk count alone cannot bound the cost: one
+ * mesh is far dearer than another depending on how much water it holds.
+ */
+const WATER_REMESH_MS = 4;
+/**
+ * Chunks to rebuild once the water has finished moving and only the backlog is
+ * left. Nothing is flowing any more, so the frames can go into catching the
+ * renderer up instead of rationing it out a tick at a time.
+ */
+const WATER_REMESH_IDLE_BUDGET = 6;
+/** The six cells whose answer changes when a cell changes. */
+const WATER_NEIGHBORS = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+];
+/** The four a sheet of water can creep across. */
+const WATER_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** The four cells that meet at a corner of the grid, as offsets from it. */
+const WATER_CORNER_CELLS = [[-1, -1], [0, -1], [-1, 0], [0, 0]];
+/**
+ * A flow cell only ever waits on a neighbour chunk this many ticks before it is
+ * dropped. Long enough for the chunk to stream in while the player stands at
+ * the border, short enough that water at the edge of the loaded world cannot
+ * sit in the queue forever.
+ */
+const WATER_WAIT_LIMIT = 12;
 const MAX_MOVE_STEP = 0.25;
 const FOG_NEAR = 48;
 const FOG_FAR = 132;
@@ -613,6 +655,35 @@ const SKY_HORIZON = 0xc3dbef;
 const FOG_COLOR = 0xc3dbef;
 
 const LIGHT_MAX = 15;
+
+/**
+ * The seven flow levels, and the same seven depths again for water that is
+ * pouring downward. A falling column carries its own depth rather than being one
+ * generic "falling" block, because that is the only way it can pass water on
+ * down without inventing some: a film off the edge of a shelf has to arrive at
+ * the ground as a film, not as a pool. They all share the water tile, the lack of
+ * collision, and the fact that no pickaxe can pick any of them up.
+ */
+function waterFlowBlockDefs() {
+  const defs = [];
+  for (let level = 1; level <= WATER_MAX_FLOW; level++) {
+    defs.push({
+      id: B['WATER_FLOW_' + level], key: 'water_flow_' + level,
+      name: 'Water', tiles: { top: 'water', bottom: 'water', side: 'water' },
+      solid: false, opaque: false, liquid: true, waterLevel: level,
+      breakable: false, placeable: false
+    });
+  }
+  for (let level = 1; level <= WATER_MAX_FLOW; level++) {
+    defs.push({
+      id: B['WATER_FALL_' + level], key: 'water_fall_' + level, name: 'Water',
+      tiles: { top: 'water', bottom: 'water', side: 'water' },
+      solid: false, opaque: false, liquid: true, waterLevel: level, falling: true,
+      breakable: false, placeable: false
+    });
+  }
+  return defs;
+}
 /** A full day is 20 real minutes, the same length Minecraft runs on. */
 const DAY_LENGTH_SECONDS = 1200;
 const DAY_START = 0.22;
@@ -633,7 +704,16 @@ const B = Object.freeze({
   DOOR: 29, DOOR_TOP: 30, DOOR_OPEN: 31, DOOR_OPEN_TOP: 32,
   // A bed spans two cells side by side, foot first along the facing it was
   // placed with. Like the door it is one item across two ids.
-  BED: 33, BED_HEAD: 34
+  BED: 33, BED_HEAD: 34,
+  // Flowing water keeps its depth in the block id the same way wheat keeps its
+  // growth stage: a chunk cell is one byte and has nowhere else to hold it.
+  // WATER is a source, the seven WATER_FLOW levels thin from nearly full to a
+  // film, and the seven WATER_FALL levels are those same depths pouring
+  // downward, which is what lets a fall pass its own depth on to the cell below.
+  WATER_FLOW_1: 35, WATER_FLOW_2: 36, WATER_FLOW_3: 37, WATER_FLOW_4: 38,
+  WATER_FLOW_5: 39, WATER_FLOW_6: 40, WATER_FLOW_7: 41,
+  WATER_FALL_1: 42, WATER_FALL_2: 43, WATER_FALL_3: 44, WATER_FALL_4: 45,
+  WATER_FALL_5: 46, WATER_FALL_6: 47, WATER_FALL_7: 48
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -709,7 +789,8 @@ const BLOCKS = [
   {
     id: B.WATER, key: 'water', name: 'Water',
     tiles: { top: 'water', bottom: 'water', side: 'water' },
-    solid: false, opaque: false, liquid: true, breakable: false, placeable: false
+    solid: false, opaque: false, liquid: true, waterLevel: 0,
+    breakable: false, placeable: false
   },
   {
     id: B.LOG, key: 'log', name: 'Oak Log',
@@ -884,7 +965,10 @@ BLOCKS.push(
     solid: true, opaque: false, cutout: true, hardness: 0.2,
     facings: true, bed: 'head',
     drops: [{ item: 'bed', min: 1, max: 1 }], placeable: false
-  }
+  },
+  // Flowing water is appended last for the same reason as every other block
+  // here: ids are storage, so nothing may shift.
+  ...waterFlowBlockDefs()
 );
 
 const BLOCK_BY_KEY = new Map();
@@ -901,10 +985,44 @@ for (const block of BLOCKS) {
   block.door ??= null;
   block.doorOpen ??= false;
   block.bed ??= null;
+  // Only water carries a depth; everything else sits at -1 so isWater(id) can
+  // be a single comparison against the block table.
+  block.waterLevel ??= -1;
+  block.falling ??= false;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }
   BLOCK_BY_KEY.set(block.key, block);
+}
+
+/**
+ * Water in all its depths. Anything that used to ask `id === B.WATER` has to
+ * ask this instead, or a spreading sheet of water stops being water the moment
+ * it thins out: the raycast would pass through it, swimming would fail, and
+ * meshing would try to draw faces into it.
+ */
+const isWater = (id) => BLOCKS[id].waterLevel >= 0;
+const waterLevel = (id) => BLOCKS[id].waterLevel;
+/** Water pouring downward, as opposed to a sheet resting somewhere. */
+const isFallingWater = (id) => BLOCKS[id].falling;
+/** A sheet of water that has come to rest, at any of its seven depths. */
+const isFlowWater = (id) => {
+  const level = BLOCKS[id].waterLevel;
+  return level > 0 && !BLOCKS[id].falling;
+};
+/** Water only ever moves into empty cells, so crops, torches and plants stay. */
+const waterCanOccupy = (id) => id === B.AIR;
+
+/**
+ * How high the surface sits in a water cell. A source keeps the shallow lip
+ * water has always had; each flow level thins by an eighth of a block, so a
+ * sheet spreading away from a shore steps down instead of stacking staircases.
+ * A falling column wears the same face as the sheet it came from, which is what
+ * makes a thin curtain over a ledge look thin.
+ */
+function waterSurfaceHeight(level) {
+  if (level <= 0) return 1 - WATER_SURFACE_OFFSET;
+  return (WATER_MAX_FLOW + 1 - level) / (WATER_MAX_FLOW + 1);
 }
 
 const ITEMS = new Map();
@@ -2670,6 +2788,31 @@ class World {
      * look at this short list, and the stage itself lives in the block id.
      */
     this.crops = new Set();
+    /**
+     * "x,y,z" -> every water cell an edit disturbed. Only cells in here are
+     * ever looked at, which is what keeps a sea as cheap as a puddle: the
+     * ocean is a wall of sources that never re-evaluate on their own.
+     */
+    this.waterQueue = new Set();
+    /** Same keys, counting ticks spent waiting on a chunk that is not loaded. */
+    this.waterWait = new Map();
+    /** Chunks the flow changed, waiting their turn at a mesh rebuild. */
+    this.flowRemesh = new Set();
+  }
+
+  /**
+   * Wakes the water that could care about an edit: the edited cell and its six
+   * neighbours. Nothing else in the world is examined, so digging one block
+   * beside a lake costs seven queue inserts and a handful of reads.
+   */
+  queueWaterAround(gx, gy, gz) {
+    const queue = this.waterQueue;
+    queue.add(gx + ',' + gy + ',' + gz);
+    for (const [dx, dy, dz] of WATER_NEIGHBORS) {
+      const ny = gy + dy;
+      if (ny < 0 || ny >= WORLD_HEIGHT) continue;
+      queue.add((gx + dx) + ',' + ny + ',' + (gz + dz));
+    }
   }
 
   trackTorch(gx, gy, gz, oldId, newId) {
@@ -2829,6 +2972,7 @@ class World {
     chunk.blocks[blockIndex(lx, gy, lz)] = id;
     if (oldId !== id) updateLightForEdit(this, gx, gy, gz, oldId, id);
     this.rebuildAround(cx, cz, lx, lz);
+    if (oldId !== id) this.queueWaterAround(gx, gy, gz);
     return true;
   }
 
@@ -2868,6 +3012,7 @@ class World {
       if (lx === CHUNK_SIZE - 1) dirty.add(chunkKey(cx + 1, cz));
       if (lz === 0) dirty.add(chunkKey(cx, cz - 1));
       if (lz === CHUNK_SIZE - 1) dirty.add(chunkKey(cx, cz + 1));
+      if (oldId !== id) this.queueWaterAround(gx, gy, gz);
     }
 
     for (const key of dirty) {
@@ -2877,6 +3022,79 @@ class World {
       this.lightDirty.delete(key);
     }
     return dirty.size;
+  }
+
+  /**
+   * Writes the outcome of one water tick. Shaped like setBlocksBatch, minus
+   * everything flowing water cannot touch: it only ever replaces air, so there
+   * are no drops, torches, crops, doors or block entities to unwind. It also
+   * skips the light engine on purpose, because air and water are both
+   * non-opaque and neither glows, so updateLightForEdit would return
+   * immediately for every single cell.
+   */
+  applyFlowEdits(edits) {
+    if (edits.length === 0) return 0;
+    const dirty = new Set();
+
+    for (const edit of edits) {
+      const { x: gx, y: gy, z: gz, id } = edit;
+      if (gy < 0 || gy >= WORLD_HEIGHT) continue;
+      const cx = Math.floor(gx / CHUNK_SIZE);
+      const cz = Math.floor(gz / CHUNK_SIZE);
+      const key = chunkKey(cx, cz);
+      const chunk = this.chunks.get(key);
+      // An unloaded chunk holds nothing to change, and the saved override
+      // would resurrect water the simulation never actually moved.
+      if (!chunk || !chunk.generated) continue;
+
+      const lx = gx - cx * CHUNK_SIZE;
+      const lz = gz - cz * CHUNK_SIZE;
+      const index = blockIndex(lx, gy, lz);
+      if (chunk.blocks[index] === id) continue;
+      chunk.blocks[index] = id;
+      this.recordOverride(gx, gy, gz, id);
+
+      dirty.add(key);
+      if (lx === 0) dirty.add(chunkKey(cx - 1, cz));
+      if (lx === CHUNK_SIZE - 1) dirty.add(chunkKey(cx + 1, cz));
+      if (lz === 0) dirty.add(chunkKey(cx, cz - 1));
+      if (lz === CHUNK_SIZE - 1) dirty.add(chunkKey(cx, cz + 1));
+      // A water surface is averaged over the four cells that meet at each of its
+      // corners, so a cell in the corner of a chunk also moves the corner of the
+      // chunk diagonally beside it. Solid faces only ever care about the six
+      // neighbours, which is why the edits above stop at the edges.
+      if (lx === 0 && lz === 0) dirty.add(chunkKey(cx - 1, cz - 1));
+      if (lx === 0 && lz === CHUNK_SIZE - 1) dirty.add(chunkKey(cx - 1, cz + 1));
+      if (lx === CHUNK_SIZE - 1 && lz === 0) dirty.add(chunkKey(cx + 1, cz - 1));
+      if (lx === CHUNK_SIZE - 1 && lz === CHUNK_SIZE - 1) dirty.add(chunkKey(cx + 1, cz + 1));
+    }
+
+    for (const key of dirty) this.flowRemesh.add(key);
+    return edits.length;
+  }
+
+  /**
+   * Rebuilds chunks waiting on the water, at most `budget` of them or until
+   * `msBudget` milliseconds have gone by. A spreading flood can dirty a dozen
+   * chunks a tick, and one mesh costs more than the whole simulation does, so
+   * the backlog works off over the next few ticks instead of turning one dig
+   * into a stutter. A chunk that goes away meanwhile simply drops off the list.
+   */
+  flushFlowRemesh(budget = WATER_REMESH_BUDGET, msBudget = WATER_REMESH_MS) {
+    const started = performance.now();
+    let built = 0;
+    for (const key of this.flowRemesh) {
+      this.flowRemesh.delete(key);
+      const chunk = this.chunks.get(key);
+      if (!chunk || !chunk.generated || !chunk.meshed) continue;
+      buildChunkMesh(this, chunk);
+      this.lightDirty.delete(key);
+      built++;
+      // Checking the clock only after a mesh keeps it honest: the loop cannot
+      // decide to quit before it has spent any time at all.
+      if (built >= budget || performance.now() - started >= msBudget) break;
+    }
+    return built;
   }
 
   rebuildAround(cx, cz, lx, lz) {
@@ -3220,7 +3438,7 @@ class World {
   surfaceY(gx, gz) {
     for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
       const id = this.getBlock(gx, y, gz);
-      if (id !== B.AIR && id !== B.WATER && id !== B.LEAVES) return y;
+      if (id !== B.AIR && !isWater(id) && id !== B.LEAVES) return y;
     }
     return SEA_LEVEL;
   }
@@ -3304,6 +3522,36 @@ function caveCarvesAt(wx, y, wz) {
   return false;
 }
 
+/**
+ * Would hollowing out this cell open the cave to the sea? Terrain generates
+ * water in every column from its own surface up to sea level, so a cut touches
+ * water if the cell overhead belongs to a flooded column, or if one of the four
+ * neighbouring columns is flooded down to this height.
+ *
+ * Both cases have to be refused. One block of sand left between the sea and a
+ * new cave is not enough, because the sea is nothing but sources and the flow
+ * only ever starts where an edit reaches: leave a breach and the first dig near
+ * the shore — or a flood from a bucket a hundred blocks away — sets the whole
+ * ocean pouring into the underground. Caves are meant to stay as the generator
+ * left them until the player breaks into the water himself.
+ */
+function cutOpensSea(chunk, x, z, y, h) {
+  if (y > SEA_LEVEL) return false;
+  // Overhead: the loop only ever cuts at or below the surface, so the cell
+  // above is water exactly when this is the surface block of a flooded shore.
+  if (y === h && y + 1 <= SEA_LEVEL) return true;
+
+  const wx = chunk.cx * CHUNK_SIZE + x;
+  const wz = chunk.cz * CHUNK_SIZE + z;
+  for (const [dx, dz] of WATER_SIDES) {
+    // A neighbour column holds water at this height once its own surface sits
+    // below it. Queried from the terrain model rather than the chunk, since the
+    // neighbouring column may well be in a chunk that is not generated yet.
+    if (sampleColumn(wx + dx, wz + dz).height < y) return true;
+  }
+  return false;
+}
+
 /** Carve connected spaghetti tunnels and occasional larger caverns. */
 function carveCaves(chunk) {
   const baseX = chunk.cx * CHUNK_SIZE;
@@ -3319,8 +3567,12 @@ function carveCaves(chunk) {
       for (let y = 4; y <= h; y++) {
         const index = blockIndex(x, y, z);
         const id = blocks[index];
-        if (id === B.AIR || id === B.WATER || id === B.BEDROCK) continue;
-        if (caveCarvesAt(wx, y, wz)) blocks[index] = B.AIR;
+        if (id === B.AIR || isWater(id) || id === B.BEDROCK) continue;
+        if (!caveCarvesAt(wx, y, wz)) continue;
+        // A cave that starts out touching the sea is a cave the simulation then
+        // has to flood, so no cut here may reach the water.
+        if (cutOpensSea(chunk, x, z, y, h)) continue;
+        blocks[index] = B.AIR;
       }
     }
   }
@@ -3543,7 +3795,7 @@ function generateChunk(chunk, overrides) {
       let top = 0;
       for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
         const id = blocks[blockIndex(x, y, z)];
-        if (id !== B.AIR && id !== B.WATER &&
+        if (id !== B.AIR && !isWater(id) &&
             id !== B.LEAVES && id !== B.LOG) {
           top = y;
           break;
@@ -3879,7 +4131,7 @@ function blockBrightness(level) {
 
 function faceVisible(blockId, neighborId) {
   if (neighborId === B.AIR) return true;
-  if (neighborId === B.WATER) return blockId !== B.WATER;
+  if (isWater(neighborId)) return !isWater(blockId);
   return !BLOCKS[neighborId].opaque;
 }
 
@@ -3910,8 +4162,8 @@ function buildChunkMesh(world, chunk) {
           appendTorch(cutout, world, x, y, z, wx, wz);
           continue;
         }
-        if (id === B.WATER) {
-          appendWaterFaces(water, world, x, y, z, wx, wz);
+        if (isWater(id)) {
+          appendWaterFaces(water, world, x, y, z, wx, wz, id);
           continue;
         }
 
@@ -3996,35 +4248,134 @@ function buildChunkMesh(world, chunk) {
   onChunkMeshed(chunk);
 }
 
-function appendWaterFaces(builder, world, x, y, z, wx, wz) {
-  const block = BLOCKS[B.WATER];
-  const aboveIsWater = world.getBlock(wx, y + 1, wz) === B.WATER;
+/**
+ * Whether the water overhead buries this cell in the body rather than leaving
+ * it a surface. Water resting on top of water presses the cell under it up to
+ * its ceiling, which is what makes a stack read as one surface instead of a
+ * pile of layers. A stream pouring past is the one exception: a fall is not a
+ * body, and a pool it lands in has a depth of its own to show. Without that
+ * exception the cell at the foot of every waterfall swells to a full block.
+ */
+function waterBuriedAbove(id, aboveId) {
+  return isWater(aboveId) && (BLOCKS[id].falling || !BLOCKS[aboveId].falling);
+}
+
+/**
+ * How full a cell's share of the water surface is, or null if it holds none.
+ * A buried cell is the whole cell: only the top of a body of water is a surface.
+ */
+function waterTopAt(world, wx, wy, wz) {
+  const id = world.getBlock(wx, wy, wz);
+  if (!isWater(id)) return null;
+  if (waterBuriedAbove(id, world.getBlock(wx, wy + 1, wz))) return 1;
+  return waterSurfaceHeight(waterLevel(id));
+}
+
+/**
+ * The surface height at a corner of the grid, averaged over the water cells
+ * that meet there. Every cell reads the same number for a corner they share, so
+ * a deep cell and a shallow one slope into each other along their common edge
+ * instead of leaving a step, which is what keeps a spreading sheet from looking
+ * like a staircase. A corner no water touches stands at nothing.
+ */
+function waterCornerHeight(world, wx, wy, wz) {
+  let sum = 0;
+  let count = 0;
+  for (const [dx, dz] of WATER_CORNER_CELLS) {
+    const height = waterTopAt(world, wx + dx, wy, wz + dz);
+    if (height === null) continue;
+    sum += height;
+    count++;
+  }
+  return count > 0 ? sum / count : 0;
+}
+
+/**
+ * Water renders as a body with a surface, not as a stack of cubes. The top face
+ * bends to the blended corner heights of the sheet, and the side faces skirt
+ * down from that surface to the floor of the cell — or, for a stream, to the
+ * surface of the pool it is falling into. Neighbouring water cells need no face
+ * between them at all: sharing corner heights means their surfaces meet exactly
+ * along the edge they have in common, and each body draws one surface at its
+ * own top, which is what keeps a stack from being seen through.
+ */
+function appendWaterFaces(builder, world, x, y, z, wx, wz, id) {
+  const rect = tileRect(BLOCKS[id].tileSide);
+  const buried = waterBuriedAbove(id, world.getBlock(wx, y + 1, wz));
+
+  // Corners of the cell, in the order the top face and the light sampling use.
+  const h00 = buried ? 1 : waterCornerHeight(world, wx, y, wz);
+  const h10 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz);
+  const h01 = buried ? 1 : waterCornerHeight(world, wx, y, wz + 1);
+  const h11 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz + 1);
+  const cornerHeight = (cx, cz) => (cx === 0
+    ? (cz === 0 ? h00 : h01)
+    : (cz === 0 ? h10 : h11));
+  // A stream is drawn down to the surface it falls into. Water landing on water
+  // keeps the depth it arrived with, which can sit well below the floor of the
+  // cell the stream ends in, so the skirt starts there instead and the pour reads
+  // as one ribbon into the pool rather than stopping a block short of it. Water
+  // resting on a full body gets nothing: its surface is already the ceiling.
+  let f00 = 0;
+  let f10 = 0;
+  let f01 = 0;
+  let f11 = 0;
+  if (BLOCKS[id].falling && isWater(world.getBlock(wx, y - 1, wz))) {
+    f00 = waterCornerHeight(world, wx, y - 1, wz) - 1;
+    f10 = waterCornerHeight(world, wx + 1, y - 1, wz) - 1;
+    f01 = waterCornerHeight(world, wx, y - 1, wz + 1) - 1;
+    f11 = waterCornerHeight(world, wx + 1, y - 1, wz + 1) - 1;
+  }
+  const floorHeight = (cx, cz) => (cx === 0
+    ? (cz === 0 ? f00 : f01)
+    : (cz === 0 ? f10 : f11));
 
   for (const face of FACES) {
     const neighborId = world.getBlock(wx + face.n[0], y + face.n[1], wz + face.n[2]);
-    if (neighborId === B.WATER) continue;
+    // Water against water needs no face, with one exception: the surface. The
+    // cell under a stream is not buried in the body, so it still has a surface
+    // of its own to draw, and without it the pool a waterfall lands in reads as
+    // a hole the seabed shows through.
+    if (isWater(neighborId) && face.kind !== 'top') continue;
     if (BLOCKS[neighborId].opaque) continue;
 
     const sky = skyBrightness(world.getSkyLight(wx + face.n[0], y + face.n[1], wz + face.n[2]));
     const blockLight = blockBrightness(world.getBlockLight(wx + face.n[0], y + face.n[1], wz + face.n[2]));
-    const positions = [];
-    const shades = [];
-    const lowerTop = !aboveIsWater;
+    const shades = [face.shade * 0.94, face.shade * 0.94, face.shade * 0.94, face.shade * 0.94];
+    let positions;
 
-    for (let i = 0; i < 4; i++) {
-      const cu = FACE_CORNERS[i][0];
-      const cv = FACE_CORNERS[i][1];
-      let py = y + 0.5 + face.n[1] * 0.5 + (face.u[1] * cu + face.v[1] * cv) * 0.5;
-      if (lowerTop && Math.abs(py - (y + 1)) < 1e-5) py -= WATER_SURFACE_OFFSET;
-      positions.push([
-        x + 0.5 + face.n[0] * 0.5 + (face.u[0] * cu + face.v[0] * cv) * 0.5,
-        py,
-        z + 0.5 + face.n[2] * 0.5 + (face.u[2] * cu + face.v[2] * cv) * 0.5
-      ]);
-      shades.push(face.shade * 0.94);
+    if (face.kind === 'top') {
+      // A buried cell is filled to its ceiling and sealed by the water above it,
+      // so it has no surface: only the top of a body of water ever draws one.
+      if (buried) continue;
+      positions = [
+        [x, y + h01, z + 1],
+        [x + 1, y + h11, z + 1],
+        [x + 1, y + h10, z],
+        [x, y + h00, z]
+      ];
+    } else if (face.kind === 'bottom') {
+      positions = [
+        [x, y, z], [x + 1, y, z], [x + 1, y, z + 1], [x, y, z + 1]
+      ];
+    } else {
+      // The two ends of the edge this face owns, and how high the surface runs
+      // at each of them. The skirt starts at the floor of the cell, so a thin
+      // sheet still shows a side wherever the ground under it drops away, and at
+      // the foot of a pour it starts on the surface below instead.
+      const ax = x + 0.5 + face.n[0] * 0.5 - face.u[0] * 0.5;
+      const az = z + 0.5 + face.n[2] * 0.5 - face.u[2] * 0.5;
+      const bx = x + 0.5 + face.n[0] * 0.5 + face.u[0] * 0.5;
+      const bz = z + 0.5 + face.n[2] * 0.5 + face.u[2] * 0.5;
+      positions = [
+        [ax, y + floorHeight(Math.round(ax - x), Math.round(az - z)), az],
+        [bx, y + floorHeight(Math.round(bx - x), Math.round(bz - z)), bz],
+        [bx, y + cornerHeight(Math.round(bx - x), Math.round(bz - z)), bz],
+        [ax, y + cornerHeight(Math.round(ax - x), Math.round(az - z)), az]
+      ];
     }
 
-    builder.quad(positions, tileRect(block.tileSide), sky, blockLight, shades);
+    builder.quad(positions, rect, sky, blockLight, shades);
   }
 }
 
@@ -5198,7 +5549,7 @@ function raycastBlock(origin, direction, maxDistance) {
 
   for (let guard = 0; guard < 128; guard++) {
     const id = world.getBlock(x, y, z);
-    if (id !== B.AIR && id !== B.WATER) {
+    if (id !== B.AIR && !isWater(id)) {
       return { x, y, z, id, normal, distance };
     }
 
@@ -5519,7 +5870,10 @@ function tryPlaceSelectedBlock() {
   const pz = currentTarget.z + currentTarget.normal.z;
 
   if (py < 0 || py >= WORLD_HEIGHT) return false;
-  if (world.getBlock(px, py, pz) !== B.AIR) return false;
+  // Water is the one thing a block can be set straight into, source or flow.
+  // It is also what lets a plank dam a flood instead of bouncing off it.
+  const roomId = world.getBlock(px, py, pz);
+  if (roomId !== B.AIR && !isWater(roomId)) return false;
 
   if (block.placeOnTop) {
     if (currentTarget.normal.y !== 1) return false;
@@ -5824,6 +6178,225 @@ function updateCrops(dt) {
       world.setBlock(x, y, z, B.WHEAT_0 + stage);
     }
   }
+}
+
+/* ---------- Water flow ---------- */
+
+/**
+ * Block ids for each of the seven depths, twice over: resting water in one
+ * table, water pouring downward in the other.
+ */
+const WATER_FLOW_IDS = [];
+const WATER_FALL_IDS = [];
+for (let level = 1; level <= WATER_MAX_FLOW; level++) {
+  WATER_FLOW_IDS.push(B['WATER_FLOW_' + level]);
+  WATER_FALL_IDS.push(B['WATER_FALL_' + level]);
+}
+
+/**
+ * What a cell is worth to the neighbour beside it as a supply of water: a source
+ * can fill anything, a resting sheet hands over a reach exactly one step thinner
+ * than its own, and anything that is not water is worth nothing — which the code
+ * reads as "no supply" rather than as level zero. A column pouring past feeds
+ * nobody beside it, which is what keeps a waterfall a column instead of a fan of
+ * water hanging in mid air.
+ */
+function waterSupply(id) {
+  if (BLOCKS[id].falling) return Infinity;
+  const level = BLOCKS[id].waterLevel;
+  return level < 0 ? Infinity : level;
+}
+
+/**
+ * What the cell above is worth to the cell it is pouring into: its own depth,
+ * whichever kind of water it is. Water loses nothing by falling, which is why a
+ * film pouring off a ledge arrives at the ground still a film, while a waterfall
+ * that started at a source arrives with enough depth left to pool outwards. Every
+ * step sideways costs a depth and every step down costs none, so a cell can only
+ * ever be as deep as the shortest path from a source: nothing in here can invent
+ * water, and a flood cannot breathe in and out forever looking for a level that
+ * finally satisfies it.
+ */
+function waterSupplyFromAbove(id) {
+  const level = BLOCKS[id].waterLevel;
+  if (level < 0) return Infinity;
+  return level === 0 ? 1 : level;
+}
+
+/**
+ * Which block a cell wants to be, given the water around it. Everything here
+ * reads the world as it stood when the tick began — the writes are applied
+ * together afterwards — so the order the queue happens to come out in cannot
+ * change how the water settles.
+ */
+function desiredWaterLevel(x, y, z) {
+  const id = world.getBlock(x, y, z);
+  // A source is where the water comes from. It never thins, moves or dries,
+  // which is why an ocean can sit there for free until something digs. Nothing
+  // down here ever makes a new one either: Minecraft lets two sources breed a
+  // third, and here that would let a sea print sources along its own coast, one
+  // dig at a time, until the land was under water.
+  if (id === B.WATER) return B.WATER;
+  // The queue holds every neighbour an edit touched, solid ground among them,
+  // and only empty cells and water itself take part in the flow: a wall is
+  // never the thing a flood turns into, and a shore does not dissolve.
+  if (!isWater(id) && !waterCanOccupy(id)) return id;
+
+  const below = world.getBlock(x, y - 1, z);
+  const above = world.getBlock(x, y + 1, z);
+
+  // What the four neighbours are worth: a source fills the cell outright, a
+  // sheet hands over a reach one step thinner than its own, and a column
+  // pouring past hands over nothing at all.
+  let side = Infinity;
+  for (const [dx, dz] of WATER_SIDES) {
+    const supply = waterSupply(world.getBlock(x + dx, y, z + dz));
+    if (supply + 1 < side) side = supply + 1;
+  }
+
+  // What the cell overhead is worth, and the two ways a cell can be held up:
+  // ground or a source underneath it, or the body of a sheet that has itself
+  // come to rest.
+  const overhead = waterSupplyFromAbove(above);
+  const best = Math.min(side, overhead);
+  const lands = BLOCKS[below].solid || below === B.WATER;
+  const rests = isFlowWater(below);
+  // A fall arriving overhead passes through anything that is not ground.
+  const fallsIn = isFallingWater(above);
+
+  // A sheet settles where the body can hold it up and a neighbour can feed it.
+  if ((lands || rests) && side <= WATER_MAX_FLOW) return WATER_FLOW_IDS[best - 1];
+  // The foot of a fall: ground stops the water here, so it pools out from here.
+  if (lands && overhead <= WATER_MAX_FLOW) return WATER_FLOW_IDS[best - 1];
+  // Nothing underneath at all, so keep dropping for as long as anything reaches
+  // this cell. That is what makes a sheet running off the edge of a ledge pour
+  // down instead of hanging there, and where a fall stops being one: water thin
+  // as a film has no strength left to pour with, so a film simply ends.
+  if (!lands && !rests && best <= WATER_MAX_FLOW) return WATER_FALL_IDS[best - 1];
+  // A fall landing on water carries on down through it to the body below.
+  if (rests && fallsIn && overhead <= WATER_MAX_FLOW) return WATER_FALL_IDS[overhead - 1];
+
+  // Nothing reaches here: a sheet that was left behind runs off, air stays air.
+  return B.AIR;
+}
+
+/**
+ * Whether every cell this one reads is loaded. An unloaded chunk answers "air",
+ * and taking that at face value would let the sea pour off the edge of the
+ * loaded world, so such a cell waits instead.
+ */
+function waterNeighboursLoaded(x, y, z) {
+  for (const [dx, dy, dz] of WATER_NEIGHBORS) {
+    const ny = y + dy;
+    if (ny < 0 || ny >= WORLD_HEIGHT) continue;
+    const cx = Math.floor((x + dx) / CHUNK_SIZE);
+    const cz = Math.floor((z + dz) / CHUNK_SIZE);
+    const chunk = world.chunks.get(chunkKey(cx, cz));
+    if (!chunk || !chunk.generated) return false;
+  }
+  return true;
+}
+
+let waterTimer = 0;
+
+/**
+ * Resolves one step of the queued water and writes it in a single batch.
+ * Returns how many cells actually changed.
+ */
+function waterTick() {
+  const queue = world.waterQueue;
+  if (queue.size === 0) {
+    // Nothing is flowing, but a flood that just finished can still owe the
+    // renderer a few chunks. Any caller that ticks the water is spending frames
+    // on it, so this is where those frames pay off the debt.
+    world.flushFlowRemesh(WATER_REMESH_IDLE_BUDGET);
+    return 0;
+  }
+
+  // Swapping the queue out means water this pass wakes goes on next tick's
+  // list, instead of a breach cascading across the world inside one pass.
+  const cells = Array.from(queue);
+  queue.clear();
+
+  const edits = [];
+  const moved = [];
+  let looked = 0;
+
+  for (const key of cells) {
+    if (looked >= WATER_TICK_BUDGET) {
+      // Over budget: the rest of the flood simply waits for the next tick.
+      queue.add(key);
+      continue;
+    }
+    const parts = key.split(',');
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+
+    if (!waterNeighboursLoaded(x, y, z)) {
+      // Hold the cell on the list until the chunk arrives, which is what stops
+      // the sea pouring off the edge of the loaded world, and let go of it
+      // eventually so a cell that never loads cannot stay here forever.
+      const waited = (world.waterWait.get(key) ?? 0) + 1;
+      if (waited < WATER_WAIT_LIMIT) {
+        world.waterWait.set(key, waited);
+        queue.add(key);
+      } else {
+        world.waterWait.delete(key);
+      }
+      continue;
+    }
+    world.waterWait.delete(key);
+
+    looked++;
+    const id = world.getBlock(x, y, z);
+    const next = desiredWaterLevel(x, y, z);
+    if (next === id) continue;
+    edits.push({ x, y, z, id: next });
+    moved.push(x, y, z);
+  }
+
+  world.applyFlowEdits(edits);
+  world.flushFlowRemesh();
+
+  // Whatever changed is worth a neighbour's attention, and those neighbours
+  // are cells the next tick should look at.
+  for (let i = 0; i < moved.length; i += 3) {
+    world.queueWaterAround(moved[i], moved[i + 1], moved[i + 2]);
+  }
+  return edits.length;
+}
+
+/**
+ * The water clock. Only cells an edit disturbed are ever queued, so the cost
+ * tracks how much water is moving and not how much water there is.
+ */
+function updateWater(dt) {
+  if (!world || dt <= 0) return 0;
+  // A finished flood still owes the renderer a few meshes, so the clock keeps
+  // running until that backlog is clear even though nothing is flowing.
+  if (world.waterQueue.size === 0 && world.flowRemesh.size === 0) {
+    waterTimer = 0;
+    return 0;
+  }
+
+  waterTimer += dt;
+  if (waterTimer < WATER_TICK_SECONDS) return 0;
+  let ticks = Math.floor(waterTimer / WATER_TICK_SECONDS);
+  waterTimer -= ticks * WATER_TICK_SECONDS;
+  // A tab hidden for a minute should not spend that minute replaying water.
+  if (ticks > 4) ticks = 4;
+
+  let changed = 0;
+  for (let i = 0; i < ticks; i++) {
+    if (world.waterQueue.size > 0) changed += waterTick();
+    else world.flushFlowRemesh(WATER_REMESH_IDLE_BUDGET);
+    if (world.waterQueue.size === 0 && world.flowRemesh.size === 0) {
+      waterTimer = 0;
+      break;
+    }
+  }
+  return changed;
 }
 
 /* ---------- Smelting and furnaces ---------- */
@@ -6210,16 +6783,28 @@ function tryWaterMantle(startX, startZ, dx, dz) {
   return false;
 }
 
+/**
+ * Whether a point sits under water, respecting how deep the sheet actually is.
+ * Wading through a finger of runoff wetting the boots is not the same as being
+ * under, which is what keeps the screen clear while the head is in the air.
+ */
+function submergedAt(x, y, z) {
+  const bx = Math.floor(x);
+  const by = Math.floor(y);
+  const bz = Math.floor(z);
+  const id = world.getBlock(bx, by, bz);
+  if (!isWater(id)) return false;
+  // Water above means this cell is buried in the body, so it is full.
+  if (isWater(world.getBlock(bx, by + 1, bz))) return true;
+  return y < by + waterSurfaceHeight(waterLevel(id));
+}
+
 function updatePlayerEnvironment() {
   player.inWater =
-    blockAtPoint(player.pos.x, player.pos.y + 0.2, player.pos.z) === B.WATER ||
-    blockAtPoint(player.pos.x, player.pos.y + 0.9, player.pos.z) === B.WATER;
+    submergedAt(player.pos.x, player.pos.y + 0.2, player.pos.z) ||
+    submergedAt(player.pos.x, player.pos.y + 0.9, player.pos.z);
   player.headInWater =
-    blockAtPoint(
-      player.pos.x,
-      player.pos.y + EYE_HEIGHT,
-      player.pos.z
-    ) === B.WATER;
+    submergedAt(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
 }
 
 /** Generate the chunks the player's box can touch so collision never sees air. */
@@ -7911,7 +8496,7 @@ function explodeCreeper(mob) {
         const y = Math.floor(cy) + dy;
         const z = Math.floor(cz) + dz;
         const id = world.getBlock(x, y, z);
-        if (id === B.AIR || id === B.BEDROCK || id === B.WATER) continue;
+        if (id === B.AIR || id === B.BEDROCK || isWater(id)) continue;
         const block = BLOCKS[id];
         if (!block.breakable || block.liquid) continue;
         // A furnace caught in the blast empties its contents first, so the
@@ -8117,11 +8702,7 @@ function updateMobAI(mob, dt) {
   }
 
   // Water slows mobs down.
-  mob.inWater = world.getBlock(
-    Math.floor(mob.pos.x),
-    Math.floor(mob.pos.y + 0.25),
-    Math.floor(mob.pos.z)
-  ) === B.WATER;
+  mob.inWater = submergedAt(mob.pos.x, mob.pos.y + 0.25, mob.pos.z);
   if (mob.inWater) {
     mob.vel.x *= Math.exp(-3 * dt);
     mob.vel.z *= Math.exp(-3 * dt);
@@ -12531,6 +13112,58 @@ window.__voxelcraft = {
     updateCrops(seconds);
     return this.crops();
   },
+  /**
+   * Every flow cell in the loaded world, which is to say every drop the
+   * simulation has actually moved. The ocean is all sources, so it never shows
+   * up here and the list stays exactly as large as the flooding is. Give it a
+   * centre to look at one patch, which is far cheaper than the whole world.
+   */
+  water(limit = 500, centre = null, radius = 32) {
+    const list = [];
+    const reach = Math.ceil(radius / CHUNK_SIZE);
+    const cxc = centre ? Math.floor(centre[0] / CHUNK_SIZE) : 0;
+    const czc = centre ? Math.floor(centre[2] / CHUNK_SIZE) : 0;
+    for (const chunk of world.chunks.values()) {
+      if (!chunk.generated) continue;
+      if (centre && (Math.abs(chunk.cx - cxc) > reach || Math.abs(chunk.cz - czc) > reach)) {
+        continue;
+      }
+      const baseX = chunk.cx * CHUNK_SIZE;
+      const baseZ = chunk.cz * CHUNK_SIZE;
+      for (let y = 0; y < WORLD_HEIGHT; y++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+          for (let x = 0; x < CHUNK_SIZE; x++) {
+            const level = BLOCKS[chunk.blocks[blockIndex(x, y, z)]].waterLevel;
+            // Sources sit at 0 and air below that, so this is only ever the
+            // thin water: what the flow actually put there.
+            if (level <= 0) continue;
+            if (list.length >= limit) return list;
+            list.push({ at: [baseX + x, y, baseZ + z], level });
+          }
+        }
+      }
+    }
+    return list;
+  },
+  /**
+   * Runs the flow clock forward without waiting for real time, so a flood can
+   * be watched to completion in one call. Ask for `list` to get the cells back;
+   * counting them means reading every loaded chunk.
+   */
+  flow(seconds = 1, list = false) {
+    const passes = Math.max(1, Math.ceil(seconds / WATER_TICK_SECONDS));
+    let changed = 0;
+    for (let i = 0; i < passes; i++) {
+      changed += waterTick();
+      if (world.waterQueue.size === 0 && world.flowRemesh.size === 0) break;
+    }
+    return {
+      changed,
+      queued: world.waterQueue.size,
+      remeshing: world.flowRemesh.size,
+      cells: list ? this.water(500) : undefined
+    };
+  },
   setBlock(x, y, z, id) {
     let numericId = id;
     if (typeof id === 'string') {
@@ -12563,6 +13196,7 @@ window.__voxelcraft = {
       updateExplosionEffects(dt);
       updateFurnaces(dt);
       updateCrops(dt);
+      updateWater(dt);
     }
     updateDebug();
     return this.stats();
@@ -12594,6 +13228,7 @@ window.__voxelcraft = {
       updateTorchEmbers(dt);
       updateAudio(dt);
       updateExplosionEffects(dt);
+      updateWater(dt);
     }
     updateDebug();
     return this.stats();
@@ -12683,6 +13318,11 @@ window.__voxelcraft = {
       audio: audioStatus(),
       embers: emberCount(),
       torches: world.torches.size,
+      water: {
+        queued: world.waterQueue.size,
+        waiting: world.waterWait.size,
+        remeshing: world.flowRemesh.size
+      },
       explosion: explosionEffects(),
       time: {
         t: dayTime,
@@ -12809,6 +13449,7 @@ function animate(now) {
     updateExplosionEffects(dt);
     updateFurnaces(dt);
     updateCrops(dt);
+    updateWater(dt);
   } else {
     // A pause or an open screen takes the controls away, and the sprint latch
     // goes with them: resuming must never leave the player running unawares.

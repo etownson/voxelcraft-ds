@@ -52,6 +52,7 @@ Terrain should include:
   - Occasional larger caverns and rooms from a separate blobby 3D noise pass that intersects the tunnels
   - Cave density should increase with depth, and tunnels should occasionally break through the surface as natural, walkable cave entrances
   - Cave interiors always generate as air, even when below sea level — never flood caves with water; only columns open to the sky (oceans, lakes, rivers) fill with water up to sea level
+  - Carving must not open the sea into a cave either: a cave may not be carved at or below sea level where the ground above it, or the neighbouring column, is flooded down to that height, because a breach lets the flow simulation flood a cave the player was meant to find dry
 - Ore veins embedded in stone, placed deterministically from the world seed:
   - Coal ore: common, in veins of 3–8 blocks, found at most underground depths
   - Iron ore: less common, in veins of 2–6 blocks, more frequent the deeper you go
@@ -102,6 +103,8 @@ Include at least these block types:
   - Semi-transparent blue
   - No collision
   - Fills below sea level
+  - Not one block but fifteen states: a source, seven resting levels, and the same seven again
+    carrying their own level while falling — see the water flow addendum at the end
 - Wood (Log)
   - Brown bark texture on side faces
   - Ring pattern on top and bottom faces
@@ -316,6 +319,8 @@ Use chunk-based rendering for performance. Requirements:
 - Each chunk should generate a single optimized mesh or a small number of meshes grouped by material type
 - Do not render hidden faces between solid blocks
 - Only render faces exposed to air, water, leaves, or transparent blocks
+- Water is drawn at the height its level actually fills, not at the top of its cell, and shared
+  grid corners blend so neighbouring levels slope into each other instead of stepping
 - Rebuild chunk meshes when blocks are added or removed
 - Rebuild neighboring chunk meshes when editing blocks on a chunk border
 - Use render distance to limit active chunks
@@ -1318,3 +1323,94 @@ though it were a whole one and lets the other 0.6 go.
 - Scanning down from the top of the world for a tree finds the top of a canopy, after which the
   trunk is always below where the scan started and never gets found. Walk up from
   `sampleColumn(x, z).height` instead.
+
+## Water flow addendum — the sea runs when you break it
+
+Water used to be a statue. Dig one block into the side of a lake and the lake stayed exactly where
+it was, holding a wall of water up in the air where the shore should have slumped. This adds the
+level-based flow that was always meant to be under the block: water finds its own level, in the
+player's session rather than at generation time.
+
+### What changed
+
+- Depth is stored in the block id, the way wheat stores its growth stage. `WATER` is a source;
+  `WATER_FLOW_1..7` are resting sheets, rank 1 the deepest and 7 a film; `WATER_FALL_1..7` are
+  falling water carrying its own rank. Fifteen states in all, appended at the end of `BLOCKS` with
+  their ids appended at the end of `B` — ids are storage, so nothing may ever be inserted in the
+  middle.
+- One rule decides everything: **a cell's rank is the shortest path cost from a source, where a
+  step sideways costs a depth and a step down costs nothing.** A source hands depth 1 to whatever
+  falls into the cell below it, and a fall feeds nobody sideways — falling water is on its way
+  somewhere, it is not a supply. The pour threshold is rank ≤ 7, so a film ends instead of pouring
+  off the edge of the world.
+- Sources are placed, never bred. The usual "two flowing sources meeting make a source" shortcut
+  was tried and printed a permanent sea source into a shore notch on the very first dig, which then
+  flooded the notch forever. Worldgen and the player are the only things that make a source.
+- The simulation is reactive and never global. An edit queues the cells around it
+  (`queueWaterAround`, called from both `setBlock` and `setBlocksBatch`) and nothing else is ever
+  looked at, so the ocean that has stood for ten minutes costs nothing per frame. Resolution is
+  batched Jacobi: every read sees start-of-tick state and the whole batch of edits lands at once,
+  so the order cells come out of the queue cannot change the result.
+- Water only moves into air. Crops, torches and plants are never displaced, and solid ground is
+  never converted.
+- A cell whose neighbour chunk is not loaded retries twelve ticks and then gives up, which is why a
+  dig at the very edge of the loaded world can show zero changes.
+- Drying a flow cell writes an `AIR` override rather than deleting the override, so the base map
+  stays untouched. That costs save bytes on purpose; `SAVE_SCHEMA` is still `v4`. Old saves keep
+  reading: id 42 changes meaning from "generic falling water" to "rank-1 falling water".
+
+### Why it is allowed to cost
+
+| Rig | Ticks | Cells changed |
+| --- | --- | --- |
+| Shelf over open sea, source at one end, pours off both | 16 | 273 |
+| 9×9 deck 20 blocks above the sea, source at the middle | 31 | 498, peak queue 140 |
+| Same deck left idle after settling | 1 | 0 |
+| Same deck, source removed | 29 | drains to nothing |
+| Sealed shaft, 5×5×10, source on top | 11 | 48 |
+| Source sealed in solid rock | 1 | 0 |
+
+The deck is the interesting row: 455.25 blocks of water poured out of one source cell and the
+volume was byte-identical when the same rig was left running afterwards, because a settled sheet
+with nothing feeding it is a fixed point. The sealed source is the other one worth reading — a
+source in rock never asks to be anywhere, so it costs one queue entry and nothing else, forever.
+
+The tick is 0.15 s with a budget of 512 cells, and remeshing after a flood is deferred through
+`world.flowRemesh`, drained when the queue is idle: a flood can touch a hundred cells and chunk
+meshes cost about 13 ms each, so meshing inline stalls the frame it happened in.
+
+### Generation stays dry
+
+Caves are still air, and now nothing lets the simulation undo that from the other side.
+`cutOpensSea` refuses a carve at or below sea level when the cell overhead, or the neighbouring
+column, is flooded down to that height. Before that, generation could open a sea into a cave and
+the player's first visit would spend the next few seconds quietly draining the ocean underground.
+Measured afterwards: no untouched air cell between y16 and y48 touches a source any more (it was
+115 in the sample), and average chunk generation is 5.7 ms.
+
+### The renderer had to follow
+
+This is not polish, it is correctness: a rank-7 sheet drawn as a full cube is a staircase.
+
+- A cell draws its surface at `(8 − rank)/8` of the cell, and a grid corner takes the average of
+  the water cells that meet there. Both neighbours read the same number for a corner they share, so
+  a deep cell and a shallow one slope into each other instead of leaving a step.
+- Only the top of a body of water draws a surface. Resting water above a cell presses it up to its
+  ceiling and seals that ceiling, which is what makes a stack read as one surface.
+- A stream pouring past is the exception, twice over. It does not press the pool it lands in up to
+  a full block — that was a grey slab at the foot of every waterfall — and the pool keeps a surface
+  of its own, because a body with no surface at all is a window straight down to the seabed. Both
+  bugs were visible in the same screenshot.
+- A stream is drawn down to the surface it actually lands on, so the ribbon reaches the pool
+  instead of stopping a block short of it. Measured on the seam between a rank-7 fall and the film
+  it lands in: one skirt 49.000–49.125, the stream above it 49.125–51.000, meeting exactly.
+
+Verified as two invariants over the whole loaded world rather than by eye: 4,903 columns of water,
+every one of them with a surface drawn inside the span its water occupies; and 9,854 surfaces
+inside bodies, none of them below the top cell of the body that owns it. The second one is the one
+that matters with a transparent material — a plane buried inside a body shows up as a seam.
+
+### Left for later on purpose
+
+Cosmetics: fresnel, foam at the waterline, animated UVs, caustics, the underwater tint. Flow first,
+because none of it is worth doing on a surface that is in the wrong place.
