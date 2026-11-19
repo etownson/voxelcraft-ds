@@ -602,7 +602,7 @@ amount * min(20, max(defence / 5, defence - amount / 2)) / 25
 
 Each hit costs one random worn piece four durability per point absorbed, so a set wears
 unevenly, and a piece that runs out un-equips itself. The HUD draws the set as ten shields
-above the hunger bar.
+above the hunger bar, and the row is hidden entirely while nothing is worn.
 
 ### Hunger
 
@@ -1000,9 +1000,11 @@ the save came back holding the empty bar the death had earned.
   exhaustion spends a bite at Minecraft's 4.0 rather than 1.0, and mining, jumping, attacking
   and walking are priced the way Minecraft prices them. The starvation clock measured above is
   untouched, and still correct.
-- Found while screenshotting this, not fixed: `#armor.hidden` has no CSS rule, while every other
-  `.hidden` in the file does. `renderArmourBar` sets the class, but the empty row still paints as
-  ten dark shields above the food bar whenever nothing is worn.
+- Found while screenshotting this, and fixed since: `#armor.hidden` had no CSS rule while every
+  other `.hidden` in the file did, so `renderArmorBar` set the class and the empty row still
+  painted as ten dark shields above the food bar whenever nothing was worn. The rule is there now,
+  and the row measures gone at zero defence, four shields at eight and seven shields plus a half
+  one at iron's fifteen, with the food bar never moving more than a pixel and a half between them.
 
 
 ---
@@ -1128,8 +1130,7 @@ rather than spending food the instant the world opens. A stored stomach of hunge
   saturation borrows Minecraft's 2-food tier.
 - **Sprinting is never gated by hunger.** Minecraft stops a sprint at 6 food or less and drops the
   latch. Nothing here does, and it was measured: hunger 4, latch armed, sprint runs and spends
-  0.822 exhaustion a second. The `Too hungry to sprint` row in the sprint-latch table above
-  describes a floor this game has never had.
+  0.822 exhaustion a second.
 - **No difficulty setting**, so starvation is always lethal with no 1 HP floor, and the six-second
   post-hit wait stays six seconds where Minecraft's food clock uses ten.
 - **No sprint-swimming**, so water always charges the swim rate rather than the sprint rate.
@@ -1148,5 +1149,3 @@ rather than spending food the instant the world opens. A stored stomach of hunge
 - Judge distance per frame. Endpoint distance under-reads a curving run badly enough to make a
   correct 0.1-per-block rate look like 0.45, and a run that wanders into water pays the swim rate
   for those metres, so track `player.inWater` per frame or the totals will not close.
-- Still true and still unfixed: `#armor.hidden` has no CSS rule, so an unworn armour row paints
-  ten dark shields above the food bar.
