@@ -6370,8 +6370,13 @@ function desiredWaterLevel(x, y, z) {
   const best = Math.min(side, overhead);
   const lands = BLOCKS[below].solid || below === B.WATER;
   const rests = isFlowWater(below);
-  // A fall arriving overhead passes through anything that is not ground.
-  const fallsIn = isFallingWater(above);
+  // Overhead is pouring in whenever it is water on its way down: a fall, or the
+  // source a fall came from. The source has to count here. A dig two blocks deep
+  // under the sea leaves a neck of air with a sheet below it and nothing beside
+  // it, which no other rule in here claims — so without this the neck dries, the
+  // orphaned sheet thins away a rank at a time, and the recreated fall starts the
+  // whole cycle again, forever.
+  const fallsIn = isFallingWater(above) || above === B.WATER;
 
   // A sheet settles where the body can hold it up and a neighbour can feed it.
   if ((lands || rests) && side <= WATER_MAX_FLOW) return WATER_FLOW_IDS[best - 1];
@@ -13277,6 +13282,205 @@ window.__voxelcraft = {
       remeshing: world.flowRemesh.size,
       cells: list ? this.water(500) : undefined
     };
+  },
+  /**
+   * The flow rules, tried against a world made on the spot rather than the
+   * player's: `world.getBlock` is briefly shadowed by a lookup into a small map,
+   * the tick is replayed here the way waterTick runs it, and nothing reaches a
+   * chunk, an override or a save.
+   *
+   * The rigs are the shapes the rules once lost their nerve on. A breach two
+   * blocks deeper than the water standing over it left a neck of air with a sheet
+   * below it and nothing beside it, and no rule in desiredWaterLevel claimed the
+   * neck: it dried, the orphaned sheet thinned itself a rank a tick, the fall
+   * returned and the whole thing pulsed for as long as the chunk stayed loaded.
+   * So every case is a convergence test first — a dig has to reach a state it no
+   * longer wants to leave — and the shape is the fixed point it should reach.
+   */
+  waterFlowCheck() {
+    const key = (x, y, z) => x + ',' + y + ',' + z;
+    const at = (cells) => (x, y, z) => {
+      if (y < 0) return B.BEDROCK;
+      if (y >= WORLD_HEIGHT) return B.AIR;
+      return cells.get(key(x, y, z)) ?? B.AIR;
+    };
+    /** A source is a full block; every rank below it is an eighth thinner. */
+    const volume = (cells) => {
+      let eighths = 0;
+      for (const id of cells.values()) {
+        const level = BLOCKS[id].waterLevel;
+        if (level >= 0) eighths += 8 - level;
+      }
+      return eighths / 8;
+    };
+    const show = (id) => {
+      if (id === B.WATER) return 'S';
+      if (isFallingWater(id)) return 'v';
+      if (isFlowWater(id)) return String(waterLevel(id));
+      return id === B.AIR ? '.' : '#';
+    };
+    const rig = () => {
+      const cells = new Map();
+      /** Solid on the outside, hollowed out and filled by the caller. */
+      const box = (x0, y0, z0, x1, y1, z1, id) => {
+        for (let x = x0; x <= x1; x++)
+          for (let y = y0; y <= y1; y++)
+            for (let z = z0; z <= z1; z++) cells.set(key(x, y, z), id);
+      };
+      return { cells, box };
+    };
+    /**
+     * The tick, replayed: reads see the pass as it began, the writes go in
+     * together afterwards, and whatever moved wakes the six cells beside it.
+     */
+    const run = (caseRig, limit = 200) => {
+      const read = at(caseRig.cells);
+      const queue = new Set();
+      const wake = (x, y, z) => {
+        queue.add(key(x, y, z));
+        for (const [dx, dy, dz] of WATER_NEIGHBORS) {
+          const ny = y + dy;
+          if (ny >= 0 && ny < WORLD_HEIGHT) queue.add(key(x + dx, ny, z + dz));
+        }
+      };
+      for (const cell of Array.from(caseRig.cells.keys())) {
+        const [x, y, z] = cell.split(',').map(Number);
+        wake(x, y, z);
+      }
+      let passes = 0;
+      const hadOwn = Object.prototype.hasOwnProperty.call(world, 'getBlock');
+      const realGetBlock = world.getBlock;
+      world.getBlock = read;
+      try {
+        while (queue.size > 0 && passes < limit) {
+          const batch = Array.from(queue);
+          queue.clear();
+          passes++;
+          const edits = [];
+          for (const cell of batch) {
+            const [x, y, z] = cell.split(',').map(Number);
+            const next = desiredWaterLevel(x, y, z);
+            if (next !== read(x, y, z)) edits.push([x, y, z, next]);
+          }
+          for (const [x, y, z, id] of edits) {
+            caseRig.cells.set(key(x, y, z), id);
+            wake(x, y, z);
+          }
+        }
+      } finally {
+        if (hadOwn) world.getBlock = realGetBlock;
+        else delete world.getBlock;
+      }
+      return { passes, settled: queue.size === 0 };
+    };
+    const cases = [];
+    /** Runs a rig, keeps what it settled into, and says whether that was the point. */
+    const test = (name, built, expect, check) => {
+      const result = run(built.rig);
+      const got = built.read();
+      cases.push({
+        name,
+        passes: result.passes,
+        settled: result.settled,
+        got,
+        expect,
+        volume: +volume(built.rig.cells).toFixed(4),
+        pass: result.settled && (expect === undefined || got === expect) &&
+          (check === undefined || check(built.rig))
+      });
+    };
+
+    // A shaft sealed by solid ground on every side but its own floor, with one
+    // source dropped down it. One deep always settled; two deep used to pulse,
+    // because the neck of air between the source and the pool belonged to no rule.
+    const shaft = (depth) => {
+      const built = rig();
+      built.box(-1, 0, -1, 1, depth + 2, 1, B.STONE);
+      for (let y = 1; y <= depth; y++) built.box(0, y, 0, 0, y, 0, B.AIR);
+      built.box(0, depth + 1, 0, 0, depth + 1, 0, B.WATER);
+      const read = at(built.cells);
+      return {
+        rig: built,
+        read: () => {
+          let column = '';
+          for (let y = depth + 1; y >= 1; y--) column += show(read(0, y, 0));
+          return column;
+        }
+      };
+    };
+    test('one block under a source', shaft(1), 'S1', (r) => volume(r.cells) === 1 + 7 / 8);
+    test('two blocks under a source', shaft(2), 'Sv1', (r) => volume(r.cells) === 1 + 2 * (7 / 8));
+    test('three blocks under a source', shaft(3), 'Svv1', (r) => volume(r.cells) === 1 + 3 * (7 / 8));
+
+    // A shore blown out under the sea: the trench is three rows deeper than the
+    // sources over it and twice as wide, so the floor has to flood from the falls
+    // above it and then thin away sideways until the reach runs out. The lip the
+    // sea pours over stays a column, and the row above the floor beside it stays
+    // dry, because a fall feeds nobody beside it.
+    const trench = (() => {
+      const built = rig();
+      built.box(-1, 0, -1, 14, 5, 3, B.STONE);
+      built.box(0, 1, 0, 12, 3, 2, B.AIR);          // 13 x 3, three rows open
+      built.box(0, 3, 0, 6, 3, 2, B.WATER);         // the sea over half of it
+      const read = at(built.cells);
+      return {
+        rig: built,
+        read: () => {
+          const row = (y) => {
+            let line = '';
+            for (let x = 0; x <= 12; x++) line += show(read(x, y, 0));
+            return line;
+          };
+          return row(3) + '/' + row(2) + '/' + row(1);
+        }
+      };
+    })();
+    test('a breach under the sea', trench, 'SSSSSSSv...../vvvvvvvv...../1111111123456');
+
+    // Pull the sea out and the whole flood has to leave: a sheet left behind with
+    // nothing feeding it runs off rather than hanging there, and a column of falls
+    // with air overhead is nothing holding it up.
+    const drained = (() => {
+      const built = trench.rig;
+      for (let x = 0; x <= 6; x++)
+        for (let z = 0; z <= 2; z++) built.cells.set(key(x, 3, z), B.AIR);
+      return { rig: built };
+    })();
+    const dry = run(drained.rig);
+    cases.push({
+      name: 'the flood drains when the sea goes',
+      passes: dry.passes,
+      settled: dry.settled,
+      volume: +volume(drained.rig.cells).toFixed(4),
+      expect: 0,
+      pass: dry.settled && volume(drained.rig.cells) === 0
+    });
+
+    // The rule the fix leans on must not overshoot either: water runs across a
+    // shelf, thins as it goes, and pours over the edge still wearing that
+    // thinness — a column, not a fan — landing in a pool one step under the shelf
+    // that starts at the rank the fall arrived with.
+    const ledge = (() => {
+      const built = rig();
+      built.box(-5, 0, -1, -5, 6, 1, B.STONE);      // a wall for the source to lean on
+      built.box(-4, 0, -1, -1, 3, 1, B.STONE);      // a shelf to run water across
+      built.box(0, 0, -1, 4, 0, 1, B.STONE);        // the floor a step below it
+      built.box(-5, 4, -1, 4, 7, -1, B.STONE);      // the sides of the channel, so
+      built.box(-5, 4, 1, 4, 7, 1, B.STONE);        // the sheet cannot run off sideways
+      built.box(-4, 4, 0, -4, 4, 0, B.WATER);       // a source at the far end
+      const read = at(built.cells);
+      return {
+        rig: built,
+        read: () => [4, 3, 2, 1].map((y) => {
+          let line = '';
+          for (let x = -4; x <= 4; x++) line += show(read(x, y, 0));
+          return line;
+        }).join('/')
+      };
+    })();
+    test('a sheet over a ledge', ledge, 'S123v..../####v..../####v..../####4567.');
+
+    return { ok: cases.every((c) => c.pass), cases };
   },
   setBlock(x, y, z, id) {
     let numericId = id;

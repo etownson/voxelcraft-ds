@@ -1447,6 +1447,40 @@ it should, and every dig reaches a fixed point. Pull the floor out from under a 
 runs off into the hole; plug a breach and the notch it was feeding drains back; settle a trench in two
 halves and it is byte-identical to the same trench dug in one.
 
+### The neck that would not settle
+
+A screenshot of water hanging frozen over a hole dug under the shoreline looked like the under-fill
+above, and was not: the water was caught mid-loop. A breach exactly two blocks deeper than the water
+standing over it leaves one cell of air between a source and the sheet beneath it, and that cell
+belonged to no rule in `desiredWaterLevel`. It was not the foot of a fall — a resting sheet was below
+it, not ground — it had no neighbour to thin from, and "a fall arriving overhead" did not cover a
+source, which is the very thing pouring. So it fell through to `return B.AIR` and deleted itself. The
+sheet it had been feeding was then a closed loop, thinned a rank a tick until it was a film and then
+air, and the fall re-formed to start again: four ticks, 0.6 s, forever. One cell changing per tick in a
+shaft, `queued` pinned at 95–117, and a chunk kept in `flowRemesh` so a 13 ms mesh rebuild came back
+into the frame budget every tick. A 13×3 trench blown out under the shore spent 15,069 changes on 120
+seconds of ticks and settled on nothing.
+
+Since the sea's sources only exist at and below `SEA_LEVEL`, this was specifically a below-sea-level
+bug: digging down under the shore hit it, digging one block deep never did.
+
+The fix is one clause: overhead counts as pouring in when it is a fall *or the source a fall came
+from* (`fallsIn`). The alternative, letting a fall feed sideways, is already ruled out above. Afterwards
+the same rigs settle in two or three ticks and stay: a two-deep shaft holds `source / fall / rank-1
+pool`, the trench holds a fall under each source with the row above the floor dry beside it and a `1..6`
+gradient along the floor, `queued`, `parked` and `remeshing` all reach zero, and 400 further ticks
+change nothing. Pull the sea out from over it and the whole flood leaves down to no water at all, which
+is the check that the fix invents none.
+
+`__voxelcraft.waterFlowCheck()` keeps it. It builds its rigs in a world of its own — `world.getBlock`
+is shadowed by a lookup into a map, the tick is replayed there, and no chunk, override or save is
+touched — and runs six cases: shafts one, two and three blocks under a source, a breach under the sea,
+the same breach draining when the sea is pulled out, and a sheet running off a shelf and over a ledge.
+Each has to reach a state it no longer wants to leave, in the shape it is supposed to reach, and the
+sealed shafts have to hold exactly the volume their ranks account for. It costs about 11 ms. Restoring
+the old `fallsIn` turns the two-deep shaft and the breach into cases that run out the 200-pass limit
+without settling, so the check fails on exactly the bug it was written for.
+
 ### Verified at the edges
 
 - Reads below the world floor come back solid and reads above the ceiling come back air, so a source
