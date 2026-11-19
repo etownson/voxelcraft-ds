@@ -1353,8 +1353,19 @@ player's session rather than at generation time.
   so the order cells come out of the queue cannot change the result.
 - Water only moves into air. Crops, torches and plants are never displaced, and solid ground is
   never converted.
-- A cell whose neighbour chunk is not loaded retries twelve ticks and then gives up, which is why a
-  dig at the very edge of the loaded world can show zero changes.
+- A cell whose neighbour chunk is not loaded retries twelve ticks and then leaves the queue without
+  leaving the simulation: it is parked against its own chunk (`parkWater`). Dropping it was a real
+  bug, not a corner case — a flood that ran off the edge of the loaded world stayed off it forever.
+- **A chunk arriving is a wake-up call.** `wakeWaterOnArrival` runs wherever a chunk finishes
+  generating and does two jobs. It re-queues parked cells, in the arriving chunk and its four
+  orthogonal neighbours — a cell can only ever wait on those, never on a diagonal one. And it wakes
+  saved water around the overrides the chunk restored, because a save taken mid-pour has water that
+  is genuinely flowing and a queue that was never saved: reload it and the pour is frozen where it
+  stopped. An `AIR` override only wakes its neighbourhood when it touches water, which is what keeps a
+  world the player drained by hand from waking itself on every chunk. Both halves cost nothing on an
+  untouched map, because watergen is already a fixed point: rousing all 6,508 loaded ocean sources in
+  a fresh world inserted 17,317 queue entries, ran 45 ticks and changed no cell, world hash
+  unmoved.
 - Drying a flow cell writes an `AIR` override rather than deleting the override, so the base map
   stays untouched. That costs save bytes on purpose; `SAVE_SCHEMA` is still `v4`. Old saves keep
   reading: id 42 changes meaning from "generic falling water" to "rank-1 falling water".
@@ -1378,6 +1389,14 @@ source in rock never asks to be anywhere, so it costs one queue entry and nothin
 The tick is 0.15 s with a budget of 512 cells, and remeshing after a flood is deferred through
 `world.flowRemesh`, drained when the queue is idle: a flood can touch a hundred cells and chunk
 meshes cost about 13 ms each, so meshing inline stalls the frame it happened in.
+
+The worst frame a flood can force is one tick. The frame loop clamps `dt` to 0.1 s and a tick is
+0.15 s, so `updateWater`'s catch-up loop can never reach more than one step in a frame however long
+the stall was. A 2,528-cell hole carved into the shore across nine chunks in one batch settled in 34
+ticks, with ticks averaging 11.5 ms and peaking at 14.3 — 512 cells of resolution plus two chunk
+meshes, so one dropped frame at 60 fps during a very large flood and nothing worse. The 141 ms that
+same dig spent inside `setBlocksBatch` is not the flow's doing: it is 2,500 edits, and it costs the
+same in dry stone.
 
 ### Generation stays dry
 
@@ -1409,6 +1428,38 @@ Verified as two invariants over the whole loaded world rather than by eye: 4,903
 every one of them with a surface drawn inside the span its water occupies; and 9,854 surfaces
 inside bodies, none of them below the top cell of the body that owns it. The second one is the one
 that matters with a transparent material — a plane buried inside a body shows up as a seam.
+
+### Where it under-fills, on purpose
+
+A fall feeds nobody sideways, so the only thing that carries water sideways is a resting sheet. That
+is paid for whenever a dig is deeper than one block. Cutting a five-by-three channel into the shore
+beside a source floods the floor row with the correct 1..6 gradient, sends a two-cell waterfall down
+the entry column, and leaves the rows above the floor dry — 5.125 blocks of water in fifteen cells of
+empty space below sea level, where Minecraft would fill the channel to the surface.
+
+It is left that way deliberately. Letting a fall feed sideways at its own rank would fill those rows,
+and rank would still be a shortest-path cost from a source, but it would also make every waterfall
+spray sideways off the wall it is pouring down, and an early version of that rule never converged at
+all — 163,000 changes in 1,200 ticks, because generic falling water reported itself as depth 1 and
+invented water at the bottom of every column. What the rule gives up is water in the wrong place. What
+it keeps is the part the player judges: nothing is ever left unsupported, nothing floods further than
+it should, and every dig reaches a fixed point. Pull the floor out from under a settled sheet and it
+runs off into the hole; plug a breach and the notch it was feeding drains back; settle a trench in two
+halves and it is byte-identical to the same trench dug in one.
+
+### Verified at the edges
+
+- Reads below the world floor come back solid and reads above the ceiling come back air, so a source
+  placed on the bottom of the world rests there instead of pouring into the void, and one placed at
+  the very top pours down a shaft and pools at the bottom of it. Both converge and both are
+  idempotent.
+- Sky light reaches 15 all the way down a forty-five block column of falling water, exactly as it does
+  down the identical dry shaft beside it. That is the licence for flow edits skipping lighting
+  altogether: air and water are both transparent here, so neither can be the thing that changed the
+  light.
+- A sweep of every loaded water mesh — 21 chunks, 4,462 triangles — found no degenerate triangle and
+  no non-finite vertex, including at the lips where a deep sheet steps down into a shallow one. A
+  nineteen-cell falling column draws eight side triangles per cell and no interior surface at all.
 
 ### Left for later on purpose
 

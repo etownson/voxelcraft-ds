@@ -625,10 +625,12 @@ const WATER_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 /** The four cells that meet at a corner of the grid, as offsets from it. */
 const WATER_CORNER_CELLS = [[-1, -1], [0, -1], [-1, 0], [0, 0]];
 /**
- * A flow cell only ever waits on a neighbour chunk this many ticks before it is
- * dropped. Long enough for the chunk to stream in while the player stands at
- * the border, short enough that water at the edge of the loaded world cannot
- * sit in the queue forever.
+ * A flow cell only ever waits on a neighbour chunk this many ticks before it
+ * stops holding its place in the queue. Long enough for the chunk to stream in
+ * while the player stands at the border, short enough that a flood at the edge
+ * of the loaded world cannot sit in the queue forever. It is parked rather than
+ * forgotten, because water that simply gave up left the flood frozen in place
+ * with nothing left to restart it.
  */
 const WATER_WAIT_LIMIT = 12;
 const MAX_MOVE_STEP = 0.25;
@@ -2796,6 +2798,14 @@ class World {
     this.waterQueue = new Set();
     /** Same keys, counting ticks spent waiting on a chunk that is not loaded. */
     this.waterWait = new Map();
+    /**
+     * Cells that used up their wait on a chunk, keyed by the chunk they live in.
+     * They are held here instead of dropped, so a chunk arriving later picks the
+     * flood back up. That covers the two ways water can outlive its wake-up: the
+     * player runs off mid-pour and the chunks unload, and a world quit mid-pour
+     * and reloaded, which starts with an empty queue either way.
+     */
+    this.waterParked = new Map();
     /** Chunks the flow changed, waiting their turn at a mesh rebuild. */
     this.flowRemesh = new Set();
   }
@@ -2813,6 +2823,103 @@ class World {
       if (ny < 0 || ny >= WORLD_HEIGHT) continue;
       queue.add((gx + dx) + ',' + ny + ',' + (gz + dz));
     }
+  }
+
+  /** Whether any of the six cells beside this one holds water. */
+  hasWaterNeighbour(gx, gy, gz) {
+    for (const [dx, dy, dz] of WATER_NEIGHBORS) {
+      const ny = gy + dy;
+      if (ny < 0 || ny >= WORLD_HEIGHT) continue;
+      if (isWater(this.getBlock(gx + dx, ny, gz + dz))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Wakes the water a chunk arriving from the save can still act on, which is
+   * bounded by the save and not by the world: sheets the simulation left
+   * mid-pour, and emptied cells water has been waiting to fall into. Chunks
+   * generated without a single saved edit are left asleep on purpose, so pure
+   * worldgen still never moves on its own and a generated sea cave stays dry.
+   */
+  wakeSavedWater(cx, cz) {
+    const overrides = this.overridesForChunk(cx, cz);
+    if (!overrides) return 0;
+
+    let woken = 0;
+    for (const [index, id] of overrides) {
+      const lx = index % CHUNK_SIZE;
+      const row = (index - lx) / CHUNK_SIZE;
+      const lz = row % CHUNK_SIZE;
+      const y = (row - lz) / CHUNK_SIZE;
+      if (y >= WORLD_HEIGHT) continue;
+      const gx = cx * CHUNK_SIZE + lx;
+      const gz = cz * CHUNK_SIZE + lz;
+      if (!isWater(id) && !this.hasWaterNeighbour(gx, y, gz)) continue;
+      this.queueWaterAround(gx, y, gz);
+      woken++;
+    }
+    return woken;
+  }
+
+  /**
+   * Holds a cell that ran out its wait, against the chunk it lives in. It costs
+   * nothing to wait here, which is the whole point: the alternative was to
+   * forget the cell and leave the flood frozen at the edge of the loaded world.
+   */
+  parkWater(gx, gy, gz) {
+    const key = chunkKey(Math.floor(gx / CHUNK_SIZE), Math.floor(gz / CHUNK_SIZE));
+    let parked = this.waterParked.get(key);
+    if (!parked) {
+      parked = new Set();
+      this.waterParked.set(key, parked);
+    }
+    parked.add(gx + ',' + gy + ',' + gz);
+  }
+
+  /** Drops a parked cell now that something else is looking after it. */
+  unparkWater(gx, gy, gz) {
+    const key = chunkKey(Math.floor(gx / CHUNK_SIZE), Math.floor(gz / CHUNK_SIZE));
+    const parked = this.waterParked.get(key);
+    if (!parked) return;
+    parked.delete(gx + ',' + gy + ',' + gz);
+    if (parked.size === 0) this.waterParked.delete(key);
+  }
+
+  /** How many cells are waiting out a chunk that has not arrived. */
+  parkedWaterCount() {
+    let count = 0;
+    for (const parked of this.waterParked.values()) count += parked.size;
+    return count;
+  }
+
+  /**
+   * Puts back every cell that gave up waiting on a chunk. A cell only ever
+   * waits on its own chunk or one of the four beside it, which is why the
+   * diagonals cannot be holding anything this arrival unblocks.
+   */
+  wakeParkedWater(cx, cz) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx !== 0 && dz !== 0) continue;
+        const key = chunkKey(cx + dx, cz + dz);
+        const parked = this.waterParked.get(key);
+        if (!parked) continue;
+        this.waterParked.delete(key);
+        for (const cell of parked) this.waterQueue.add(cell);
+      }
+    }
+  }
+
+  /**
+   * A chunk has just been generated. Everything the save left mid-flow gets
+   * another look, and so does everything that had given up waiting on it. Both
+   * the streaming path and the synchronous one call this, so a chunk cannot
+   * arrive by one route and miss the wake the other would have given it.
+   */
+  wakeWaterOnArrival(cx, cz) {
+    this.wakeParkedWater(cx, cz);
+    return this.wakeSavedWater(cx, cz);
   }
 
   trackTorch(gx, gy, gz, oldId, newId) {
@@ -3123,6 +3230,7 @@ class World {
     chunk.generated = true;
     computeChunkLightLocal(chunk);
     chunk.lit = true;
+    this.wakeWaterOnArrival(cx, cz);
     scene.add(chunk.group);
     chunk.group.visible = false;
     return chunk;
@@ -3209,6 +3317,7 @@ class World {
         chunk.generated = true;
         computeChunkLightLocal(chunk);
         chunk.lit = true;
+        this.wakeWaterOnArrival(job.cx, job.cz);
         chunk.group.visible = false;
         this.generatedThisFrame++;
       }
@@ -6335,18 +6444,21 @@ function waterTick() {
 
     if (!waterNeighboursLoaded(x, y, z)) {
       // Hold the cell on the list until the chunk arrives, which is what stops
-      // the sea pouring off the edge of the loaded world, and let go of it
-      // eventually so a cell that never loads cannot stay here forever.
+      // the sea pouring off the edge of the loaded world. Past the limit it
+      // leaves the queue but not the simulation: it is parked against its own
+      // chunk, and the chunk turning up later is the wake-up call.
       const waited = (world.waterWait.get(key) ?? 0) + 1;
       if (waited < WATER_WAIT_LIMIT) {
         world.waterWait.set(key, waited);
         queue.add(key);
       } else {
         world.waterWait.delete(key);
+        world.parkWater(x, y, z);
       }
       continue;
     }
     world.waterWait.delete(key);
+    world.unparkWater(x, y, z);
 
     looked++;
     const id = world.getBlock(x, y, z);
@@ -13160,6 +13272,8 @@ window.__voxelcraft = {
     return {
       changed,
       queued: world.waterQueue.size,
+      waiting: world.waterWait.size,
+      parked: world.parkedWaterCount(),
       remeshing: world.flowRemesh.size,
       cells: list ? this.water(500) : undefined
     };
@@ -13321,6 +13435,7 @@ window.__voxelcraft = {
       water: {
         queued: world.waterQueue.size,
         waiting: world.waterWait.size,
+        parked: world.parkedWaterCount(),
         remeshing: world.flowRemesh.size
       },
       explosion: explosionEffects(),
