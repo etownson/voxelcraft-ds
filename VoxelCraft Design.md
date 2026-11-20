@@ -1,7 +1,7 @@
 # VoxelCraft — Design Document
 
 Build a fully playable 3D Minecraft-style voxel game in the browser using Three.js and
-vanilla JavaScript in a single self-contained HTML file. The game should feel like a
+vanilla JavaScript in a single HTML file, with a CC0 audio bank and a generated fallback beside it. The game should feel like a
 simplified but functional Minecraft experience with an endless procedurally generated
 world. Do not create a fixed world with edges or borders. Instead, use deterministic
 chunk-based procedural generation so the terrain continues generating as the player moves
@@ -11,13 +11,17 @@ in any horizontal direction.
 
 Create an infinite-style Minecraft-like voxel sandbox that runs in a modern browser using:
 
-- One HTML file only
+- One HTML file for the game, plus the CC0 `assets/audio/` sample bank and the
+  generated `assets/audio-generated/` fallback/reference bank
 - Three.js loaded from a CDN
 - Vanilla JavaScript
-- No build tools
-- No npm
-- No external assets
-- Procedural textures, colors, geometry, and sounds only
+- No build tools and no npm required to play. `tools/build-cc0-bank.py` builds
+  the active bank from the source packs; `tools/generate-audio.mjs` regenerates
+  the synthesized fallback bank
+- Audio is CC0 (Kenney, OpenGameArt, SpritePilot; see `CREDITS.md`). Textures,
+  colors, and geometry are procedural
+- The active bank is sampled at runtime, with the procedural synthesizer as a
+  fallback
 
 The world should have no visible edges. Terrain should stream in around the player and
 unload when far away.
@@ -407,20 +411,40 @@ Also add:
 - Explosion particles for creepers
 - Occasional small ember/flicker particles above placed torches
 
-## Optional audio
+## Audio
 
-Use the Web Audio API to generate simple procedural sound effects:
+Use the Web Audio API for every sound. The game now has three layers:
 
-- Block break crunch/pop sound
-- Block place sound
-- Subtle footsteps while walking on solid ground
-- Mob sounds: zombie groan, creeper hiss, animal noises (simple synthesized tones are fine)
-- Player hurt sound
-- No external audio files
+- The active CC0 bank in `assets/audio/`, built by
+  `tools/build-cc0-bank.py` from Kenney, OpenGameArt, and SpritePilot packs.
+  It covers block break/place, footsteps, mob voices, player and mob hurt,
+  explosions, UI, water, chests, furnaces, and six ambient/music loops.
+- The generated fallback/reference bank in `assets/audio-generated/`, produced
+  by `tools/generate-audio.mjs`. It is not loaded at runtime; it keeps the
+  original synthesized bank reproducible and supplies the generated heartbeat.
+- The original procedural synthesizer, still the runtime fallback. If the
+  active bank cannot be fetched (for example when `index.html` is opened from
+  `file://`) or a file fails to decode, `audioSample` returns false and
+  `audioNoiseHit`/`audioTone` answer instead.
+
+Every file in the active bank is CC0 1.0; `CREDITS.md` records the source pack,
+author, and slot mapping. No attribution is required, but the provenance is
+kept so the licence can be audited. The files are loaded over ordinary HTTP
+from the same origin, which keeps GitHub Pages happy.
+
+Sound coverage now includes:
+
+- Block break, mining contact, and place, per material
+- Footsteps per material, with four variants each
+- Zombie, creeper, cow, pig, sheep, and chicken voices
+- Player hurt, mob hurt, death, and a low-health heartbeat
+- Crafting, eating, tool breaking, doors, shears, buckets, hoes, chests, and furnaces
+- Landing thuds, water entry, swimming, jumping, item pickup, and UI feedback
+- Wind, water, cave, fire, underwater, and music beds mixed by the environment
 
 ## Technical requirements
 
-Everything must be contained in one HTML file:
+The game code stays in one HTML file; the audio banks sit beside it:
 
 - HTML
 - CSS
@@ -429,6 +453,11 @@ Everything must be contained in one HTML file:
 - Game logic
 - Rendering logic
 - UI
+- Audio bank loading, mixing, and procedural fallback in the same file
+- `assets/audio/*.wav` — active CC0 bank, built by `tools/build-cc0-bank.py`
+- `assets/audio-generated/*.wav` — synthesized fallback/reference, built by
+  `tools/generate-audio.mjs`
+- `CREDITS.md` — source and licence record for the active bank
 
 Use Three.js from a CDN. The code should be organized into clear sections:
 
@@ -471,7 +500,8 @@ Prioritize the following in order:
 13. Particles and audio polish
 
 Build the entire game in one continuous pass. Do not stop to ask questions or wait for
-confirmation between sections — deliver the complete, working single-file game.
+confirmation between sections — deliver the complete, working game. The game code stays
+in one HTML file; the audio banks are the asset directories beside it.
 
 ---
 
@@ -481,7 +511,8 @@ Recorded after the fact. The brief above describes the first pass of the game. M
 added world persistence; milestone 11 adds the survival layer the brief never had: a tech
 tree that has to be climbed in order, gear that wears out, and a stomach that empties while
 you work. Everything below lives in the same single HTML file, with the same procedural
-textures, icons and sounds, and no new files or build step.
+textures and icons, and no build step. (The audio bank described at the end is a
+later addition: the game still runs without it, on the original synthesizer.)
 
 ### The progression chain
 
@@ -2416,4 +2447,156 @@ stone wall along one side; the feet are `stats().feet`, the eye
 - The climb speed is a plain speed, not a force: the branch sets `vel.y` outright
   every frame, so a ladder overrides gravity, water and a jump in the air alike.
   A future block that wants buoyancy plus a climb needs a branch of its own.
-- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+- `tools/check-syntax.sh` was the only check in the repo at that point, and it passes.
+
+## Audio addendum — a sampled bank with a synthesizer behind it
+
+The brief above asked for procedural sound and no external audio. The audio
+layer is now the one deliberate exception: the active bank is CC0 recordings
+from Kenney, OpenGameArt, and SpritePilot, and the original synthesizer stays
+as the runtime fallback. The reason is repetition. A synthesizer can make one
+convincing break; two hundred footsteps from the same envelope sound like a
+machine. Four variants per material, three per break, and runtime pitch/level
+jitter are what stop that.
+
+### What is in the banks
+
+`assets/audio/` is the active CC0 bank: 115 mono 16-bit WAVs, 8.4 MB in total:
+
+- 28 footsteps (7 materials × 4)
+- 24 breaks (8 materials × 3) and 16 places (8 × 2)
+- 11 mob voices
+- 30 event one-shots
+- 5 ambient beds plus one music loop
+
+`assets/audio-generated/` is the synthesized fallback/reference bank: the same
+115 slots, 7.9 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
+runtime; the code synthesizer is the runtime fallback. It is kept so the
+original bank is reproducible and because the heartbeat is still better
+generated than sampled.
+
+The active bank comes from CC0 packs listed in `CREDITS.md`; the slot-by-slot
+mapping is in `tools/build-cc0-bank.py`. The source files are converted to mono
+WAV, trimmed and faded for one-shots, and resampled to 22.05 kHz for loops.
+`tools/generate-audio.mjs` writes only `assets/audio-generated/` now, so running
+it cannot overwrite the active CC0 bank.
+
+WAV rather than Ogg was deliberate: `decodeAudioData` handles it everywhere, it
+has no encoder delay to break a loop, and 8.4 MB is well inside the GitHub Pages
+budget. The `AUDIO_ASSETS` manifest in `index.html` is the list of keys and
+files. `loadAudioAssets()` fetches six at a time, decodes each with
+`decodeAudioData`, and groups the variants under the name callers ask for. The
+ambient beds and music are fetched first, so the world can start breathing
+before the one-shot bank has finished decoding; until a sample is ready, the
+synth fallback covers it.
+
+### The hybrid
+
+`audioSample(name, options)` is the first attempt for every one-shot. It returns
+false when the active bank is not loaded, the name is missing, the page is on
+`file://`, or the voice pool is full; the caller then runs the old
+`audioNoiseHit`/`audioTone` path. The generated bank is not part of this
+fallback chain; it is a reference artifact. This is why the game is never
+silent: a partial deploy or a blocked fetch degrades to the synthesizer instead
+of ending the frame. `audioStatus().assets` reports
+`{total, loaded, failed, ready}`, and the debug `audio()` hook exposes it.
+
+### The mix
+
+- `voice → sfx/ambient/ui bus → low-pass muffler → master gain → compressor → destination`.
+- A `DynamicsCompressorNode` (threshold −18 dB, knee 20, ratio 5, 3 ms attack,
+  250 ms release) catches the explosion-plus-footsteps case.
+- A generated stereo impulse response feeds a `ConvolverNode`; each one-shot
+  opens a small send. Ambient beds bypass the reverb.
+- The muffler is the underwater switch: 20 kHz in air, 620 Hz when the head is
+  in water, ramped over 160 ms.
+- `audioSpatial` still returns the same distance-squared gain and yaw pan, and
+  now also returns a cutoff: distant sounds are duller. `audioOcclusion` walks
+  the voxel line from camera to source; two solid cells are needed to count.
+- `audioBeginVoice` is priority-based and stops the weakest voice instead of
+  dropping the new sound. Footsteps are priority 0, blocks/UI 1, mobs 2, player
+  hurt 3, explosions 4.
+
+### Ambient mix
+
+`updateAmbient(dt)` runs every 0.5 s and sets six loop gains: wind
+(height/outdoors), water (a 9 × 9 × 5 water sample around the feet), cave (no
+solid sky above, deeper is louder), fire (nearest torch or burning furnace
+within 9 blocks), underwater, and music. The loops fade with
+`setTargetAtTime`, and a paused or dead player ducks the world.
+`audioStatus().ambient` is the snapshot the checks read.
+
+### Passive animals
+
+Passive animals are deliberately background. Each one waits 15–35 s between
+idle calls, a shared 4–8 s gap keeps a herd from firing at once, and the idle
+call is 0.22 gain (0.38 when hurt) at a 20-block range. The recorded animal
+sounds are much louder than the old synthesizer, so these numbers keep a cow or
+sheep from dominating the mix. Hostile cadence is unchanged.
+
+### Settings
+
+- Master volume defaults to 70%, persists under `voxelcraft:audio:v1`, and has a
+  slider in the pause panel. `M` still mutes.
+- `__voxelcraft.setVolume(value)` and `audio()` are the debug hooks.
+- The tab suspends the context on `visibilitychange` and resumes it on return.
+
+### GitHub Pages
+
+- The game is still a static page. `assets/audio/` is fetched with relative
+  paths, so it works at `https://user.github.io/repo/`.
+- `.nojekyll` is committed so Jekyll leaves the audio folder alone.
+- Do not use Git LFS for either bank: Pages serves the pointer, not the sample.
+  The published site limit is 1 GB, each git file is capped at 100 MiB, and the
+  soft bandwidth limit is 100 GB/month. The active bank is 8.4 MB and the
+  generated reference bank is 7.9 MB, both comfortably inside the limits.
+- `file://` cannot fetch local assets. Opening `index.html` directly still runs
+  the game, but the synth fallback is what you hear. Serve it with
+  `python3 -m http.server` (or Pages) to hear the bank.
+- No server code, no build step, and no CORS setup. The same files work on
+  Cloudflare Pages or any static host.
+
+### Checks run for this change
+
+- `tools/check-syntax.sh` passes.
+- `tools/check-audio.sh` passes both banks: active 115 files, 8.4 MB; generated
+  115 files, 7.9 MB; every file decodes.
+- In the in-app browser at `http://127.0.0.1:8765`:
+  - 115/115 active assets loaded, 0 failed, 0 console errors.
+  - All 35 named `playSound` entries returned true at close range on the
+    recorded bank, and the original procedural names still resolve.
+  - Spawned passive mobs exposed `soundTimer` values of 17.97 s and 33.52 s,
+    inside the 15–35 s window; the cow, pig, sheep, and chicken sounds all
+    resolved.
+  - A broken heading (`look(NaN)`) and a broken camera did not throw; the voice
+    pool dropped or rejected low-priority sounds as designed.
+  - Water at (-21, 47.2, 0) produced `underwater: true`, `under: 0.22`,
+    `nearWater: true`; a cave at (3, 20, 24) produced `openSky: false`,
+    `cave: 0.127`; a shore at (-22, 49, 0) produced `nearWater: true`,
+    `water: 0.066`; a torch two blocks away produced
+    `fireDistance: 2.00`, `fire: 0.075`. All six ambient loops started.
+  - Volume 25% → 45% and mute/unmute persisted through `localStorage`.
+
+### Notes for whoever picks this up next
+
+- The active bank is built from CC0 packs. Change a slot in
+  `tools/build-cc0-bank.py`, rerun it with the source packs staged, and update
+  `CREDITS.md` if the source changes. The mapping is the authority, not a
+  hand-edited WAV.
+- The generated bank is the fallback/reference. Edit `tools/generate-audio.mjs`
+  and run it; it writes only to `assets/audio-generated/` and cannot overwrite
+  the active bank.
+- The bank count and the `AUDIO_ASSETS` manifest must move together. If you add
+  a variant, add the file and the manifest entry, then rerun
+  `tools/check-audio.sh`.
+- The active loops come from SpritePilot, Kenney Music Loops, and the
+  OpenGameArt underwater pad and are already seamless. The generated bank's
+  loops are crossfaded from a render one second longer than the loop length;
+  don't apply that extra crossfade to the active files.
+- The generated heartbeat in `assets/audio/event_heartbeat_1.wav` comes from
+  `assets/audio-generated/`. If you remove the generated bank, keep a copy of
+  that one file or make the heartbeat a synth fallback again.
+- The fallback is not dead weight. It is the `file://` path, the partial-deploy
+  path, and the test path; keep it working.
+- `tools/check-syntax.sh` and `tools/check-audio.sh` are the two checks in the
+  repo; both pass.
