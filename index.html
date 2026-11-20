@@ -601,6 +601,13 @@ const WATER_MAX_SWIM_SPEED = 3.0;
 const WATER_TERMINAL_VELOCITY = 3.2;
 const WATER_MANTLE_HEIGHT = 1.5;
 const WATER_MANTLE_STEP = 0.05;
+/**
+ * How far a walking player rises over a step without jumping. Minecraft's
+ * stair tread is half a block and its own step height is 0.6, which is what
+ * makes a staircase something you walk up rather than jump up; the stair is
+ * the only sub-block collider in this game, so that is all this ever climbs.
+ */
+const PLAYER_STEP_HEIGHT = 0.6;
 const GROUND_ACCEL = 32;
 const AIR_ACCEL = 4.5;
 const WATER_ACCEL = 10;
@@ -734,7 +741,11 @@ const B = Object.freeze({
   // A chest keeps its contents in a block entity rather than the chunk byte,
   // so it needs one id and nothing more: which way the latch faces lives in
   // the facings map, like the furnace's mouth.
-  CHEST: 49
+  CHEST: 49,
+  // Stairs keep their four directions in the facings map the same way, so
+  // each family is one id and nothing more. The step itself is geometry,
+  // not state: there is no upside-down half to store.
+  OAK_STAIRS: 50, COBBLESTONE_STAIRS: 51
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -1007,6 +1018,32 @@ BLOCKS.push({
   drops: [{ item: 'chest', min: 1, max: 1 }], placeable: true
 });
 
+// Stairs join last, same rule as above. They turn their low step towards
+// whoever placed them the way the chest turns its latch, and they are the
+// one block in the game whose collision is not the whole cell: the step is
+// drawn from two boxes and collided with those same two boxes, which is
+// what lets a staircase be walked up instead of jumped. Minecraft saws both
+// families out of a hardness of 2 — planks asks for an axe, cobblestone for
+// a pickaxe — and pays four stairs for the six boards each one costs.
+BLOCKS.push(
+  {
+    id: B.OAK_STAIRS, key: 'oak_stairs', name: 'Oak Stairs',
+    tiles: { top: 'planks', bottom: 'planks', side: 'planks' },
+    // Not opaque: the empty upper corner of the cell is open to the neighbour
+    // beside it, exactly as a bed's or a door's is, and light agrees.
+    solid: true, opaque: false, hardness: 2.0, tool: 'axe',
+    facings: true, stairs: true,
+    drops: [{ item: 'oak_stairs', min: 1, max: 1 }], placeable: true
+  },
+  {
+    id: B.COBBLESTONE_STAIRS, key: 'cobblestone_stairs', name: 'Cobblestone Stairs',
+    tiles: { top: 'cobblestone', bottom: 'cobblestone', side: 'cobblestone' },
+    solid: true, opaque: false, hardness: 2.0, tool: 'pickaxe', tier: 1,
+    facings: true, stairs: true,
+    drops: [{ item: 'cobblestone_stairs', min: 1, max: 1 }], placeable: true
+  }
+);
+
 const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -1021,6 +1058,7 @@ for (const block of BLOCKS) {
   block.door ??= null;
   block.doorOpen ??= false;
   block.bed ??= null;
+  block.stairs ??= false;
   // Only water carries a depth; everything else sits at -1 so isWater(id) can
   // be a single comparison against the block table.
   block.waterLevel ??= -1;
@@ -2426,6 +2464,18 @@ function makeBlockItemIcon(block) {
     ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 4, 22, 56, 10);
     [sx, sy] = tile('bed_pillow');
     ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 38, 12, 20, 12);
+    return canvas;
+  }
+
+  // A stairs item is the step itself in side elevation: the lower half of
+  // the family's tile across the tread and the upper half over half of it,
+  // so the icon is the same sliced block the world draws.
+  if (block.stairs) {
+    const sx = (block.tileSide % ATLAS_GRID) * ATLAS_TILE;
+    const sy = ((block.tileSide / ATLAS_GRID) | 0) * ATLAS_TILE;
+    const half = ATLAS_TILE / 2;
+    ctx.drawImage(atlasCanvas, sx, sy + half, ATLAS_TILE, half, 4, 36, 56, 22);
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, half, 4, 14, 28, 22);
     return canvas;
   }
 
@@ -4447,6 +4497,10 @@ function buildChunkMesh(world, chunk) {
           appendBedBoxes(cutout, world, x, y, z, wx, wz, block);
           continue;
         }
+        if (block.stairs) {
+          appendStairBoxes(opaque, world, x, y, z, wx, wz, block);
+          continue;
+        }
         const target = block.cutout ? cutout : opaque;
 
         for (const face of FACES) {
@@ -4849,6 +4903,108 @@ function appendBedBoxes(builder, world, x, y, z, wx, wz, block) {
   }
 }
 
+/** A vertical slice of a tile rect, for a face that wears only part of it. */
+function tileRectSlice(rect, fromBottom, toBottom) {
+  return {
+    u0: rect.u0,
+    u1: rect.u1,
+    vBottom: rect.vBottom + (rect.vTop - rect.vBottom) * fromBottom,
+    vTop: rect.vBottom + (rect.vTop - rect.vBottom) * toBottom
+  };
+}
+
+/**
+ * A stair is the block it is sawn from cut along the step: a half-tall box
+ * across the cell and the upper half of the block over the far half of it,
+ * wearing the lower and upper halves of the family's tile so the two read
+ * as one sliced block. The facing points at the low step — at whoever
+ * placed it — the way the chest's latch does, and the tall half sits away
+ * from it, so a line of stairs climbs away from the placer. These are the
+ * same two boxes the collision uses, which is what makes a staircase
+ * walkable. Wound outward on the opaque pass: the step is a closed solid,
+ * not a leaf that has to read the same from behind.
+ */
+function appendStairBoxes(builder, world, x, y, z, wx, wz, block) {
+  const sideRect = tileRect(block.tileSide);
+  const topRect = tileRect(block.tileTop);
+  const lowerSide = tileRectSlice(sideRect, 0, 0.5);
+  const upperSide = tileRectSlice(sideRect, 0.5, 1);
+  const sky = skyBrightness(world.getSkyLight(wx, y, wz));
+  const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
+
+  const facing = world.facingAt(wx, y, wz) ?? [0, 1];
+  const nx = facing[0];
+  const nz = facing[1];
+  // b runs towards the low step, a across the tread.
+  const hx = -nz;
+  const hz = nx;
+  const corner = (a, b, py) => [
+    x + 0.5 + (a - 0.5) * hx + (b - 0.5) * nx,
+    py,
+    z + 0.5 + (a - 0.5) * hz + (b - 0.5) * nz
+  ];
+  const flat = (shade) => [shade, shade, shade, shade];
+
+  const aMin = 0;
+  const aMax = 1;
+  const bMin = 0;
+  const bMax = 1;
+  const bMid = 0.5;
+  const base = y;
+  const step = y + 0.5;
+  const crest = y + 1;
+
+  // The half-tall box: tread, base, and the four walls under the step. The
+  // tread is only the half the tall block does not already stand on.
+  builder.quad([
+    corner(aMin, bMid, step), corner(aMax, bMid, step),
+    corner(aMax, bMax, step), corner(aMin, bMax, step)
+  ], topRect, sky, blockLight, flat(1));
+  builder.quad([
+    corner(aMin, bMin, base), corner(aMin, bMax, base),
+    corner(aMax, bMax, base), corner(aMax, bMin, base)
+  ], sideRect, sky, blockLight, flat(0.55));
+  builder.quad([
+    corner(aMax, bMax, base), corner(aMin, bMax, base),
+    corner(aMin, bMax, step), corner(aMax, bMax, step)
+  ], lowerSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMin, base), corner(aMax, bMin, base),
+    corner(aMax, bMin, step), corner(aMin, bMin, step)
+  ], lowerSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMax, bMin, base), corner(aMax, bMax, base),
+    corner(aMax, bMax, step), corner(aMax, bMin, step)
+  ], lowerSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMax, base), corner(aMin, bMin, base),
+    corner(aMin, bMin, step), corner(aMin, bMax, step)
+  ], lowerSide, sky, blockLight, flat(0.85));
+
+  // The tall half over the far side of the cell: crest, riser, back and
+  // both ends. Its base is the tread it stands on, so it draws no floor.
+  builder.quad([
+    corner(aMin, bMin, crest), corner(aMax, bMin, crest),
+    corner(aMax, bMid, crest), corner(aMin, bMid, crest)
+  ], topRect, sky, blockLight, flat(1));
+  builder.quad([
+    corner(aMax, bMid, step), corner(aMin, bMid, step),
+    corner(aMin, bMid, crest), corner(aMax, bMid, crest)
+  ], upperSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMin, step), corner(aMax, bMin, step),
+    corner(aMax, bMin, crest), corner(aMin, bMin, crest)
+  ], upperSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMax, bMin, step), corner(aMax, bMid, step),
+    corner(aMax, bMid, crest), corner(aMax, bMin, crest)
+  ], upperSide, sky, blockLight, flat(0.85));
+  builder.quad([
+    corner(aMin, bMid, step), corner(aMin, bMin, step),
+    corner(aMin, bMin, crest), corner(aMin, bMid, crest)
+  ], upperSide, sky, blockLight, flat(0.85));
+}
+
 function commitChunkMesh(chunk, builder, material, name) {
   if (builder.vertexCount === 0) return;
 
@@ -5201,6 +5357,19 @@ const RECIPES = [
     // same as the bucket and the bed, because the ring is three cells wide.
     id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' },
     result: { id: 'chest', count: 1 }
+  },
+  {
+    // Six boards sawn into a staircase, and four stairs out of the six —
+    // Minecraft's own pattern and its own numbers. The V is three cells
+    // across, so the table folds this one too.
+    id: 'oak_stairs', pattern: ['P..', 'PP.', 'PPP'], key: { P: 'planks' },
+    result: { id: 'oak_stairs', count: 4 }
+  },
+  {
+    // The same staircase cut in cobblestone.
+    id: 'cobblestone_stairs', pattern: ['C..', 'CC.', 'CCC'],
+    key: { C: 'cobblestone' },
+    result: { id: 'cobblestone_stairs', count: 4 }
   }
 ];
 
@@ -7269,22 +7438,55 @@ function updateKeyboardLook(dt) {
 const isSolid = (id) => BLOCKS[id].solid;
 
 /**
+ * True when the solid part of one cell intersects the world-space box given.
+ * Every block is its whole cell except stairs, which are the one shape a
+ * player can walk up: a half-tall box across the cell and the tall half
+ * over the side away from the facing, the same two boxes that get drawn.
+ */
+function cellCollidesAt(bx, by, bz, minX, maxX, minY, maxY, minZ, maxZ) {
+  const id = world.getBlock(bx, by, bz);
+  if (!isSolid(id)) return false;
+  if (!BLOCKS[id].stairs) return true;
+  if (minY < by + 0.5 && maxY > by) return true;
+  if (minY < by + 1 && maxY > by + 0.5) {
+    // The tall half lies on the far side of the facing. Project the box
+    // onto the facing axis and see whether it reaches past the mid line:
+    // the facings are axis-aligned, so this is exact.
+    const facing = world.facingAt(bx, by, bz) ?? [0, 1];
+    const centre = ((minX + maxX) * 0.5 - (bx + 0.5)) * facing[0] +
+      ((minZ + maxZ) * 0.5 - (bz + 0.5)) * facing[1];
+    const reach = Math.abs((maxX - minX) * 0.5 * facing[0]) +
+      Math.abs((maxZ - minZ) * 0.5 * facing[1]);
+    if (centre - reach < 0) return true;
+  }
+  return false;
+}
+
+/**
  * True when the player's collision box would intersect a solid block with its
  * feet at (x, y, z). The box is shrunk by a tiny epsilon so standing exactly on
  * a block surface (or flush against a wall) does not count as a collision.
  */
 function playerCollidesAt(x, y, z) {
-  const minX = Math.floor(x - PLAYER_HALF_WIDTH + COLLISION_EPSILON);
-  const maxX = Math.floor(x + PLAYER_HALF_WIDTH - COLLISION_EPSILON);
-  const minY = Math.floor(y + COLLISION_EPSILON);
-  const maxY = Math.floor(y + PLAYER_HEIGHT - COLLISION_EPSILON);
-  const minZ = Math.floor(z - PLAYER_HALF_WIDTH + COLLISION_EPSILON);
-  const maxZ = Math.floor(z + PLAYER_HALF_WIDTH - COLLISION_EPSILON);
+  const boxMinX = x - PLAYER_HALF_WIDTH + COLLISION_EPSILON;
+  const boxMaxX = x + PLAYER_HALF_WIDTH - COLLISION_EPSILON;
+  const boxMinY = y + COLLISION_EPSILON;
+  const boxMaxY = y + PLAYER_HEIGHT - COLLISION_EPSILON;
+  const boxMinZ = z - PLAYER_HALF_WIDTH + COLLISION_EPSILON;
+  const boxMaxZ = z + PLAYER_HALF_WIDTH - COLLISION_EPSILON;
+  const minX = Math.floor(boxMinX);
+  const maxX = Math.floor(boxMaxX);
+  const minY = Math.floor(boxMinY);
+  const maxY = Math.floor(boxMaxY);
+  const minZ = Math.floor(boxMinZ);
+  const maxZ = Math.floor(boxMaxZ);
 
   for (let by = minY; by <= maxY; by++) {
     for (let bz = minZ; bz <= maxZ; bz++) {
       for (let bx = minX; bx <= maxX; bx++) {
-        if (isSolid(world.getBlock(bx, by, bz))) return true;
+        if (cellCollidesAt(bx, by, bz, boxMinX, boxMaxX, boxMinY, boxMaxY, boxMinZ, boxMaxZ)) {
+          return true;
+        }
       }
     }
   }
@@ -7356,6 +7558,29 @@ function tryWaterMantle(startX, startZ, dx, dz) {
     return true;
   }
 
+  return false;
+}
+
+/**
+ * Minecraft walks a stair rather than jumping it: the step height clears a
+ * tread by a hair, so the foot rises onto each step and the walk goes on.
+ * Here that is a lift-and-retry: stand a little taller at the spot the frame
+ * started from, redo the frame's horizontal movement at that height, and keep
+ * the result only when the whole step went by cleanly. Half-block lifts land
+ * exactly on a tread or a crest, so the feet end up standing on the step
+ * rather than hovering over it; anything a lift cannot clear, the player
+ * still has to jump.
+ */
+function tryStepUp(startX, startY, startZ, moveX, moveZ) {
+  for (let lift = WATER_MANTLE_STEP; lift <= PLAYER_STEP_HEIGHT + 1e-6; lift += WATER_MANTLE_STEP) {
+    const y = startY + lift;
+    if (playerCollidesAt(startX, y, startZ)) continue;
+    player.pos.set(startX, y, startZ);
+    const hitX = movePlayerAxis('x', moveX);
+    const hitZ = movePlayerAxis('z', moveZ);
+    if (!hitX && !hitZ) return true;
+  }
+  player.pos.set(startX, startY, startZ);
   return false;
 }
 
@@ -7471,6 +7696,16 @@ function updatePlayer(dt, input) {
   const moveZ = player.vel.z * dt;
   let hitX = movePlayerAxis('x', moveX);
   let hitZ = movePlayerAxis('z', moveZ);
+
+  // A step half a block tall is walked, not jumped: the foot rises onto the
+  // tread and the walk carries on. Water has its own, taller version of this
+  // trick below, and only ever runs when in water, so the two never compete.
+  if ((hitX || hitZ) && player.onGround && !player.inWater) {
+    if (tryStepUp(startX, player.pos.y, startZ, moveX, moveZ)) {
+      hitX = false;
+      hitZ = false;
+    }
+  }
 
   if ((hitX || hitZ) && player.inWater && input.jump) {
     if (tryWaterMantle(startX, startZ, moveX, moveZ)) {
@@ -8954,17 +9189,25 @@ function damageMob(mob, amount, knockX = 0, knockZ = 0) {
 
 function mobCollidesAt(mob, x, y, z) {
   const half = mob.def.width / 2;
-  const minX = Math.floor(x - half + COLLISION_EPSILON);
-  const maxX = Math.floor(x + half - COLLISION_EPSILON);
-  const minY = Math.floor(y + COLLISION_EPSILON);
-  const maxY = Math.floor(y + mob.def.height - COLLISION_EPSILON);
-  const minZ = Math.floor(z - half + COLLISION_EPSILON);
-  const maxZ = Math.floor(z + half - COLLISION_EPSILON);
+  const boxMinX = x - half + COLLISION_EPSILON;
+  const boxMaxX = x + half - COLLISION_EPSILON;
+  const boxMinY = y + COLLISION_EPSILON;
+  const boxMaxY = y + mob.def.height - COLLISION_EPSILON;
+  const boxMinZ = z - half + COLLISION_EPSILON;
+  const boxMaxZ = z + half - COLLISION_EPSILON;
+  const minX = Math.floor(boxMinX);
+  const maxX = Math.floor(boxMaxX);
+  const minY = Math.floor(boxMinY);
+  const maxY = Math.floor(boxMaxY);
+  const minZ = Math.floor(boxMinZ);
+  const maxZ = Math.floor(boxMaxZ);
 
   for (let by = minY; by <= maxY; by++) {
     for (let bz = minZ; bz <= maxZ; bz++) {
       for (let bx = minX; bx <= maxX; bx++) {
-        if (isSolid(world.getBlock(bx, by, bz))) return true;
+        if (cellCollidesAt(bx, by, bz, boxMinX, boxMaxX, boxMinY, boxMaxY, boxMinZ, boxMaxZ)) {
+          return true;
+        }
       }
     }
   }
@@ -12006,7 +12249,8 @@ function blockSoundMaterial(blockId) {
     case 'door_open':
     case 'door_open_top':
     case 'bed':
-    case 'bed_head': return 'wood';
+    case 'bed_head':
+    case 'oak_stairs': return 'wood';
     case 'leaves': return 'leaves';
     case 'glass': return 'glass';
     case 'farmland': return 'dirt';
@@ -13607,6 +13851,7 @@ window.__voxelcraft = {
       cutout: block.cutout,
       light: block.light ?? 0,
       facings: block.facings,
+      stairs: block.stairs,
       blockEntity: block.blockEntity,
       placeable: block.placeable,
       drops: (block.drops ?? []).map((drop) => drop.item),

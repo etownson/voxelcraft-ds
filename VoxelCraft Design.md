@@ -2006,3 +2006,184 @@ used through `tillDirt`, `plantSeed` and `use`, not by writing blocks:
 - Esc closed the shelf; E then opened the Inventory with the hint restored.
 - `__voxelcraft.openGive()` and `__voxelcraft.giveList()` report the shelf; the
   old `give()` still works. `tools/check-syntax.sh` passes.
+
+## Stairs addendum — a staircase you walk up
+
+Two families of stairs, sawn out of the block they are named for, and the first
+shape in this game that is not a whole cell. The important part is not the
+geometry, it is the foot: a stair tread is half a block tall, so a staircase is
+something a player walks up rather than something they hop up, and that needed a
+step height the engine had only ever spent on swimming.
+
+### What changed
+
+- Two blocks, appended after the chest: `B.OAK_STAIRS` (50) and
+  `B.COBBLESTONE_STAIRS` (51). Both are hardness 2.0, which is what Minecraft
+  saws both out of — planks and cobblestone are the same hardness — and each
+  asks for its family's tool: oak wants an axe and carries no `tier`, so a bare
+  hand takes it apart in 3 s and still gets the stair back; cobblestone wants a
+  pickaxe and carries `tier: 1`, so a bare hand spends 10 s on it for nothing and
+  an iron pickaxe does it in 0.5 s. Measured, both families sit exactly on the
+  numbers their source block has. Oak joins the wood sound material; cobblestone
+  falls through the switch to `stone`, which is where cobblestone already lived.
+- Structurally they are chests. `facings: true` gives each family four
+  directions in the existing facings map, so it is one id per family and no new
+  save key — `SAVE_SCHEMA` stays at 4. The facing points at the low step, turned
+  towards whoever placed it the way the chest turns its latch, and the tall half
+  leans away from the placer, so a line of stairs climbs away from the person
+  standing at the bottom of it. `world.setBlock` already defaults an omitted
+  facing to `[0, 1]` and already drops the entry when something else takes the
+  cell, so placement and overwrite needed no new code.
+- `stairs: true` is the new shape flag, defaulted in the same finalising loop as
+  `bed` and `door` (`block.stairs ??= false`), and `blockInfo(id)` reports it.
+- **`cellCollidesAt` is the new collision primitive.** Every block in the game
+  used to answer "am I solid" with its whole cell; a stair answers with two
+  boxes — half a block tall across the whole cell, and the upper half over the
+  side away from the facing. `playerCollidesAt` and `mobCollidesAt` both stopped
+  flooring their boxes early: they keep the raw edges, walk the cells the box
+  touches, and hand the box to `cellCollidesAt`, which is exact for axis-aligned
+  facings. Nothing else in the world is sub-block, so this is the only place the
+  question gets asked.
+- `PLAYER_STEP_HEIGHT = 0.6`, and `tryStepUp` is how it is spent: when a frame's
+  horizontal move is blocked while the player is on the ground and out of water,
+  the frame's move is replayed from the same spot stood a little taller, in
+  lifts of 0.05 up to 0.6, and the result is kept only if the whole move went by
+  clean. Half-block lifts land exactly on a tread or a crest, so the feet finish
+  standing on the step instead of hovering over it. Anything taller than 0.6
+  still has to be jumped. Water keeps its own, taller mantle trick, which only
+  ever runs in water, so the two never compete for the same frame.
+- The step is drawn by `appendStairBoxes` on the opaque pass, eleven quads and
+  twenty-two triangles, wound outward like a cube rather than double-sided like
+  a leaf: it is a closed solid, and it reads the same from behind because there
+  is no inside to it. `tileRectSlice` cuts the family's tile in half
+  horizontally so the low walls wear the bottom half and the tall walls the top
+  half, which is what makes the two boxes read as one block sawn along the step
+  instead of two blocks stacked. Face shades are the same 1 / 0.85 / 0.55 as
+  every other face, passed flat per face the way the bed already does it.
+- The item icon for a stair family is the step in side elevation — the lower
+  half of the tile laid across the tread, the upper half over the tall end —
+  because the isometric cube the other block items draw would hide the one thing
+  the item is. The shelf grew from 69 entries to 71.
+- Two recipes, `['P..', 'PP.', 'PPP']` and the same V in cobblestone, six in and
+  four out, Minecraft's own pattern and numbers. The V is three cells across, so
+  the 2x2 in your pocket cannot fold a staircase any more than it can fold a
+  chest.
+
+### Checked in the world
+
+Driven through `window.__voxelcraft` on a cobble deck built for the purpose, and
+the player walked rather than teleported for the movement checks:
+
+- A stair alone in the air costs 22 triangles, and every one of them sits on an
+  exact plane: tread at +0.5 over the exposed half of the cell, crest at +1.0
+  over the far half, the base, and seven walls. No degenerate triangles, no
+  quad where the tall half stands on the tread.
+- Culling measured against a control: stair plus a full block beside it is 34
+  triangles, i.e. 22 + 12 with nothing dropped on either side, while two adjacent
+  full blocks are 20. The step's buried wall costs two hidden triangles, and the
+  ground next to a staircase keeps the face it needs, so the deck does not go
+  hollow when a stair is set against it.
+- Walking up: four stair cells at x=3 climbing −z, all facing `[0, 1]`, walked
+  with `simulate(1/60, { forward: 1 })`. Feet rose 81 → 85 in eight rises of
+  exactly 0.5, `onGround` true on every one of the 72 frames, `vel.y` 0.00 on
+  every frame, no jump input anywhere in it, health unchanged. That is the whole
+  point of the addendum and it is a straight line of half-blocks.
+- Walking down: the same staircase reversed. The walk steps off each crest and
+  drops onto the next tread (85 → 83.5 → 82 → 81 → flat ground), each fall
+  between 0.5 and 1.5 blocks because a walking pace crosses a half-block shelf
+  faster than gravity clears it. No clipping, no snagging, nothing to recover
+  from; the last step walks off the end of the stairs onto the deck like any
+  other ledge.
+- Mobs: a zombie dropped 0.8 above the deck landed and then climbed the same
+  staircase to the player in 2.8 s — 81 → 81.5 → 82 → an arc that peaked at
+  85.29 and settled at 85.0. The existing one-block hop does the work;
+  `mobCollidesAt` reading the stair boxes is what lets it take the half-block.
+- Placement through `place()`, not by writing blocks: aiming at a top face from
+  the +z side records `[0, 1]`, at a −z side face from the −z side records
+  `[0, -1]`, at a +x side face from the +x side records `[1, 0]`. Each placement
+  took one item out of the stack (5 → 4 → 3), and re-aiming at the stair just
+  placed put the next one on top of it, since the raycast reads the whole cell.
+- Breaking with `mine()` by hand removed an oak stair and dropped exactly one
+  `oak_stairs`, and `breakTime` re-read each family's source block: oak stairs
+  harvest in a bare hand the way planks do, cobblestone stairs refuse it the way
+  cobblestone does.
+- Crafting: both Vs preview and craft 4; a partial V previews null; four planks
+  in the 2x2 make a crafting table and never stairs; a mirrored V previews null,
+  which is how the matcher has always treated every other recipe too.
+- Persistence: `save()`, reload, and the placed facings came back as `[0, 1]`,
+  `[0, -1]` and `[1, 0]` with the step re-meshed the right way round.
+- Water: a stair placed into a flowing cell replaces the water and stays a stair
+  — no waterlogging — and the flow routes around the step and settles;
+  `waterFlowCheck()` still passes all six of its cases with a staircase in the
+  way.
+- Light: with a stair as the only block overhead, the cell under it reads sky
+  light 15, where a full block in the same place reads 14 (open air is 15).
+- Zero console errors for the session, and `tools/check-syntax.sh` passes.
+
+### Divergences left in place on purpose
+
+- **The raycast and the selection outline are still whole cells.** Aim at a stair
+  and the box around the entire cell lights up, and a placement goes into the
+  cell beside that rather than into the half you were looking at. Making the
+  picker sub-block means rewriting the DDA and the outline mesh for one block
+  family, and the mistake it would invite — placing into a cell you thought was
+  the empty corner — is worse than an outline a little too generous.
+- For the same reason `blockIntersectsPlayer` reads a stair as its whole cell. It
+  only guards placement and the bed/door checks, and a player cannot stand inside
+  a stair cell anyway: the tread fills the footprint and there is never half a
+  block of headroom in it.
+- The thing in your hand is still a cube. The pack and the shelf show a
+  staircase; the held-item view builds its mesh from the block's six faces, and
+  that is true of every block item in the game.
+- `opaque: false`, so light gets through the open corner and neighbours do not
+  cull against the step: 15 under a stair roof instead of 14. Minecraft shades a
+  staircase where the tread meets the riser; here the step carries flat per-face
+  shading and, not being opaque, it does not soften the corners of the blocks
+  around it either. The bed and the door made the same two choices first.
+- No upside-down stairs. There is no bottom-half state to store — facings are a
+  `[dx, dz]` pair and nothing more — and a step that hangs from a ceiling has no
+  place in a world where nothing needs it.
+- No waterlogging, for the same reason the bed has none: one cell, one block.
+- The foot takes the step in a single frame. `tryStepUp` ends the frame standing
+  on the tread, and the camera goes with the feet, so a staircase reads as eight
+  small snaps rather than a glide. Minecraft eases that in its renderer; if this
+  ever reads as a jolt the easing belongs in the camera, not in the collider.
+- Stairs float where you put them, like every other block here. There is no
+  support rule to break.
+- Placing against a bottom face is refused. A plain cobble block aimed at the
+  same underside is refused too, so that is the engine's rule and not this
+  addendum's.
+
+### Notes for whoever picks this up next
+
+- `opaque: false` on the stair is load-bearing, not a preference. Flip it to true
+  and a full block beside a staircase stops drawing the shared wall — the audit
+  above would drop from 34 triangles to 30 — and the hole that leaves is visible
+  from the far side, where the step does not reach the cell's corner.
+- `cellCollidesAt` is now the answer to "does this cell get in the way". Anything
+  new that asks that question — item drops, a snow layer, a door that wants to
+  know if it can swing — should go through it, or it will disagree with the
+  player about where the world is.
+- `tryStepUp` replays a frame's horizontal move up to twelve times, but only on a
+  frame whose move was already blocked, so the cost is a few extra collision
+  sweeps on the frames that bump something. Raising `PLAYER_STEP_HEIGHT` is the
+  dial for "how tall a step do you walk up"; above 1.0 it starts clearing full
+  blocks and the game loses the jump.
+- Upside-down stairs would need a real state field. The facings map carries a
+  direction, not a flip, so it is a third box, a save value and a second mesh
+  dispatch, not a tweak to `appendStairBoxes`.
+- Scripting the player: `simulate(seconds, input)` is the one that takes input.
+  `tick()` runs the world with an idle player, so a scripted `tick()` never moves
+  anybody and looks like a bug in the walk code. An open screen freezes input the
+  same way — if the feet will not move no matter what the pad says, check
+  `screen()` and `closeScreen()` first. `target()` answers
+  `{ x, y, z, id, name, normal, distance }`, so the cell a placement lands in is
+  target plus normal.
+- `mobs()` returns plain info objects and `mobInfo` wants the live mob, not a
+  serial, so tracking one scripted mob means `mobs().find(e => e.serial === s)`.
+  Mobs also only set `onGround` on a frame that starts while descending, which
+  means a mob spawned with its feet exactly on a surface never gets it and will
+  stand at the foot of a staircase without hopping. Spawn a hand's breadth above
+  the ground and let it land; the quirk is older than stairs and unrelated to
+  them, a stair is just the first place in the world small enough to notice it.
+- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
