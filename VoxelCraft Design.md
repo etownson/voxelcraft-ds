@@ -1813,3 +1813,109 @@ audio is only where it used to show first.
 - Mute still mutes, and the mob groan/hurt path that goes through `audioSpatial`
   outside the debug names is clean. No console errors on any of it, and
   `tools/check-syntax.sh` passes.
+
+## Soil addendum — a furrow drinks from water within reach
+
+Milestone 11 asked for two things before a crop would grow: a hoe'd furrow and a
+seed in it. Minecraft asks for a third, and it is the one every farmer repeats —
+the soil has to be wet. Wheat now waits for water the way it waits for daylight.
+
+### What changed
+
+- `FARMLAND_WET_REACH = 4` and `isFarmlandWet(x, y, z)` sit beside the other crop
+  constants. `updateCrops` asks it one line after the light check, and a furrow
+  that fails is simply skipped.
+- No block id, no save field, no per-furrow moisture value. Wetness is a question
+  asked of the world every tick, so a field wets and dries in the same frame the
+  water moves and there is nothing to keep in step.
+- Sowing dry soil still works, with a toast that says what is waiting: "Dry soil —
+  crops wait for water within 4 blocks". The hoe and the seed keep doing exactly
+  what they did; only the growth tick learned a new condition.
+- `crops()` reports `wet` for every tracked crop and there is a new
+  `soilWet(x, y, z)` for any furrow, so the rule can be read rather than inferred
+  from what grew.
+
+### The wetness rule
+
+A furrow is wet when any liquid sits inside the 9x9 square centred on it, at the
+furrow's own level or one above. Chebyshev distance, so the corner of that square
+counts as much as the cell beside it, and one canal four blocks off keeps a whole
+field alive. Any liquid counts, source or the last ripple of a sheet that has run
+out from its shore, because the test looks at what is in the cell rather than at
+how it got there — the sea, a bucket poured along the headland, and a puddle left
+by a broken dam all water the same furrow.
+
+One above is in the rule because Minecraft puts it there: a ditch dug one layer
+over the tops of the furrows waters them, which is how a field is irrigated
+without drowning it. One below is not, and that is the asymmetry that makes a
+drained field mean something — water under the soil is a swamp, not irrigation.
+
+### Divergences left in place on purpose
+
+- Minecraft lets a bone-dry field creep along at a twenty-fifth of normal speed.
+  Here a dry furrow stops outright. The slow crawl is invisible to a player who is
+  timing nothing, and "it stopped because it is dry" is the rule people actually
+  learn.
+- Dry soil accepts the seed. Minecraft does the same, and refusing the click would
+  punish the player for a mistake they have not made yet — the toast is the nudge
+  instead, and it fires every time, including on a furrow that was wet a minute ago.
+- An unloaded furrow reads as air, so `isFarmlandWet` answers dry for a field whose
+  water is off-screen. That is the safe direction: `updateCrops` already skips
+  chunks the player walked away from, so the field waits rather than dying, and the
+  wetness test cannot be the thing that changes that.
+
+### Checked in the world
+
+Driven through `window.__voxelcraft` on a dirt platform built for the purpose at
+y=75, noon, sky light 15 at every crop. The hoe, the seeds and the bucket were all
+used through `tillDirt`, `plantSeed` and `use`, not by writing blocks:
+
+- Two furrows tilled and sown on dry ground read `wet: false`, and 1200 growth
+  ticks — twenty minutes of the crop clock — left both at stage 0. The same clock
+  ripens a watered furrow, which is the point.
+- A bucket poured into a hole four blocks off arrived as a source, handed back the
+  empty, and `soilWet` read true in the same call. Two seconds of flow left it a
+  single source with every neighbour still soil. That furrow went to stage 7 inside
+  1200 ticks; a second furrow twelve blocks off stayed at stage 0, `wet: false`,
+  the whole time.
+- The reach box, each time a source sealed in soil and read at one furrow: same
+  level four away wet, five away dry; four along z wet; corner four by four wet,
+  corner four by five dry; one above the furrow wet; one below dry; two below dry.
+  Nine by nine, two layers, no radius and no diagonal distance anywhere in it.
+- With one source in the middle of a row of furrows, every cell from four blocks
+  west of it to four blocks east read wet and the cell at five read dry — the
+  nine-wide strip, measured rather than asserted. Twelve cells sown that way came
+  up ripe: eight at stage 7 after 1000 ticks, and of the four sown on the far side
+  three were stage 7 and one stage 6 after their own 1000. The growth roll is a
+  chance per tick, so one lagging cell is noise, not reach. Three control cells at
+  five and six blocks sat at stage 0, `wet: false`, through all of it.
+- A half-grown crop stops and starts on cue. Watered, it reached stage 5 in 300
+  ticks; the source was scooped back up with an empty bucket and the furrow read
+  dry in the same call; 2000 further ticks left it at stage 5, same block id, still
+  tracked, no wither. The water went back and 600 ticks ripened it.
+- Standing 300 blocks away, `soilWet` on a watered furrow reads dry instead of
+  throwing, 3000 growth ticks with the field off-screen left all eighteen tracked
+  crops alive, and the walk back read it wet again.
+- The old rules are untouched: a stage 6 crop disappeared on the next tick once its
+  furrow was dug out from under it.
+- `save()` afterwards: 1120 edits, 9779 bytes, "World saved just now", no console
+  errors for the whole session, and `tools/check-syntax.sh` passes. Nothing in the
+  save record changed shape — there is no moisture to write.
+
+### Notes for whoever picks this up next
+
+- `soilWet(x, y, z)` answers false for anything that is not a furrow, so it reads
+  as "dry" when the real answer is "that is a dirt block". `crops()` carries the
+  same flag next to the ground id for exactly that reason.
+- `selectSlot(i)` goes through `selectHotbarSlot`, which folds with `i % HOTBAR_SIZE`.
+  A main-inventory index does not reach the main inventory: index 27 selects slot 0.
+  Scripted checks should stay inside 0..8 and read `heldItem().id` back.
+- `lookAt` sets a direction, not a target. From an eye 1.62 above a flat surface,
+  aiming at the centre of a block one cell away crosses the surface about 0.02 into
+  the intended cell, which flips to the neighbour whenever a float disagrees. Aim at
+  the lower half of the block instead and there is half a cell of margin.
+- A scripted player standing in a cell that holds something — ripe wheat, a leaf —
+  gets that very cell back from the raycast at distance 0, and every placement aimed
+  through it is refused. That, and not the reach, is why test platforms want their
+  working row clear to y=77.
+- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
