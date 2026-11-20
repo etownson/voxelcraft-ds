@@ -11681,11 +11681,20 @@ function audioBeginVoice(duration) {
   return true;
 }
 
+/**
+ * An AudioParam rejects NaN and Infinity, and the throw lands on whatever frame
+ * happened to be making a sound. Physics and look input only slip once before a
+ * NaN is permanent, so no number reaches a param without passing through here.
+ */
+function audioNumber(value, fallback) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function audioConnectOutput(pan = 0) {
   if (!audioCtx) return null;
   if (audioCtx.createStereoPanner) {
     const panner = audioCtx.createStereoPanner();
-    panner.pan.value = clamp(pan, -1, 1);
+    panner.pan.value = clamp(audioNumber(pan, 0), -1, 1);
     panner.connect(audioMaster);
     return panner;
   }
@@ -11700,28 +11709,37 @@ function audioSpatial(x, y, z, range = 26) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
     return { gain: 1, pan: 0, distance: 0 };
   }
+  range = Math.max(1, audioNumber(range, 26));
   const dx = x - camera.position.x;
   const dy = y - camera.position.y;
   const dz = z - camera.position.z;
+  // The listener goes non-finite exactly like a sound does, and a NaN here would
+  // make every distance and level below one too. The voice is played at full
+  // level dead centre instead: nothing that can be heard is lost, and the frame
+  // that asked for it survives.
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dz)) {
+    return { gain: 1, pan: 0, distance: 0 };
+  }
   const distance = Math.hypot(dx, dy, dz);
-  if (distance >= range) return { gain: 0, pan: 0, distance };
+  if (distance >= range || !Number.isFinite(distance)) return { gain: 0, pan: 0, distance };
 
   const falloff = 1 - distance / range;
   const gain = falloff * falloff;
   const horizontal = Math.hypot(dx, dz);
-  const pan = horizontal > 0.001
-    ? clamp((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / horizontal, -1, 1) * 0.72
-    : 0;
+  // yaw can go non-finite the same way, and a heading nobody can place by ear is
+  // worth the same as no heading at all.
+  const bearing = (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / horizontal;
+  const pan = horizontal > 0.001 ? clamp(audioNumber(bearing, 0), -1, 1) * 0.72 : 0;
   return { gain, pan, distance };
 }
 
 function audioTone(config = {}) {
   if (!audioCtx) return;
-  const now = config.now ?? audioCtx.currentTime;
-  const duration = Math.max(0.03, config.duration ?? 0.2);
-  const from = Math.max(20, config.from ?? 440);
-  const to = Math.max(20, config.to ?? from);
-  const volume = Math.max(0.0002, config.volume ?? 0.15);
+  const now = audioNumber(config.now, audioCtx.currentTime);
+  const duration = Math.max(0.03, audioNumber(config.duration, 0.2));
+  const from = Math.max(20, audioNumber(config.from, 440));
+  const to = Math.max(20, audioNumber(config.to, from));
+  const volume = Math.max(0.0002, audioNumber(config.volume, 0.15));
 
   const oscillator = audioCtx.createOscillator();
   oscillator.type = config.type || 'sine';
@@ -11734,8 +11752,8 @@ function audioTone(config = {}) {
   if (config.filterType) {
     const filter = audioCtx.createBiquadFilter();
     filter.type = config.filterType;
-    filter.frequency.value = Math.max(40, config.filterFreq ?? 900);
-    filter.Q.value = config.filterQ ?? 0.8;
+    filter.frequency.value = Math.max(40, audioNumber(config.filterFreq, 900));
+    filter.Q.value = audioNumber(config.filterQ, 0.8);
     lastNode.connect(filter);
     lastNode = filter;
   }
@@ -11829,8 +11847,11 @@ function audioNoiseHit(profile, x, y, z, options = {}) {
     : audioSpatial(x, y, z, options.range ?? 24);
   if (spatial.gain <= 0.001) return false;
 
-  const pitch = options.pitch ?? 1;
-  const duration = Math.max(0.04, (profile.duration || 0.14) * (options.durationScale ?? 1));
+  const pitch = audioNumber(options.pitch, 1);
+  const duration = Math.max(
+    0.04,
+    audioNumber((profile.duration || 0.14) * (options.durationScale ?? 1), 0.14)
+  );
   if (!audioBeginVoice(duration)) return false;
 
   const now = ctx.currentTime;
@@ -11850,7 +11871,7 @@ function audioNoiseHit(profile, x, y, z, options = {}) {
   const gain = ctx.createGain();
   const volume = Math.max(
     0.0002,
-    (profile.volume ?? 0.2) * (options.volume ?? 1) * spatial.gain
+    audioNumber((profile.volume ?? 0.2) * (options.volume ?? 1) * spatial.gain, 0.0002)
   );
   gain.gain.setValueAtTime(0.0001, now);
   gain.gain.exponentialRampToValueAtTime(volume, now + Math.min(0.016, duration * 0.3));

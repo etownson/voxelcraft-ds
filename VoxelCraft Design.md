@@ -1743,3 +1743,73 @@ time:
   merging into them, which is what makes it useful for setting up a check: pass
   fewer than twenty-seven rows and the rest come back empty.
 - `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+
+## Audio addendum — a sound does not get to end the frame
+
+Added after the chest one, when a scripted run turned up a `TypeError` from
+`audioConnectOutput` on a frame where nothing about the sound was wrong.
+
+### What broke
+
+Every number the audio layer hands an `AudioParam` comes out of the position of
+something, and a position is the least trustworthy number in the game. An
+`AudioParam` rejects NaN and Infinity by throwing, and the throw is not local to
+the sound: it unwinds the update loop that happened to be asking for a footstep,
+so whatever else that frame owed is lost with it.
+
+Two ways in, both reproduced against the build before this one, where all
+fourteen named debug sounds threw in both states:
+
+- A non-finite `yaw` with the sound a few blocks away. The pan is a projection
+  onto the camera's right vector, so a broken heading makes the pan NaN and the
+  throw lands on `panner.pan.value`. A sound at the listener's own feet is safe,
+  which is why the `playSound` defaults never showed it.
+- A non-finite camera. Every `dx`/`dy`/`dz` goes NaN, the falloff goes NaN, the
+  level goes NaN, and the throw lands on `exponentialRampToValueAtTime` instead.
+
+### The rule now
+
+Nothing reaches a param raw. `audioNumber(value, fallback)` is a finite test with
+a default behind it, and it sits in front of the pan in `audioConnectOutput`, the
+duration/pitch/volume in `audioNoiseHit`, and the shape inputs in `audioTone`.
+`audioSpatial` is the one that actually knows what a bad number means, so it
+guarantees a finite `gain`, `pan` and `distance` for both sides of the
+relationship: the sound's own position, and the listener's. A listener that is no
+longer a place gets the voice at full level dead centre, which costs nothing that
+can be heard — the alternative is a NaN that ends the frame instead. `yaw` is
+handled the same way one step further down: a heading nobody can place by ear is
+worth the same as no heading at all.
+
+`range` gets the same treatment, because the falloff divides by it, so a NaN
+range was quietly a NaN gain with a perfectly good position on both sides.
+
+There is no `try`/`catch` around any of this on purpose. Falling back per number
+keeps the graph honest — a centred voice is still a voice, and it is obvious in
+the code which value was suspected — whereas swallowing a throw would hide which
+coordinate slipped and leave a silent voice that reads as the sound not working.
+
+### Where it still comes from
+
+The fix is in the ear, not in the coordinate. Whatever slipped once — physics
+that divided by a missing surface, a `look(NaN)` through the debug API — still
+leaves the camera non-finite from then on, and rendering, raycasting and mob
+steering see that just as plainly as the audio did. The chest checks ran into a
+second version of this: `teleport(NaN, …)` wedges the page outright, because the
+chunk loop around the player has no more opinion about NaN than the audio layer
+used to. That is the place to look if a non-finite camera turns up again; the
+audio is only where it used to show first.
+
+### Checked in the world
+
+- Before and after, same script: the previous build throws on all fourteen named
+  sounds with a broken heading and again with a broken camera; this one throws on
+  none of them, and plays them normally again afterwards.
+- Stereo is unchanged: a sound 6 m to the right pans +0.72, the mirrored one
+  −0.72, one directly behind 0. Distance is unchanged: the same break peaks at
+  0.287 one metre away and 0.042 fourteen metres away.
+- Bad inputs fall back rather than throw: NaN `pitch`, `durationScale`, `volume`
+  and `range` all sound like their defaults; NaN and infinite sound coordinates
+  are dropped the way the old NaN guard already dropped them.
+- Mute still mutes, and the mob groan/hurt path that goes through `audioSpatial`
+  outside the debug names is clean. No console errors on any of it, and
+  `tools/check-syntax.sh` passes.
