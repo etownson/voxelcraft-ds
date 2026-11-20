@@ -6330,6 +6330,11 @@ function plantSeedsOnTarget() {
   world.setBlock(x, y, z, item.plants);
   consumeSelectedItem();
   playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
+  // Sowing dry soil is allowed — Minecraft does not stop it either — but a
+  // player who has just learned wheat can also wait for water, so say which.
+  if (!isFarmlandWet(x, y - 1, z)) {
+    showToast(`Dry soil — crops wait for water within ${FARMLAND_WET_REACH} blocks`);
+  }
   return true;
 }
 
@@ -6598,6 +6603,33 @@ const CROP_GROWTH_CHANCE = 0.012;
 /** Crops need daylight or a nearby torch, the same threshold Minecraft uses. */
 const CROP_LIGHT_MIN = 9;
 
+/**
+ * How far water soaks sideways into the soil around it. Minecraft's rule: a
+ * furrow drinks from any water in the 9×9 square at its own level or one
+ * above, so a single canal four blocks off keeps a whole field wet.
+ */
+const FARMLAND_WET_REACH = 4;
+
+/**
+ * True when water is close enough to soak a farmland cell. Any liquid counts —
+ * the sea, a bucket poured along the headland, even a sheet of flow crossing
+ * the field. The answer is read from the world every time, so a furrow wets
+ * and dries the moment the water moves and there is no moisture value to keep
+ * in the save. An unloaded neighbour reads as air, hence dry: a field whose
+ * water is off-screen simply waits, the same courtesy the growth tick already
+ * extends to crops in chunks the player walked away from.
+ */
+function isFarmlandWet(x, y, z) {
+  for (let dy = 0; dy <= 1; dy++) {
+    for (let dx = -FARMLAND_WET_REACH; dx <= FARMLAND_WET_REACH; dx++) {
+      for (let dz = -FARMLAND_WET_REACH; dz <= FARMLAND_WET_REACH; dz++) {
+        if (BLOCKS[world.getBlock(x + dx, y + dy, z + dz)].liquid) return true;
+      }
+    }
+  }
+  return false;
+}
+
 let cropTimer = 0;
 
 /**
@@ -6641,6 +6673,12 @@ function updateCrops(dt) {
     const sky = world.getSkyLight(x, y, z);
     const lamp = world.getBlockLight(x, y, z);
     if (sky < CROP_LIGHT_MIN && lamp < CROP_LIGHT_MIN) continue;
+
+    // A dry furrow waits for water rather than dying. Minecraft lets a
+    // bone-dry field crawl along at a twenty-fifth of the speed; here the soil
+    // simply stops until water comes within reach, which is the part of the
+    // rule every farmer actually remembers.
+    if (!isFarmlandWet(x, y - 1, z)) continue;
 
     let stage = block.crop;
     for (let i = 0; i < ticks && stage < 7; i++) {
@@ -13909,11 +13947,20 @@ window.__voxelcraft = {
         at: [x, y, z],
         stage: block.crop,
         ground: world.getBlock(x, y - 1, z),
+        wet: isFarmlandWet(x, y - 1, z),
         sky: world.getSkyLight(x, y, z),
         lamp: world.getBlockLight(x, y, z)
       });
     }
     return list;
+  },
+  /**
+   * Whether the farmland at these coordinates has water within reach. Any
+   * liquid within the square at its level or one above counts, and a false
+   * answer means the crops on it are standing still, not dying.
+   */
+  soilWet(x, y, z) {
+    return world.getBlock(x, y, z) === B.FARMLAND && isFarmlandWet(x, y, z);
   },
   /** Runs the crop growth clock forward without waiting real time. */
   growCrops(seconds = 60) {
