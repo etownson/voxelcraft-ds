@@ -2047,11 +2047,13 @@ step height the engine had only ever spent on swimming.
 - `PLAYER_STEP_HEIGHT = 0.6`, and `tryStepUp` is how it is spent: when a frame's
   horizontal move is blocked while the player is on the ground and out of water,
   the frame's move is replayed from the same spot stood a little taller, in
-  lifts of 0.05 up to 0.6, and the result is kept only if the whole move went by
-  clean. Half-block lifts land exactly on a tread or a crest, so the feet finish
+  lifts of 0.05 up to 0.6, and the first height that gets a blocked axis through
+  wins. Half-block lifts land exactly on a tread or a crest, so the feet finish
   standing on the step instead of hovering over it. Anything taller than 0.6
   still has to be jumped. Water keeps its own, taller mantle trick, which only
-  ever runs in water, so the two never compete for the same frame.
+  ever runs in water, so the two never compete for the same frame. The height the
+  feet rose is handed to the view as well, which is what keeps the climb from
+  reading as a stutter — see the follow-up below.
 - The step is drawn by `appendStairBoxes` on the opaque pass, eleven quads and
   twenty-two triangles, wound outward like a cube rather than double-sided like
   a leaf: it is a closed solid, and it reads the same from behind because there
@@ -2144,15 +2146,79 @@ the player walked rather than teleported for the movement checks:
   `[dx, dz]` pair and nothing more — and a step that hangs from a ceiling has no
   place in a world where nothing needs it.
 - No waterlogging, for the same reason the bed has none: one cell, one block.
-- The foot takes the step in a single frame. `tryStepUp` ends the frame standing
-  on the tread, and the camera goes with the feet, so a staircase reads as eight
-  small snaps rather than a glide. Minecraft eases that in its renderer; if this
-  ever reads as a jolt the easing belongs in the camera, not in the collider.
 - Stairs float where you put them, like every other block here. There is no
   support rule to break.
 - Placing against a bottom face is refused. A plain cobble block aimed at the
   same underside is refused too, so that is the engine's rule and not this
   addendum's.
+
+### Follow-up: the staircase read as a stutter
+
+Reported after the fact: going up feels jerky, going down is fine. Both halves were
+true, and gravity is the reason in both. Going down, the foot steps off a crest and
+the fall is spread over the frames gravity needs to cross a half-block, so the eye
+travels the step as a slope for free. Going up, `tryStepUp` ends the frame standing
+on the tread — that is what a collider has to do — so the eye crossed half a block
+in a single frame: sixty blocks a second, at a walk that carries forwards at four
+and a half. The stride was never lost; only the view was.
+
+The easing went in the camera, where the note above said it belonged, as one number
+that only ever holds the view *below* the eyes: `cameraStepOffset`.
+
+- `tryStepUp` reports how far the feet rose, and the view is told it owes that much.
+- The debt is spent as an ease — `cameraStepOffset *= exp(-dt * CAMERA_STEP_GLIDE_RATE)`
+  — so the eye arrives on the tread as a slope. An ease rather than a fixed crawl
+  because the faster you walk, the thicker the lifts arrive: a rate that keeps up at
+  a sprint over-absorbs at a walk, and one tuned for a walk leaks jumps at a sprint.
+  An ease scales itself.
+- `syncCamera` and the camera-shake block both subtract it. `spawnPlayer`, respawn
+  (through it), `teleport`, the void rescue and the load path zero it: in all of
+  those the world the view was gliding over is gone.
+- `aimOrigin()` is the same eye without the glide, and everything that touches the
+  world reads it — the block ray, the water ray, the mob ray and the air-clearance
+  check behind it. The crosshair belongs to the player, not to the view.
+
+Measured on six oak stairs one cell apart and one block higher each, on a cobble
+deck with walls either side, driven with `simulate(1/120, …)`; the previous commit's
+file was served alongside as the control, so both columns read the same corridor at
+the same timestep. The eye is `stats().position`, the feet are `stats().feet`.
+
+| walking up six stairs | before | after |
+| --- | --- | --- |
+| biggest one-frame eye move | 0.5 blocks (60 blocks/s) | 0.068 blocks (8.2 blocks/s) |
+| frames where the eye moved more than 0.2 blocks | 11 | 0 |
+| eye speed, rms | 15.9 blocks/s | 4.6 blocks/s |
+| foot rises | 11 × 0.5 | 11 × 0.5 |
+| ground covered per frame | 0.0383 | 0.0383 |
+
+Those last two rows are the point: collision answers exactly as it did, and only
+the view moved.
+
+- Sprinting up the same flight: 0.5 in a frame and 12 jolt frames before, 0.086 and
+  none after.
+- Walking down: identical in every column, before and after (biggest eye move
+  −0.0771, 39 foot steps, rms 4.8, no jolt frames). Nothing in the descent was
+  touched, and the glide is only ever fed by a step *up*.
+- Leaning into the side wall while climbing was the other half of the report, and it
+  turned out to be a bug rather than feel. The old `tryStepUp` asked both axes at
+  once and refused the lift unless both went clear, so a blocked sideways move
+  cancelled the forward one: forward-plus-right against the wall froze the walk on
+  the first stair, 186 of 199 frames moving less than 0.004 blocks, ending at 81.99
+  after a single rise. One sweep now takes the smallest height that frees either
+  blocked axis and keeps whatever the other one managed: all nine rises are taken,
+  0 stalled frames, and the eye still never moves more than 0.064 in a frame. An
+  earlier attempt at that ran a sweep per axis, which let the second one re-sweep
+  from a lower height, drop the feet and drive the offset negative — the reason it is
+  one sweep.
+- Aim while gliding: at three samples with the view 0.169, 0.423 and 0.200 below the
+  eyes, `target()` returned the same block, face and distance as a standing read from
+  the same spot (1.9421, 2.1754, 1.4088); `place()` put cobblestone at target plus
+  normal and `mine()` removed the stair under the crosshair.
+- Across the up, lean, down and sprint runs — 587 frames — the view never sat inside
+  a solid cell, and it never fell further behind than 0.59 of a block at a walk and
+  0.75 at a sprint. Teleport, respawn and reload return the eye to where the feet
+  are (0.169 → 0), plain walking on flat ground moves not at all (eye step 0.0), and
+  there are no console errors.
 
 ### Notes for whoever picks this up next
 
@@ -2169,6 +2235,21 @@ the player walked rather than teleported for the movement checks:
   sweeps on the frames that bump something. Raising `PLAYER_STEP_HEIGHT` is the
   dial for "how tall a step do you walk up"; above 1.0 it starts clearing full
   blocks and the game loses the jump.
+- The glide rate is not a knob to guess at. The view is pure arithmetic on the
+  lifts — add each lift, then decay — so a recorded feet series replays any rate
+  offline instead of reloading the page once per value. Replayed over a walk and a
+  sprint, rates 7 through 16 all leave zero jolt frames and the eye's rms speed
+  only moves from 4.1 to 4.8, while how far the view falls behind runs from 0.89
+  down to 0.53: the rate buys lag, not smoothness, and 13 sits at the smooth end
+  of that plateau.
+- `CAMERA_STEP_GLIDE_CAP` being two treads is not tuning either. A cap that binds
+  hands the lift it refuses straight back to the eye as a jump, which is the thing
+  being smoothed away; the first version capped at one tread and leaked ten jolt
+  frames at a sprint for exactly that reason. The cap only exists to catch lifts
+  arriving faster than the ease spends them.
+- The coordinate readout reads the camera, so the `Y` in the corner dips by half a
+  block for a fifth of a second after a step up. `stats().feet` is the ground
+  truth, and so is everything the player does to the world.
 - Upside-down stairs would need a real state field. The facings map carries a
   direction, not a flip, so it is a third box, a save value and a second mesh
   dispatch, not a tweak to `appendStairBoxes`.

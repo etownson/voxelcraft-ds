@@ -6113,7 +6113,7 @@ function updateTarget() {
   }
 
   camera.getWorldDirection(rayDirection);
-  currentTarget = raycastBlock(camera.position, rayDirection, FOCUS_REACH);
+  currentTarget = raycastBlock(aimOrigin(), rayDirection, FOCUS_REACH);
 
   if (currentTarget) {
     targetOutline.position.set(
@@ -6568,7 +6568,7 @@ function waterBeside(x, y, z) {
  */
 function fillBucket() {
   camera.getWorldDirection(rayDirection);
-  const hit = raycastWater(camera.position, rayDirection, FOCUS_REACH);
+  const hit = raycastWater(aimOrigin(), rayDirection, FOCUS_REACH);
   if (!hit) {
     showToast('No source to fill from');
     return false;
@@ -7409,12 +7409,54 @@ function applyLook() {
   camera.rotation.x = pitch;
 }
 
+/**
+ * How far below the eyes the view is currently sitting, because the last stair
+ * step has not been glided over yet. The foot lands on a tread in one frame —
+ * that is what collision has to do — but a staircase read straight off the feet
+ * is a strobe: measured walking up six stairs at 120 fps, the eye crossed half
+ * a block in a single frame — sixty blocks a second, while travelling forwards
+ * at four and a half. So the view keeps the eye where it was and spends each lift
+ * over the frames that follow, arriving at the tread as a ramp. Going down has
+ * never needed this: gravity carries the eye over the lip instead.
+ */
+let cameraStepOffset = 0;
+
+/** The view gives the height back as an ease, not a fixed crawl: it arrives
+ *  fast and settles onto the tread, so the eye keeps moving between steps
+ *  instead of stopping and starting. Sweeping this against a measured six-stair
+ *  climb, anything from 7 to 16 leaves the eye with no jump at all — how
+ *  smooth it reads is set by the step, not by the rate — so the rate is chosen
+ *  for how far behind it lets the view fall: at 13 the eye trails by 0.59 of a
+ *  block at a walk and 0.75 at a sprint, and the fastest it ever moves is 8.2
+ *  blocks a second, against the 60 a staircase reads off the feet. */
+const CAMERA_STEP_GLIDE_RATE = 13;
+
+/** How far the ease is ever allowed to fall behind. Measured up a six-stair
+ *  flight, the view trails the eyes by 0.59 of a block at a walk and 0.75 at a
+ *  sprint, so this is a guard against lifts piling up rather than a limit a walk
+ *  or a sprint reaches. It sits above a single tread on purpose: a cap that
+ *  binds hands the lift it refuses back to the eye as a jump, which is the very
+ *  thing being smoothed away. */
+const CAMERA_STEP_GLIDE_CAP = PLAYER_STEP_HEIGHT * 2;
+
 function syncCamera() {
   camera.position.set(
     player.pos.x,
-    player.pos.y + EYE_HEIGHT,
+    player.pos.y + EYE_HEIGHT - cameraStepOffset,
     player.pos.z
   );
+}
+
+const aimPoint = new THREE.Vector3();
+
+/**
+ * Where the crosshair aims from. After a step up the view sits below the eyes
+ * for a fifth of a second — half a block at a walk — and a pickaxe should not
+ * follow it down into the stair itself, so everything that hits the world uses
+ * the real eye instead.
+ */
+function aimOrigin() {
+  return aimPoint.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
 }
 
 /** Arrow-key look for embedded browsers without pointer lock. */
@@ -7564,24 +7606,43 @@ function tryWaterMantle(startX, startZ, dx, dz) {
 /**
  * Minecraft walks a stair rather than jumping it: the step height clears a
  * tread by a hair, so the foot rises onto each step and the walk goes on.
- * Here that is a lift-and-retry: stand a little taller at the spot the frame
- * started from, redo the frame's horizontal movement at that height, and keep
- * the result only when the whole step went by cleanly. Half-block lifts land
- * exactly on a tread or a crest, so the feet end up standing on the step
- * rather than hovering over it; anything a lift cannot clear, the player
- * still has to jump.
+ * Here that is a lift-and-replay: stand a little taller at the spot the frame
+ * started from, redo the frame's movement there, and keep the first height at
+ * which an axis that was blocked gets through. Half-block lifts land exactly on
+ * a tread or a crest, so the feet end up standing on the step rather than
+ * hovering over it; anything a lift cannot clear, the player still has to jump.
+ *
+ * One sweep for both axes, and the smallest height that frees either one wins,
+ * so a climb never takes two steps in a frame and the other axis keeps whatever
+ * it managed — that is what lets a walk up a staircase continue while the player
+ * leans into a wall. Returns which blocked axes the step got past, and how far
+ * the feet rose, so the view can be told to glide over it.
  */
-function tryStepUp(startX, startY, startZ, moveX, moveZ) {
+function tryStepUp(startX, baseY, startZ, moveX, moveZ, blockedX, blockedZ) {
+  const wasX = player.pos.x;
+  const wasY = player.pos.y;
+  const wasZ = player.pos.z;
+
   for (let lift = WATER_MANTLE_STEP; lift <= PLAYER_STEP_HEIGHT + 1e-6; lift += WATER_MANTLE_STEP) {
-    const y = startY + lift;
+    const y = baseY + lift;
     if (playerCollidesAt(startX, y, startZ)) continue;
+
     player.pos.set(startX, y, startZ);
     const hitX = movePlayerAxis('x', moveX);
     const hitZ = movePlayerAxis('z', moveZ);
-    if (!hitX && !hitZ) return true;
+    const pastX = blockedX && !hitX;
+    const pastZ = blockedZ && !hitZ;
+    if (!pastX && !pastZ) continue;
+
+    // The step is taken. Hand the rise to the view, so a walk up a staircase
+    // reads as a slope; the cap only catches lifts that pile up faster than the
+    // ease can spend them.
+    cameraStepOffset = Math.min(cameraStepOffset + lift, CAMERA_STEP_GLIDE_CAP);
+    return { pastX, pastZ, lift };
   }
-  player.pos.set(startX, startY, startZ);
-  return false;
+
+  player.pos.set(wasX, wasY, wasZ);
+  return { pastX: false, pastZ: false, lift: 0 };
 }
 
 /**
@@ -7701,10 +7762,9 @@ function updatePlayer(dt, input) {
   // tread and the walk carries on. Water has its own, taller version of this
   // trick below, and only ever runs when in water, so the two never compete.
   if ((hitX || hitZ) && player.onGround && !player.inWater) {
-    if (tryStepUp(startX, player.pos.y, startZ, moveX, moveZ)) {
-      hitX = false;
-      hitZ = false;
-    }
+    const step = tryStepUp(startX, player.pos.y, startZ, moveX, moveZ, hitX, hitZ);
+    if (step.pastX) hitX = false;
+    if (step.pastZ) hitZ = false;
   }
 
   if ((hitX || hitZ) && player.inWater && input.jump) {
@@ -7725,6 +7785,14 @@ function updatePlayer(dt, input) {
   if (player.pos.y < -4) {
     player.pos.y = safeGroundY(Math.floor(player.pos.x), Math.floor(player.pos.z));
     player.vel.set(0, 0, 0);
+    cameraStepOffset = 0;
+  }
+
+  // The view catches up with the foot on an ease, so a staircase arrives as a
+  // slope rather than as a series of jumps.
+  if (cameraStepOffset > 0) {
+    cameraStepOffset *= Math.exp(-dt * CAMERA_STEP_GLIDE_RATE);
+    if (cameraStepOffset < 0.004) cameraStepOffset = 0;
   }
 
   syncCamera();
@@ -7835,6 +7903,7 @@ function spawnPlayer(column) {
   player.pos.set(column.x + 0.5, safeGroundY(column.x, column.z), column.z + 0.5);
   player.vel.set(0, 0, 0);
   player.onGround = true;
+  cameraStepOffset = 0;
   yaw = -2.4;
   pitch = -0.18;
   applyLook();
@@ -10359,7 +10428,7 @@ function updateMobTarget() {
     return null;
   }
   camera.getWorldDirection(rayDirection);
-  const hit = raycastMob(camera.position, rayDirection, FOCUS_REACH);
+  const hit = raycastMob(aimOrigin(), rayDirection, FOCUS_REACH);
   if (hit && (!currentTarget || hit.distance < currentTarget.distance - 0.04)) {
     currentMobTarget = hit.mob;
   } else {
@@ -10434,11 +10503,12 @@ function shearMob(mob) {
  */
 function airClearTo(distance) {
   const step = 0.12;
+  const origin = aimOrigin();
   for (let t = step; t < distance - step; t += step) {
     if (world.isOpaque(
-      Math.floor(camera.position.x + rayDirection.x * t),
-      Math.floor(camera.position.y + rayDirection.y * t),
-      Math.floor(camera.position.z + rayDirection.z * t)
+      Math.floor(origin.x + rayDirection.x * t),
+      Math.floor(origin.y + rayDirection.y * t),
+      Math.floor(origin.z + rayDirection.z * t)
     )) return false;
   }
   return true;
@@ -10458,7 +10528,7 @@ function airClearTo(distance) {
 function mobUnderCrosshair() {
   if (activeScreen || player.dead) return null;
   camera.getWorldDirection(rayDirection);
-  const hit = raycastMob(camera.position, rayDirection, FOCUS_REACH);
+  const hit = raycastMob(aimOrigin(), rayDirection, FOCUS_REACH);
   if (!hit || !airClearTo(hit.distance)) return null;
   return hit;
 }
@@ -13013,7 +13083,7 @@ function updateExplosionEffects(dt) {
     const amplitude = cameraShake;
     camera.position.set(
       player.pos.x + Math.sin(time * 61) * amplitude,
-      player.pos.y + EYE_HEIGHT + Math.cos(time * 73) * amplitude * 0.6,
+      player.pos.y + EYE_HEIGHT - cameraStepOffset + Math.cos(time * 73) * amplitude * 0.6,
       player.pos.z + Math.sin(time * 53 + 1.7) * amplitude
     );
     cameraShake = Math.max(0, cameraShake - dt * 0.7);
@@ -13369,6 +13439,8 @@ function restoreSavedPlayer(save) {
   player.pos.set(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0);
   player.vel.set(0, 0, 0);
   player.onGround = false;
+  // Wherever the view was left mid-glide, the world it was gliding over is gone.
+  cameraStepOffset = 0;
   // Nothing around a restored position exists yet, so nothing can be trusted
   // until its chunks are made: an older build could write the player into solid
   // ground, and a read that sees only air would keep them buried there.
@@ -13809,6 +13881,7 @@ window.__voxelcraft = {
     player.vel.set(0, 0, 0);
     player.onGround = false;
     player.fallPeakY = y;
+    cameraStepOffset = 0;
     ensurePlayerChunks();
     syncCamera();
     updateTarget();
