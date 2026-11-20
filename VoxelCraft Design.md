@@ -1587,3 +1587,159 @@ purpose, one observation at a time:
   and `tryUseBucket` all read the id. A metadata bit would have had to be
   threaded through every one of them to mean what the id already means.
 - `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+
+## Chest addendum — a box that keeps what you put in it
+
+Chests landed: eight boards ringed around an empty middle at the table, placed
+with the lock toward whoever placed it, and twenty-seven slots that wait for you
+to come back.
+
+### What changed
+
+- One block, `B.CHEST` (49): hardness 2.5, an axe is the fast tool, and no
+  `tier`, so a bare hand takes it apart in 3.75 s and still gets the box back —
+  0.625 s with an iron axe. That is Minecraft's arrangement rather than a
+  shortcut: a chest asks for no pickaxe, and the furnace next to it, which does,
+  is the contrast worth having in the world.
+- Structurally it is a furnace. `facings: true` turns the front tile to face the
+  placer, and `blockEntity: 'chest'` puts its contents in `world.blockEntities`
+  beside the furnaces rather than in a map of their own. One id and no lit
+  variant, because nothing about a box changes once it is set down.
+- Three tiles: `chest_top`, which is also the bottom, `chest_side` and
+  `chest_front`, all three painted from one shared body — lid boards lying flat
+  over a dark seam, upright planking below, corner battens down both edges and
+  along the foot. The front adds an iron strap running down from the lid's edge
+  into a lock plate with a keyhole punched through it, and the top tile carries
+  that strap's last two pixels along its own front edge, so the two faces line
+  up on the corner. The item icon needed no work: block items draw themselves as
+  the isometric cube, and that reads as a chest the moment the tiles exist.
+- One recipe, `['PPP', 'P.P', 'PPP']` in the 3x3, and it is the last entry in
+  `RECIPES` — the bucket's V now ends with a comma. Eight boards around a hollow
+  centre, because the box is all walls and the gap is how things get in. Like the
+  bed and the bucket it is three cells across, so the 2x2 in your pocket cannot
+  fold one.
+- Twenty-seven slots, opened by right click from the same place the crafting
+  table and the furnace are asked, ahead of any block placement. The panel puts
+  the box's three rows above Storage in the left column, the way Minecraft
+  stacks them, and keeps the armour column and the 2x2 grid every other screen
+  already carries. The 3x3 stays home: a chest screen that also opened a table
+  would be a second screen wearing the first one's clothes, and the box is the
+  thing being looked at.
+- Shift-click reads which hand it came from. From the pack it goes into the box
+  through `mergeStackInto`, the same helper the pack's own shift-click uses, so
+  it tops up what the chest already holds and then claims a free row for the
+  rest; only when the box has nowhere to put it does the stack stay in the pack,
+  rather than trading hotbar rows the way a shift-click with no chest open
+  would. From the chest it goes to the pack as it would from any container.
+  Armour shift-clicked out of a chest goes onto your back, which is what the
+  shift key already means for armour.
+- Two sounds, both one-shot noise. The lid is a bandpass rising from 480 to
+  1040 Hz over a low 128 Hz knock; the shut is one short falling lowpass knock
+  where that rise ended. Both are asked for at the block's centre with a 20 m
+  range, so a chest across the clearing opens quietly and one at your feet does
+  not, and each gets a small random pitch so the fifth one in a row is not the
+  first one again.
+- Breaking a chest hands over its contents and then itself.
+  `spillBlockEntityContents` — which was `spillFurnaceContents`, and is now the
+  same four lines for both kinds — dumps every slot as a real item drop before
+  the block's own `drops:` entry adds the box. A creeper owes the same roll as a
+  pickaxe, so the explosion path calls it too.
+- The save grows one sibling of the furnace list: `entities.chests`, one flat row
+  per box of `[x, y, z]` and then twenty-seven id and count pairs, 57 fields
+  whether the box holds one diamond or nothing at all. `SAVE_SCHEMA` stays at 4:
+  a world written before this addendum loads unchanged and simply has no chests
+  key, and a world written now carries one extra key.
+
+### Checked in the world
+
+Driven through `window.__voxelcraft` the way the bucket was, one observation at a
+time:
+
+- Eight planks in a ring at the table craft one chest. Seven do not, and the ring
+  missing its centre is what makes it a chest rather than nine.
+- Placing it against the top face of a block puts the box there with its front
+  normal pointing back at the placer, and the same aim from the other side
+  records the opposite normal. Two boxes in the world read back as two rows from
+  `chestList`, each with its own facing.
+- Shift-clicking 10 wheat into a chest holding 60 leaves 64 in the first slot, 6
+  in the next row and an empty hand. Filling all twenty-seven rows with cobble
+  and shifting a further 30 wheat at the box leaves the wheat where it was and
+  the box at twenty-seven used slots.
+- Shift-clicking an axe out of the box puts it in the pack; shift-clicking an
+  iron chestplate out of it puts it on, defence reading 6 afterwards. Clicking an
+  empty chest slot does nothing at all, which is worth writing down only because
+  it is the one click that moves nothing and still marks the save dirty.
+- Breaking it bare-handed yields cobblestone x40, iron_ingot x5 and the chest
+  itself as three separate drops on the ground, all three pickable, with nothing
+  left in `world.blockEntities` at that position.
+- A save with a chest in it writes 859 bytes, its chest row 57 fields long, and a
+  reload of that save brings the box back with its facing and both stacks in the
+  same rows they were left in.
+- The panel closes itself if the box goes away underneath an open screen —
+  measured by deleting the block and letting the next render notice, which left
+  no screen and, through `returnCursorStack`, handed back the three diamonds that
+  were still on the cursor from a gamepad pickup. Walking the pad cursor over a
+  chest screen starts at `chest:0`, walks the three rows nine wide, and steps off
+  the bottom of the lid into Storage rather than sideways into the armour column.
+- The furnace screen is untouched by all of this: three furnace slots, no chest
+  slots, its own title, and coal lighting raw iron with the burn counter running
+  while the screen sits open.
+
+### Divergences left in place on purpose
+
+- Nothing in the world hands a chest over. No mob carries one, no structure
+  generates one, no ore yields one, so the bucket addendum's line about there
+  being no chest to loot is still true in the only way it can be now: chests
+  exist, and the world gives you none of them for free. Loot chests want a
+  structure to sit in, and there are still no structures.
+- Contents do not ride on the item. A chest that comes back out of the ground is
+  an empty box, because its things were spilled as drops on the way out and are
+  lying there if you were quick enough. Carrying a loaded chest around in one
+  slot would want a stack payload, which is the same machinery a loot chest
+  would want, and neither is worth inventing before there is a reason.
+- No lid animation, no double chest, no lock. The lid is paint: the front tile is
+  drawn shut and stays shut, and the creak is the only thing that says otherwise.
+  Double chests want a merge rule for two neighbours that Minecraft itself only
+  approximates.
+- A chest never ticks. `updateFurnaces` became `updateBlockEntities` and still
+  looks only at things within `BLOCK_ENTITY_TICK_RANGE` (32) of the player, plus
+  the furnace whose screen is open; a chest's whole share of that work is the
+  stale-state sweep, which clears a box's contents if the block under it is gone.
+  Opening a chest screen therefore pauses the world the way the inventory does,
+  where the furnace screen alone keeps something running.
+- A schema-4 save written by this build will still load in a build from before
+  it — same schema, same seed — and that older build will silently forget what
+  was in the boxes, because it never reads a `chests` key. The schema number is
+  a compatibility promise in one direction only, and this is what breaking it
+  looks like. Bump `SAVE_SCHEMA` if chests ever have to be made load-bearing.
+
+### Notes for whoever picks this up next
+
+- A container screen has to register itself in five places, and this addendum
+  touched all five: `openScreen`'s accept list and its "is there still a block
+  here" guard, `screenGridFor`, `quickMoveStack`'s two direction tests,
+  `handleScreenSlotClick`'s `markSaveDirty` line, and `renderScreen` — plus
+  `padSections` for the D-pad and `buildStorageColumn(withChest)` for the grid
+  itself. A barrel wants the same list and nothing else.
+- `buildStorageColumn` is the only place the chest grid is drawn and
+  `padSections` the only place it is walked, so both know about the chest screen
+  by name. If a second container arrives, that pair is the thing to fold into a
+  table rather than to copy a third time.
+- A chest's contents survive only while the saved block diff still says a chest
+  stands at that position — the same witness rule the furnaces use, and for the
+  same reason: at load time the chunks are not made yet, so `world.overrides` is
+  the only thing that can answer the question.
+- A chest state created by an old save whose block has since gone is cleared the
+  first time the player comes within 32 m of the empty spot, and not before. Far
+  away, stale rows sit in `world.blockEntities` harmlessly, and they cost nothing
+  but the map entry.
+- `createBlockEntity` reads `CHEST_SLOTS`, which is declared a few hundred lines
+  later. That is safe only because worldgen and the game loop run at the end of
+  the file; moving the init block up would turn it into a temporal-dead-zone
+  error at the first chest.
+- The debug API grew `openChest(x, y, z)`, `chest(x, y, z)`, `chestList()` and
+  `setChestSlots(x, y, z, rows)`, where a row is either `'wheat'` or
+  `['wheat', 12]`. `setChestSlots` overwrites all twenty-seven slots rather than
+  merging into them, which is what makes it useful for setting up a check: pass
+  fewer than twenty-seven rows and the rest come back empty.
+- `tools/check-syntax.sh` is still the only check in the repo, and it passes.

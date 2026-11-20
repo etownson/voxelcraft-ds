@@ -341,6 +341,9 @@
     border-color: rgba(244, 208, 111, 0.34);
   }
   .inv-slot.furnace-out-slot { border-color: rgba(244, 208, 111, 0.45); }
+  /* Chest screen: three rows of nine above the pack, echoing Minecraft's own
+     chest layout, with a warm border so the box reads apart from the pack. */
+  .inv-slot.chest-slot { border-color: rgba(196, 152, 84, 0.38); }
   .furnace-flame {
     position: relative; width: 16px; height: 18px;
     background: rgba(0, 0, 0, 0.42);
@@ -645,8 +648,8 @@ const MAX_MOVE_STEP = 0.25;
 const FOG_NEAR = 48;
 const FOG_FAR = 132;
 const FOCUS_REACH = 5;
-/** Furnaces this far from the player keep smelting; farther ones stay idle. */
-const FURNACE_TICK_RANGE = 32;
+/** Block entities this far from the player are looked at; farther ones wait. */
+const BLOCK_ENTITY_TICK_RANGE = 32;
 const TREE_MARGIN = 4;
 const TREE_SALT = 0x51ED270B;
 const ORE_SALT_COAL = 0xC0A1;
@@ -723,7 +726,11 @@ const B = Object.freeze({
   WATER_FLOW_1: 35, WATER_FLOW_2: 36, WATER_FLOW_3: 37, WATER_FLOW_4: 38,
   WATER_FLOW_5: 39, WATER_FLOW_6: 40, WATER_FLOW_7: 41,
   WATER_FALL_1: 42, WATER_FALL_2: 43, WATER_FALL_3: 44, WATER_FALL_4: 45,
-  WATER_FALL_5: 46, WATER_FALL_6: 47, WATER_FALL_7: 48
+  WATER_FALL_5: 46, WATER_FALL_6: 47, WATER_FALL_7: 48,
+  // A chest keeps its contents in a block entity rather than the chunk byte,
+  // so it needs one id and nothing more: which way the latch faces lives in
+  // the facings map, like the furnace's mouth.
+  CHEST: 49
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -976,10 +983,25 @@ BLOCKS.push(
     facings: true, bed: 'head',
     drops: [{ item: 'bed', min: 1, max: 1 }], placeable: false
   },
-  // Flowing water is appended last for the same reason as every other block
-  // here: ids are storage, so nothing may shift.
+  // Flowing water is appended for the same reason as every other block here:
+  // ids are storage, so nothing may shift.
   ...waterFlowBlockDefs()
 );
+
+// The chest joins last, same rule as above. It rides in a block entity the way
+// a furnace rides in one, and turns its latch towards whoever placed it, like
+// the furnace turns its mouth. Minecraft gives a chest a hardness of 2.5 with
+// an axe to speed it up.
+BLOCKS.push({
+  id: B.CHEST, key: 'chest', name: 'Chest',
+  tiles: {
+    top: 'chest_top', bottom: 'chest_top', side: 'chest_side',
+    front: 'chest_front'
+  },
+  solid: true, opaque: true, hardness: 2.5, tool: 'axe',
+  facings: true, blockEntity: 'chest',
+  drops: [{ item: 'chest', min: 1, max: 1 }], placeable: true
+});
 
 const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
@@ -1227,7 +1249,8 @@ const TILE_ORDER = [
   'crafting_table_side', 'torch', 'bedrock',
   'furnace_top', 'furnace_side', 'furnace_front', 'furnace_front_lit',
   'glass', 'farmland_top', 'door_upper', 'door_lower',
-  'bed_top', 'bed_side', 'bed_end', 'bed_pillow'
+  'bed_top', 'bed_side', 'bed_end', 'bed_pillow',
+  'chest_top', 'chest_side', 'chest_front'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 // One tile per wheat growth stage, painted in a loop like the crack stages.
@@ -1905,6 +1928,87 @@ function generateAtlas() {
     for (let x = 2; x < 14; x++) paint(x, 5, vary(rand, [240, 242, 246], 4));
   }
   painters.bed_pillow = paintBedPillow;
+
+  // A chest reads as a banded crate: planks ringed with a dark rim at the
+  // edges, a lid held shut across the top quarter of the box, and an iron
+  // hasp over the seam on the face turned towards you. The wood sits a shade
+  // lighter than a door's so the box never merges into a plank wall.
+  const CHEST_WOOD = [176, 138, 84];
+  const CHEST_SEAM = [140, 106, 60];
+  const CHEST_RIM = [104, 74, 40];
+
+  /** Body shared by the chest's side and front: lid above, planks below. */
+  function paintChestBody(paint, rand) {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, CHEST_WOOD, 6));
+    }
+    // The lid's boards lie flat, then a dark seam divides them from the
+    // upright planking of the body below.
+    for (let x = 0; x < 16; x++) {
+      if (x % 5 === 2) {
+        for (let y = 0; y < 4; y++) paint(x, y, vary(rand, CHEST_SEAM, 4));
+      }
+      paint(x, 4, vary(rand, CHEST_RIM, 4));
+    }
+    for (let y = 5; y < 15; y++) {
+      for (let x = 2; x < 14; x++) {
+        if (x % 4 === 3) paint(x, y, vary(rand, CHEST_SEAM, 4));
+      }
+    }
+    // Rim down both edges and along the foot, the corner battens of the crate.
+    for (let y = 0; y < 16; y++) {
+      paint(0, y, vary(rand, CHEST_RIM, 4));
+      paint(15, y, vary(rand, CHEST_RIM, 4));
+    }
+    for (let x = 0; x < 16; x++) paint(x, 15, vary(rand, CHEST_RIM, 4));
+  }
+
+  painters.chest_side = paintChestBody;
+
+  painters.chest_front = (paint, rand) => {
+    paintChestBody(paint, rand);
+    // Iron strap down from the lid's edge into a lock plate straddling the
+    // seam, with a dark keyhole punched through the plate.
+    for (let y = 0; y < 7; y++) {
+      paint(7, y, vary(rand, [118, 120, 128], 6));
+      paint(8, y, vary(rand, [92, 94, 102], 6));
+    }
+    for (let x = 6; x < 10; x++) {
+      for (let y = 6; y < 11; y++) paint(x, y, vary(rand, [108, 110, 118], 6));
+    }
+    for (const x of [6, 9]) {
+      for (const y of [6, 10]) paint(x, y, vary(rand, [70, 72, 80], 5));
+    }
+    paint(7, 8, vary(rand, [36, 36, 42], 3));
+    paint(8, 8, vary(rand, [36, 36, 42], 3));
+    paint(7, 9, vary(rand, [36, 36, 42], 3));
+    paint(8, 9, vary(rand, [36, 36, 42], 3));
+    paint(7, 7, vary(rand, [168, 170, 180], 8));
+  };
+
+  painters.chest_top = (paint, rand) => {
+    // The lid seen from above: boards across the middle, dark battens along
+    // the edges, the same palette as the box below it.
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) paint(x, y, vary(rand, CHEST_WOOD, 6));
+    }
+    for (let y = 0; y < 16; y++) {
+      if (y % 5 === 2) {
+        for (let x = 1; x < 15; x++) paint(x, y, vary(rand, CHEST_SEAM, 4));
+      }
+    }
+    for (let i = 0; i < 16; i++) {
+      const rim = vary(rand, CHEST_RIM, 4);
+      paint(i, 0, rim);
+      paint(i, 15, rim);
+      paint(0, i, rim);
+      paint(15, i, rim);
+    }
+    // The hasp's strap crosses the lid's front edge, lining itself up with
+    // the one drawn down the chest's face.
+    paint(7, 15, vary(rand, [118, 120, 128], 6));
+    paint(8, 15, vary(rand, [92, 94, 102], 6));
+  };
 
   for (const name of TILE_ORDER) {
     const index = TILES[name];
@@ -5086,6 +5190,13 @@ const RECIPES = [
     // table rather than in the 2x2 grid carried in the inventory.
     id: 'bucket', pattern: ['I.I', '.I.'], key: { I: 'iron_ingot' },
     result: { id: 'bucket', count: 1 }
+  },
+  {
+    // Eight boards around an empty middle: the box is all walls and a lid, and
+    // the hollow centre is the gap things are put through. Needs the table, the
+    // same as the bucket and the bed, because the ring is three cells wide.
+    id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' },
+    result: { id: 'chest', count: 1 }
   }
 ];
 
@@ -5986,9 +6097,9 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   const block = BLOCKS[id];
   if (!block.breakable || !isFinite(block.hardness)) return false;
 
-  // A broken furnace empties its contents onto the ground first, so nothing
-  // smelting away in there is lost.
-  if (block.blockEntity) spillFurnaceContents(x, y, z);
+  // A broken chest or furnace empties its contents onto the ground first, so
+  // nothing kept inside is lost.
+  if (block.blockEntity) spillBlockEntityContents(x, y, z);
 
   // Whichever half of a door the player broke, the far half comes away with
   // it, and the single door item drops from the half that was broken.
@@ -6085,6 +6196,12 @@ function tryPlaceSelectedBlock() {
   // So does a furnace, lit or not, which opens its smelting screen.
   if (isFurnaceBlock(currentTarget.id)) {
     openScreen('furnace', currentTarget);
+    return false;
+  }
+
+  // And a chest, which opens its box of stored things under the crosshair.
+  if (isChestBlock(currentTarget.id)) {
+    openScreen('chest', currentTarget);
     return false;
   }
 
@@ -6791,6 +6908,9 @@ function createBlockEntity(kind) {
       cookTime: 0, burnTime: 0, burnTotal: 0
     };
   }
+  if (kind === 'chest') {
+    return { kind, slots: new Array(CHEST_SLOTS).fill(null) };
+  }
   return { kind, slots: [null, null, null] };
 }
 
@@ -6878,11 +6998,13 @@ function furnaceEntityValid(x, y, z) {
 }
 
 /**
- * Keeps nearby furnaces burning. Only furnaces within a chunk or so of the
- * player, plus the one whose screen is open, are simulated, which is the same
- * range-limited idea Minecraft uses for block entities.
+ * Keeps nearby furnaces burning, and sweeps up chest states an old save left
+ * behind. Only block entities within a chunk or so of the player, plus the
+ * furnace whose screen is open, are looked at, which is the same range-limited
+ * idea Minecraft uses for block entities. A chest holds nothing that ticks, so
+ * all it owes here is that sweep.
  */
-function updateFurnaces(dt) {
+function updateBlockEntities(dt) {
   if (!world || dt <= 0 || !world.blockEntities.size) return;
 
   const openKey = activeScreen === 'furnace' && activeScreenAt
@@ -6890,7 +7012,8 @@ function updateFurnaces(dt) {
     : null;
 
   for (const [key, state] of world.blockEntities) {
-    if (state.kind !== 'furnace') continue;
+    const isFurnace = state.kind === 'furnace';
+    if (!isFurnace && state.kind !== 'chest') continue;
     const parts = key.split(',');
     const x = Number(parts[0]);
     const y = Number(parts[1]);
@@ -6899,18 +7022,22 @@ function updateFurnaces(dt) {
       const dx = x + 0.5 - player.pos.x;
       const dy = y + 0.5 - player.pos.y;
       const dz = z + 0.5 - player.pos.z;
-      if (dx * dx + dy * dy + dz * dz > FURNACE_TICK_RANGE * FURNACE_TICK_RANGE) {
+      if (dx * dx + dy * dy + dz * dz > BLOCK_ENTITY_TICK_RANGE * BLOCK_ENTITY_TICK_RANGE) {
         continue;
       }
-      // A furnace that has since been broken leaves its state behind in an old
+      // A block that has since been broken leaves its state behind in an old
       // save; while we are close enough to see that, clear it out.
-      if (!furnaceEntityValid(x, y, z)) {
+      const stillThere = isFurnace
+        ? furnaceEntityValid(x, y, z)
+        : chestEntityValid(x, y, z);
+      if (!stillThere) {
         world.blockEntities.delete(key);
         world.facings.delete(key);
         markSaveDirty();
         continue;
       }
     }
+    if (!isFurnace) continue;
 
     const wasLit = state.burnTime > 0;
     const finished = tickFurnace(state, dt);
@@ -6928,14 +7055,39 @@ function updateFurnaces(dt) {
   }
 }
 
-/** Drops whatever a furnace was holding when it is broken. */
-function spillFurnaceContents(x, y, z) {
+/**
+ * Drops whatever a chest or furnace was holding when it is broken. Slot order
+ * means nothing here, so one spill serves every kind of stored inventory.
+ */
+function spillBlockEntityContents(x, y, z) {
   const state = world.blockEntities.get(x + ',' + y + ',' + z);
   if (!state) return;
   for (const slot of state.slots) {
     if (!slot) continue;
     spawnItemDrop(slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5);
   }
+}
+
+/* ---------- Chests ---------- */
+
+/** Slots in a chest: three rows of nine, the box Minecraft stores things in. */
+const CHEST_SLOTS = 27;
+
+function isChestBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && block.blockEntity === 'chest';
+}
+
+/**
+ * True when a chest state still belongs where it is saved. The same rule as
+ * furnaceEntityValid: an unloadable column is left alone, and only a loaded
+ * chunk that says otherwise can clear a state an old save left behind.
+ */
+function chestEntityValid(x, y, z) {
+  const cx = Math.floor(x / CHUNK_SIZE);
+  const cz = Math.floor(z / CHUNK_SIZE);
+  if (!world.getChunk(cx, cz)) return true;
+  return isChestBlock(world.getBlock(x, y, z));
 }
 
 /* ============================================================
@@ -8861,9 +9013,9 @@ function explodeCreeper(mob) {
         if (id === B.AIR || id === B.BEDROCK || isWater(id)) continue;
         const block = BLOCKS[id];
         if (!block.breakable || block.liquid) continue;
-        // A furnace caught in the blast empties its contents first, so the
-        // smelting that was going on in there is not simply deleted.
-        if (block.blockEntity) spillFurnaceContents(x, y, z);
+        // A furnace or chest caught in the blast empties its contents first,
+        // so what was kept inside is not simply deleted.
+        if (block.blockEntity) spillBlockEntityContents(x, y, z);
         edits.push({ x, y, z, id: B.AIR });
         for (const drop of block.drops || []) {
           if (block.door) {
@@ -10238,6 +10390,14 @@ function activeFurnace() {
   return world.blockEntityAt(at.x, at.y, at.z, 'furnace');
 }
 
+/** Chest state behind the open chest screen, creating one if need be. */
+function activeChest() {
+  if (activeScreen !== 'chest' || !activeScreenAt) return null;
+  const at = activeScreenAt;
+  if (!isChestBlock(world.getBlock(at.x, at.y, at.z))) return null;
+  return world.blockEntityAt(at.x, at.y, at.z, 'chest');
+}
+
 /** Gauge elements of the open furnace, refreshed without a full re-render. */
 let furnaceGauges = null;
 
@@ -10272,10 +10432,29 @@ function furnaceStatusText(state) {
   return 'Cooking ' + (item ? item.name : recipe.out);
 }
 
-/** Storage and hotbar grids, shared by every screen. */
-function buildStorageColumn() {
+/**
+ * Storage and hotbar grids, shared by every screen. The chest screen asks
+ * first for the box's own three rows of nine, which sit above the pack the
+ * way they do in Minecraft's chest layout.
+ */
+function buildStorageColumn(withChest = false) {
   const left = document.createElement('div');
   left.className = 'inv-left';
+
+  if (withChest) {
+    const state = activeChest();
+    const chestLabel = document.createElement('div');
+    chestLabel.className = 'inv-section-label';
+    chestLabel.textContent = 'Chest';
+    const chestGrid = document.createElement('div');
+    chestGrid.className = 'inv-grid';
+    for (let i = 0; i < CHEST_SLOTS; i++) {
+      chestGrid.append(createScreenSlot('chest', i, state.slots[i], {
+        extraClass: 'chest-slot'
+      }));
+    }
+    left.append(chestLabel, chestGrid);
+  }
 
   const storageLabel = document.createElement('div');
   storageLabel.className = 'inv-section-label';
@@ -10464,21 +10643,30 @@ function renderScreen() {
   if (!activeScreen) return;
 
   const isFurnace = activeScreen === 'furnace';
+  const isChest = activeScreen === 'chest';
   furnaceGauges = null;
   if (isFurnace && !activeFurnace()) {
+    closeScreen();
+    return;
+  }
+  // A chest blown up or broken while its lid is open leaves nothing to show, so
+  // the panel goes away instead of hanging over a box that is no longer there.
+  if (isChest && !activeChest()) {
     closeScreen();
     return;
   }
 
   screenTitle.textContent = isFurnace
     ? 'Furnace'
-    : (activeScreen === 'crafting' ? 'Crafting Table' : 'Inventory');
+    : isChest
+      ? 'Chest'
+      : (activeScreen === 'crafting' ? 'Crafting Table' : 'Inventory');
   screenBody.innerHTML = '';
 
   const layout = document.createElement('div');
   layout.className = 'inv-layout';
   layout.append(
-    buildStorageColumn(),
+    buildStorageColumn(isChest),
     buildArmorColumn(),
     isFurnace ? buildFurnaceColumn() : buildCraftingColumn()
   );
@@ -10510,6 +10698,14 @@ function padSections() {
       count: HOTBAR_SIZE, cols: 9, column: 0
     }
   ];
+  // The box's own three rows are stacked above Storage in the same left column,
+  // so the D-pad starts at the lid and walks down into the pack from there.
+  if (activeScreen === 'chest') {
+    storage.unshift({
+      container: 'chest', start: 0,
+      count: CHEST_SLOTS, cols: 9, column: 0
+    });
+  }
   const armour = [
     {
       container: 'armor', start: 0,
@@ -10757,19 +10953,24 @@ function updateGamepadScreen(dt) {
 }
 
 function openScreen(kind, at = null) {
-  if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace') return;
+  if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace' &&
+      kind !== 'chest') return;
 
   // A furnace screen only makes sense at a real furnace, so anything pointing
-  // at air or a block that has since been broken is turned away here.
+  // at air or a block that has since been broken is turned away here. The
+  // chest screen holds to the same rule.
   if (kind === 'furnace') {
     if (!at || !isFurnaceBlock(world.getBlock(at.x, at.y, at.z))) return;
+  }
+  if (kind === 'chest') {
+    if (!at || !isChestBlock(world.getBlock(at.x, at.y, at.z))) return;
   }
 
   screenHadPointerLock = document.pointerLockElement === canvas;
   if (screenHadPointerLock) document.exitPointerLock();
 
   activeScreen = kind;
-  activeScreenAt = kind === 'furnace' && at
+  activeScreenAt = (kind === 'furnace' || kind === 'chest') && at
     ? { x: at.x, y: at.y, z: at.z }
     : null;
   pressedKeys.clear();
@@ -10782,6 +10983,9 @@ function openScreen(kind, at = null) {
   overlayEl.classList.add('hidden');
   screenLayer.classList.remove('hidden');
   document.body.classList.add('screen-open');
+  if (kind === 'chest') {
+    playChestOpenSound(at.x + 0.5, at.y + 0.5, at.z + 0.5);
+  }
   renderScreen();
   updateCursorVisual();
   renderHotbar();
@@ -10789,6 +10993,13 @@ function openScreen(kind, at = null) {
 
 function closeScreen() {
   if (!activeScreen) return;
+
+  // The lid that creaked open deserves a knock on the way out.
+  if (activeScreen === 'chest' && activeScreenAt) {
+    playChestCloseSound(
+      activeScreenAt.x + 0.5, activeScreenAt.y + 0.5, activeScreenAt.z + 0.5
+    );
+  }
 
   returnCursorStack();
   activeScreen = null;
@@ -10827,6 +11038,10 @@ function screenGridFor(container) {
   if (container === 'craft3') return craft3;
   if (container === 'furnace') {
     const state = activeFurnace();
+    return state ? state.slots : null;
+  }
+  if (container === 'chest') {
+    const state = activeChest();
     return state ? state.slots : null;
   }
   return null;
@@ -10873,7 +11088,7 @@ function quickMoveStack(container, index) {
       armorSlots[wearInto] = source;
       sourceGrid[index] = null;
     }
-    if (container === 'furnace') markSaveDirty();
+    if (container === 'furnace' || container === 'chest') markSaveDirty();
     return;
   }
 
@@ -10882,11 +11097,24 @@ function quickMoveStack(container, index) {
   let targetEnd;
   let wantedFurnaceSlot = -1;
 
-  if (container === 'furnace') {
+  if (container === 'furnace' || container === 'chest') {
     targetArray = inventory;
     targetStart = 0;
     targetEnd = INVENTORY_SIZE;
   } else if (container === 'inventory') {
+    // Shift-clicking while a chest is open sends the stack into the box,
+    // which is what reaching for the shift key means there. Anything the
+    // chest cannot swallow stays put rather than trading hotbar rows.
+    if (activeScreen === 'chest') {
+      const state = activeChest();
+      if (state) {
+        const rest = mergeStackInto(source, state.slots, 0, CHEST_SLOTS);
+        if (rest <= 0) sourceGrid[index] = null;
+        else source.count = rest;
+        markSaveDirty();
+        return;
+      }
+    }
     wantedFurnaceSlot = activeScreen === 'furnace' ? furnaceSlotFor(source) : -1;
     if (wantedFurnaceSlot >= 0) {
       const state = activeFurnace();
@@ -10914,13 +11142,14 @@ function quickMoveStack(container, index) {
   const remaining = mergeStackInto(source, targetArray, targetStart, targetEnd);
   if (remaining <= 0) sourceGrid[index] = null;
   else source.count = remaining;
-  if (container === 'furnace') markSaveDirty();
+  if (container === 'furnace' || container === 'chest') markSaveDirty();
 }
 
 function handleScreenSlotClick(container, index, button, shift) {
   const grid = screenGridFor(container);
   if (!grid) return;
   if (container === 'furnace') markSaveDirty();
+  if (container === 'chest') markSaveDirty();
   if (container === 'armor') markSaveDirty();
 
   // Shift always quick-moves first, including out of the furnace result slot.
@@ -12003,6 +12232,25 @@ function playFurnaceFinishSound(x, y, z) {
   );
 }
 
+/** Wooden creak as a chest lid swings up: a rising band over a low knock. */
+function playChestOpenSound(x, y, z) {
+  return audioNoiseHit(
+    {
+      type: 'bandpass', freq: 480, freqEnd: 1040, q: 1.8,
+      duration: 0.28, volume: 0.15, tone: 128, toneVolume: 0.06
+    },
+    x, y, z, { range: 20, pitch: 0.92 + Math.random() * 0.14 }
+  );
+}
+
+/** The lid dropping shut: one low, short knock where the open creak rose. */
+function playChestCloseSound(x, y, z) {
+  return audioNoiseHit(
+    { type: 'lowpass', freq: 900, freqEnd: 240, q: 0.9, duration: 0.14, volume: 0.2 },
+    x, y, z, { range: 20, pitch: 0.85 + Math.random() * 0.12 }
+  );
+}
+
 /** Earthy scrape as a hoe drags furrows through soil. */
 function playHoeTillSound(x, y, z) {
   return audioNoiseHit(
@@ -12499,21 +12747,26 @@ function serializeWorldSave() {
 }
 
 /**
- * Furnace contents and block orientations ride along with the block diff, as
- * flat records: [x, y, z, input id, input count, fuel id, fuel count,
- * output id, output count, burn, burn total, cook] and
- * [x, y, z, dx, dz].
+ * Furnace and chest contents plus block orientations ride along with the block
+ * diff, as flat records: [x, y, z, input id, input count, fuel id, fuel count,
+ * output id, output count, burn, burn total, cook], [x, y, z, then twenty-seven
+ * id and count pairs] and [x, y, z, dx, dz].
  */
 function serializeBlockEntities() {
   const furnaces = [];
+  const chests = [];
   const facings = [];
 
   for (const [key, state] of world.blockEntities) {
-    if (state.kind !== 'furnace') continue;
+    if (state.kind !== 'furnace' && state.kind !== 'chest') continue;
     const at = key.split(',');
     const row = [Number(at[0]), Number(at[1]), Number(at[2])];
     for (const slot of state.slots) {
       row.push(slot ? slot.id : null, slot ? slot.count : null);
+    }
+    if (state.kind !== 'furnace') {
+      chests.push(row);
+      continue;
     }
     row.push(
       Math.round(state.burnTime * 10) / 10,
@@ -12528,8 +12781,8 @@ function serializeBlockEntities() {
     facings.push(Number(at[0]), Number(at[1]), Number(at[2]), normal[0], normal[1]);
   }
 
-  if (!furnaces.length && !facings.length) return null;
-  return { furnaces, facings };
+  if (!furnaces.length && !chests.length && !facings.length) return null;
+  return { furnaces, chests, facings };
 }
 
 function saveWorld() {
@@ -12624,6 +12877,30 @@ function applySavedBlockEntities(world, save) {
       state.burnTime = Math.max(0, Number(row[9]) || 0);
       state.burnTotal = Math.max(0, Number(row[10]) || 0);
       state.cookTime = Math.max(0, Number(row[11]) || 0);
+      world.blockEntities.set(x + ',' + y + ',' + z, state);
+    }
+  }
+
+  if (Array.isArray(entities.chests)) {
+    for (const row of entities.chests) {
+      if (!Array.isArray(row) || row.length < 3 + CHEST_SLOTS * 2) continue;
+      const x = Math.trunc(Number(row[0]));
+      const y = Math.trunc(Number(row[1]));
+      const z = Math.trunc(Number(row[2]));
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (y < 0 || y >= WORLD_HEIGHT) continue;
+      // Same reason as the furnace above: the saved diff is the only witness
+      // that a chest still stands at this position when the record is read.
+      const savedId = world.overrides.get(x + ',' + y + ',' + z);
+      if (savedId === undefined || !isChestBlock(savedId)) continue;
+
+      const state = createBlockEntity('chest');
+      for (let slot = 0; slot < CHEST_SLOTS; slot++) {
+        const id = row[3 + slot * 2];
+        const count = Math.trunc(Number(row[4 + slot * 2]) || 0);
+        if (typeof id !== 'string' || !ITEMS.has(id) || count <= 0) continue;
+        state.slots[slot] = makeStack(id, Math.min(count, ITEMS.get(id).stack));
+      }
       world.blockEntities.set(x + ',' + y + ',' + z, state);
     }
   }
@@ -13309,6 +13586,73 @@ window.__voxelcraft = {
     if (activeScreen === 'furnace') renderScreen();
     return this.furnace(x, y, z);
   },
+  /** Opens the chest screen for the chest at a position. */
+  openChest(x = null, y = null, z = null) {
+    let at = null;
+    if (x !== null && y !== null && z !== null) at = { x, y, z };
+    else if (currentTarget && isChestBlock(currentTarget.id)) {
+      at = { x: currentTarget.x, y: currentTarget.y, z: currentTarget.z };
+    }
+    if (!at) return null;
+    openScreen('chest', at);
+    return activeScreen;
+  },
+  /** Chest contents at a position, or the open chest. */
+  chest(x = null, y = null, z = null) {
+    let key = null;
+    if (x !== null && y !== null && z !== null) key = x + ',' + y + ',' + z;
+    else if (activeScreen === 'chest' && activeScreenAt) {
+      key = activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z;
+    }
+    if (!key) return null;
+
+    const state = world.blockEntities.get(key);
+    if (!state || state.kind !== 'chest') return null;
+    const parts = key.split(',');
+    return {
+      at: [Number(parts[0]), Number(parts[1]), Number(parts[2])],
+      block: world.getBlock(Number(parts[0]), Number(parts[1]), Number(parts[2])),
+      facing: world.facings.get(key) ?? null,
+      used: state.slots.filter((slot) => slot).length,
+      slots: state.slots.map((slot) => slotInfo(slot))
+    };
+  },
+  /** Every chest in the world, for scripted checks. */
+  chestList() {
+    const rows = [];
+    for (const [key, state] of world.blockEntities) {
+      if (state.kind !== 'chest') continue;
+      const at = key.split(',').map(Number);
+      rows.push({
+        at,
+        block: world.getBlock(at[0], at[1], at[2]),
+        facing: world.facings.get(key) ?? null,
+        slots: state.slots.map((slot) => (slot ? slot.id + ' x' + slot.count : null))
+      });
+    }
+    return rows;
+  },
+  /**
+   * Puts stacks straight into a chest, for scripted tests. Rows read either
+   * 'wheat' or ['wheat', 12]; anything else leaves the slot empty.
+   */
+  setChestSlots(x, y, z, rows = []) {
+    if (!isChestBlock(world.getBlock(x, y, z))) return null;
+    const state = world.blockEntityAt(x, y, z, 'chest');
+    if (!state) return null;
+    for (let i = 0; i < CHEST_SLOTS; i++) {
+      const row = rows[i];
+      if (!row) {
+        state.slots[i] = null;
+      } else if (Array.isArray(row)) {
+        state.slots[i] = row[0] ? freshStack(row[0], row[1] || 1) : null;
+      } else {
+        state.slots[i] = freshStack(row, 1);
+      }
+    }
+    if (activeScreen === 'chest') renderScreen();
+    return this.chest(x, y, z);
+  },
   closeScreen() {
     closeScreen();
     return activeScreen;
@@ -13838,7 +14182,7 @@ window.__voxelcraft = {
       updateTorchEmbers(dt);
       updateAudio(dt);
       updateExplosionEffects(dt);
-      updateFurnaces(dt);
+      updateBlockEntities(dt);
       updateCrops(dt);
       updateWater(dt);
     }
@@ -14092,7 +14436,7 @@ function animate(now) {
     updateTorchEmbers(dt);
     updateDayNight(dt);
     updateExplosionEffects(dt);
-    updateFurnaces(dt);
+    updateBlockEntities(dt);
     updateCrops(dt);
     updateWater(dt);
   } else {
@@ -14102,7 +14446,7 @@ function animate(now) {
     if (activeScreen === 'furnace') {
       // The furnace whose screen is open keeps smelting while you browse your
       // inventory; everything else in the world stays frozen.
-      updateFurnaces(dt);
+      updateBlockEntities(dt);
     }
   }
 
