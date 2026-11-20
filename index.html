@@ -6366,12 +6366,32 @@ function swapHeldFor(itemId) {
 }
 
 /**
+ * Whether any of the six cells touching this one holds water. Those six are
+ * exactly the neighbours the flow code reads beside a cell, which makes them
+ * the honest test for whether a source is part of a body of water rather than
+ * a body all on its own.
+ */
+function waterBeside(x, y, z) {
+  for (const [dx, dy, dz] of WATER_NEIGHBORS) {
+    if (isWater(world.getBlock(x + dx, y + dy, z + dz))) return true;
+  }
+  return false;
+}
+
+/**
  * Scooping a bucketful out of the water the crosshair is on. Minecraft lets a
  * bucket drink only from a full source, and this keeps to that: the skin of a
  * wave that has run out from the shore stays where it is, because taking one of
  * those up would empty the wrong cell and leave the sheet hanging behind it.
- * Taking the source itself lifts the whole cell and lets the water beside it
- * pour back into the hole, which is where a well that never runs dry comes from.
+ * Drinking from a body leaves the body itself alone — Minecraft takes a
+ * bucketful out of a lake and the lake does not notice — so a source with water
+ * beside it keeps its cell and fills the next bucket just as happily. Only a
+ * source with no water beside it at all is the whole body, a puddle that fits
+ * in one bucket, and that one cell is the only thing a scoop lifts out of the
+ * world. Lifting a feeding source used to drain whatever it stood in: nothing
+ * beside the hole can hold the sheet to its rank once its source is gone, the
+ * flow code deepens the ranks a step a tick looking for supply that no longer
+ * exists, and a whole pond vanished for the price of one bucket.
  */
 function fillBucket() {
   camera.getWorldDirection(rayDirection);
@@ -6388,7 +6408,7 @@ function fillBucket() {
   }
   if (!swapHeldFor('water_bucket')) return false;
 
-  world.setBlock(hit.x, hit.y, hit.z, B.AIR);
+  if (!waterBeside(hit.x, hit.y, hit.z)) world.setBlock(hit.x, hit.y, hit.z, B.AIR);
   triggerHeldSwing();
   playFillBucketSound(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
   showToast('Bucket filled');

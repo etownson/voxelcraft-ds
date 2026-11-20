@@ -1527,9 +1527,16 @@ source, carry the full one back and put the water down somewhere else.
 
 A bucket drinks only from a full source (`waterLevel === 0`). A ripple that has
 run out from its shore stays where it is, because lifting one of those would
-empty the wrong cell and leave the sheet hanging in the air behind it. Lifting a
-source is what makes a well that never runs dry: the cells beside it pour into
-the hole the moment the cell itself goes.
+empty the wrong cell and leave the sheet hanging in the air behind it. Drinking
+from a source leaves the body itself alone — Minecraft takes a bucketful out of
+a lake and the lake does not notice — so a source with water beside it keeps its
+cell and fills the next bucket just as happily, and `waterBeside` reads exactly
+the six neighbours the flow code reads to decide whether that source is part of
+a body or a body all on its own. Only a source with no water beside it at all is
+the whole body: a puddle that fits in one bucket, and that one cell is the only
+thing a scoop lifts out of the world. A sealed well or a lone puddle is this
+case, and lifting it whole is what makes the difference between a bucket that
+drinks and a bucket that drains.
 
 Pouring puts a full source in the cell the crosshair points at, provided that
 cell is air or water already — the same room rule as any other placement. There
@@ -1557,6 +1564,13 @@ purpose, one observation at a time:
 - A poured bucket leaves a source in the cell over the face that was aimed at and
   hands back an empty, and that fresh source is drunk again a moment later with no
   complaint.
+- A pond scooped at its source hands over a full bucket and keeps its body: the
+  source cell keeps its water, the sheet around it keeps its ranks, and seconds of
+  ticks after the scoop change no cell at all. Three scoops in a row from the same
+  cell fill three buckets and the pond does not notice.
+- A source with no water touching it anywhere is the whole body, and a scoop lifts
+  that one cell out entirely: a sealed well goes dry, and a lone puddle can be
+  mopped up cell by cell.
 - A crafting table with water behind it opens the crafting screen and pours
   nothing, which is the whole reason the bucket is asked last.
 
@@ -1582,11 +1596,45 @@ purpose, one observation at a time:
   now ends with a comma. The tool and armour recipes are pushed on after the
   literal list, so the array is longer at runtime than it looks in the source.
 - The water addendum's model is untouched: a bucket only ever writes the source
-  id or takes it away, and the flow code never learns a bucket exists.
+  id or takes it away — and it takes it away only from a source no water touches —
+  and the flow code never learns a bucket exists.
 - Two ids rather than one id and a flag, because the save record, `stacksMergeable`
   and `tryUseBucket` all read the id. A metadata bit would have had to be
   threaded through every one of them to mean what the id already means.
 - `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+
+### The pond that drank itself
+
+Scooping a bucket out of a pond took the pond with it. Not the cell the bucket
+dipped into — the whole sheet, every rank of it, a few ticks later: a source was
+lifted whole, the ring of flow beside it lost its feeder, and nothing in
+`desiredWaterLevel` can hold a resting cell to its rank once the supply behind it
+is gone. The rule reads a cell's neighbours and deepens every rank a step a tick
+when no deeper neighbour feeds it, which is correct — an orphaned sheet is meant
+to drain, and that is the rule the neck fix leaned on to prove it invented
+nothing. A pond's cells are orphaned the instant their source leaves, the ranks
+deepen past level 7 and fall out of the world as air, and one bucket had drunk a
+lake.
+
+The temptation was to make flow water remember, to let a resting cell hold its
+rank without a feeder. That is the rule this water model refuses on purpose —
+water that never leaves when its sea does is the frozen-sheet bug all over again
+— so the flow code stayed untouched and the bucket layer took the blame it
+actually deserved. Minecraft never promised that a bucket lifts the source block:
+it takes a bucketful out of the body and the body stays. The bucket was doing
+more than its promise, and the fix is that promise — `fillBucket` now asks
+`waterBeside`, the same six neighbours the flow code reads, and leaves the source
+cell in the world when any of them holds water. A source beside water is a body's
+mouth, not a bucketful of the body; only a source with nothing beside it is a
+puddle that fits in one bucket, and that lone cell still lifts whole, so sealed
+wells keep the dry-up a well-digger expects.
+
+Checked in the browser against a source poured on stone: the sheet spread to a
+seventy-five-cell pond, a bucket drank from the source itself, and the pond came
+out of sixty ticks byte-identical — same source, same ranks, `queued` at zero —
+and again after two more scoops from the same cell. A sealed source with its four
+walls still came up when the bucket found it, `waterFlowCheck` still passed all
+six rigs with `ok`, and the pour path poured.
 
 ## Chest addendum — a box that keeps what you put in it
 
