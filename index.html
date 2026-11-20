@@ -518,6 +518,7 @@
       <div><kbd>Mouse</kbd><span>Look around</span></div>
       <div><kbd>W A S D</kbd><span>Walk</span></div>
       <div><kbd>Space</kbd><span>Jump / swim up / climb out</span></div>
+      <div><kbd>S</kbd><span>Climb down a ladder</span></div>
       <div><kbd>Shift</kbd><span>Sprint on / off</span></div>
       <div><kbd>Left click</kbd><span>Break blocks / attack mobs</span></div>
       <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow &middot; shear &middot; sleep</span></div>
@@ -611,6 +612,19 @@ const PLAYER_STEP_HEIGHT = 0.6;
 const GROUND_ACCEL = 32;
 const AIR_ACCEL = 4.5;
 const WATER_ACCEL = 10;
+
+/**
+ * Ladders. A ladder hangs off the wall it is nailed to, and Minecraft's own
+ * hitbox for one is a slab 3/16 of a block thick against that face. The plank
+ * is drawn a sixteenth out from the wall, which is close enough to read as
+ * leaning on it and far enough to catch its own edge.
+ */
+const LADDER_PLANK = 1 / 16;
+/**
+ * Minecraft's climb is 2.3572 blocks a second, which is a hair slower than a
+ * walk and a good deal faster than anything else that moves you up.
+ */
+const LADDER_CLIMB_SPEED = 2.3572;
 
 // Water flow. Only cells an edit disturbed ever get looked at, so an ocean is
 // as cheap as a puddle: the sea is a wall of sources that never re-evaluate,
@@ -745,7 +759,10 @@ const B = Object.freeze({
   // Stairs keep their four directions in the facings map the same way, so
   // each family is one id and nothing more. The step itself is geometry,
   // not state: there is no upside-down half to store.
-  OAK_STAIRS: 50, COBBLESTONE_STAIRS: 51
+  OAK_STAIRS: 50, COBBLESTONE_STAIRS: 51,
+  // A ladder is one id too: which wall it is nailed to is the facing, and the
+  // plank that leans off that wall is geometry rather than state.
+  LADDER: 52
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -1044,6 +1061,25 @@ BLOCKS.push(
   }
 );
 
+// The ladder is the other half of being sub-block: the stairs take up part of a
+// cell, and this one takes up none of it at all. It hangs off whichever wall it
+// was nailed to, so its facing is the direction of that wall rather than the way
+// the player was looking — the only facing block here that points where it
+// points because of what it is standing against. Minecraft milled it to a
+// hardness of 0.4 and asked for an axe, which is less effort than a plank of
+// anything, and seven sticks make three ladders.
+BLOCKS.push({
+  id: B.LADDER, key: 'ladder', name: 'Ladder',
+  // Only the side is ever drawn: the plank leans against a wall, so there is no
+  // top or bottom of a ladder to see.
+  tiles: { top: 'ladder', bottom: 'ladder', side: 'ladder' },
+  // Neither solid nor opaque: you stand inside a ladder the way you stand in a
+  // doorway, and light comes through it as though it were not there.
+  solid: false, opaque: false, cutout: true, hardness: 0.4, tool: 'axe',
+  facings: true, ladder: true,
+  drops: [{ item: 'ladder', min: 1, max: 1 }], placeable: true
+});
+
 const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -1059,6 +1095,7 @@ for (const block of BLOCKS) {
   block.doorOpen ??= false;
   block.bed ??= null;
   block.stairs ??= false;
+  block.ladder ??= false;
   // Only water carries a depth; everything else sits at -1 so isWater(id) can
   // be a single comparison against the block table.
   block.waterLevel ??= -1;
@@ -1292,7 +1329,7 @@ const TILE_ORDER = [
   'furnace_top', 'furnace_side', 'furnace_front', 'furnace_front_lit',
   'glass', 'farmland_top', 'door_upper', 'door_lower',
   'bed_top', 'bed_side', 'bed_end', 'bed_pillow',
-  'chest_top', 'chest_side', 'chest_front'
+  'chest_top', 'chest_side', 'chest_front', 'ladder'
 ];
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 // One tile per wheat growth stage, painted in a loop like the crack stages.
@@ -2052,6 +2089,33 @@ function generateAtlas() {
     paint(8, 15, vary(rand, [92, 94, 102], 6));
   };
 
+  // A ladder is two rails and four rungs, and nothing else: whatever sits
+  // between them has to stay clear so the wall behind shows through the cutout
+  // pass. The rungs fall a quarter of a block apart, which is how far apart
+  // Minecraft puts them and what makes a climb read as four even steps.
+  const LADDER_RAIL = [118, 86, 48];
+  const LADDER_RAIL_EDGE = [92, 66, 36];
+  const LADDER_RUNG = [168, 132, 78];
+  const LADDER_RUNG_EDGE = [126, 96, 54];
+  painters.ladder = (paint, rand) => {
+    // The shaded half of each rail is the side further from the sun, which is
+    // what keeps a ladder on a south wall from reading as one flat brown line.
+    for (let y = 0; y < 16; y++) {
+      paint(0, y, vary(rand, LADDER_RAIL, 8));
+      paint(1, y, vary(rand, LADDER_RAIL_EDGE, 8));
+      paint(14, y, vary(rand, LADDER_RAIL, 8));
+      paint(15, y, vary(rand, LADDER_RAIL_EDGE, 8));
+    }
+    // Rungs over the rails, the way a real one is built: the uprights run
+    // behind the steps rather than the other way round.
+    for (const row of [1, 5, 9, 13]) {
+      for (let x = 0; x < 16; x++) {
+        paint(x, row, vary(rand, LADDER_RUNG, 8));
+        paint(x, row + 1, vary(rand, LADDER_RUNG_EDGE, 8));
+      }
+    }
+  };
+
   for (const name of TILE_ORDER) {
     const index = TILES[name];
     const tx = index % ATLAS_GRID;
@@ -2448,6 +2512,15 @@ function makeBlockItemIcon(block) {
     const sx = (block.tileSide % ATLAS_GRID) * ATLAS_TILE;
     const sy = ((block.tileSide / ATLAS_GRID) | 0) * ATLAS_TILE;
     ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 14, 3, 36, 58);
+    return canvas;
+  }
+
+  // A ladder item is the plank itself, tall and narrow the way it hangs: a cube
+  // wearing this tile would be all rails and no wall to lean on.
+  if (block.ladder) {
+    const sx = (block.tileSide % ATLAS_GRID) * ATLAS_TILE;
+    const sy = ((block.tileSide / ATLAS_GRID) | 0) * ATLAS_TILE;
+    ctx.drawImage(atlasCanvas, sx, sy, ATLAS_TILE, ATLAS_TILE, 16, 2, 32, 60);
     return canvas;
   }
 
@@ -4501,6 +4574,10 @@ function buildChunkMesh(world, chunk) {
           appendStairBoxes(opaque, world, x, y, z, wx, wz, block);
           continue;
         }
+        if (block.ladder) {
+          appendLadderPlate(cutout, world, x, y, z, wx, wz, block);
+          continue;
+        }
         const target = block.cutout ? cutout : opaque;
 
         for (const face of FACES) {
@@ -5005,6 +5082,39 @@ function appendStairBoxes(builder, world, x, y, z, wx, wz, block) {
   ], upperSide, sky, blockLight, flat(0.85));
 }
 
+/**
+ * A ladder is one plank standing off the wall it was nailed to, by a sixteenth
+ * of a block: close enough that the wall reads as the thing behind it rather
+ * than a gap, far enough that the plank catches its own edge light. The cutout
+ * material is double-sided, so the same four corners serve a climber looking
+ * up at the rungs and one looking down through them, and the tile leaves the
+ * space between the rails clear for the wall to show through.
+ */
+function appendLadderPlate(builder, world, x, y, z, wx, wz, block) {
+  const rect = tileRect(block.tileSide);
+  const sky = skyBrightness(world.getSkyLight(wx, y, wz));
+  const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
+
+  const facing = world.facingAt(wx, y, wz) ?? [0, 1];
+  const nx = facing[0];
+  const nz = facing[1];
+  // b runs from the wall out into the room, a across the ladder's width.
+  const hx = -nz;
+  const hz = nx;
+  const corner = (a, b, py) => [
+    x + 0.5 + (a - 0.5) * hx + (b - 0.5) * nx,
+    py,
+    z + 0.5 + (a - 0.5) * hz + (b - 0.5) * nz
+  ];
+  const flat = (shade) => [shade, shade, shade, shade];
+
+  // Full width, full height, held off the wall by LADDER_PLANK.
+  builder.quad([
+    corner(0, LADDER_PLANK, y), corner(1, LADDER_PLANK, y),
+    corner(1, LADDER_PLANK, y + 1), corner(0, LADDER_PLANK, y + 1)
+  ], rect, sky, blockLight, flat(0.85));
+}
+
 function commitChunkMesh(chunk, builder, material, name) {
   if (builder.vertexCount === 0) return;
 
@@ -5370,6 +5480,13 @@ const RECIPES = [
     id: 'cobblestone_stairs', pattern: ['C..', 'CC.', 'CCC'],
     key: { C: 'cobblestone' },
     result: { id: 'cobblestone_stairs', count: 4 }
+  },
+  {
+    // Seven sticks: two rails of three with a rung laid across each end and the
+    // middle. Minecraft's pattern, and its own count of three ladders out of
+    // the seven. Three cells wide, so it wants the table like the chest does.
+    id: 'ladder', pattern: ['S.S', 'SSS', 'S.S'], key: { S: 'stick' },
+    result: { id: 'ladder', count: 3 }
   }
 ];
 
@@ -6426,6 +6543,17 @@ function tryPlaceSelectedBlock() {
     if (!BLOCKS[world.getBlock(px, py - 1, pz)].solid) return false;
   }
 
+  // A ladder hangs off a wall instead of standing on the ground, so the face it
+  // was clicked on tells it which way to lean rather than the climber's gaze.
+  let ladderFacing = null;
+  if (block.ladder) {
+    ladderFacing = ladderFacingFor(currentTarget, px, py, pz);
+    if (!ladderFacing) {
+      showToast('A ladder needs a wall to hang on');
+      return false;
+    }
+  }
+
   // A door is a two-cell block and needs its own room check for both halves.
   if (block.door) return placeDoor(px, py, pz);
   if (block.bed) return placeBed(px, py, pz);
@@ -6435,11 +6563,33 @@ function tryPlaceSelectedBlock() {
     return false;
   }
 
-  const facing = block.facings ? frontFacingTowardsPlayer(px, pz) : null;
+  const facing = block.ladder
+    ? ladderFacing
+    : block.facings ? frontFacingTowardsPlayer(px, pz) : null;
   if (!world.setBlock(px, py, pz, block.id, facing)) return false;
   consumeSelectedItem();
   playPlaceSound(block.id, px + 0.5, py + 0.5, pz + 0.5);
   return true;
+}
+
+/**
+ * Which way a ladder put at x,y,z would lean, or null when nothing there would
+ * hold one. The side of a solid block is the plain answer, since that is the
+ * wall the plank gets nailed to. Clicking the top or bottom of a ladder already
+ * hanging there borrows that ladder's facing instead, provided the wall carries
+ * on past it: without that, a crosshair aimed at the next course of stone has
+ * to thread past the ladder below it to find the wall, and a climb could never
+ * be built one cell taller than an outstretched arm.
+ */
+function ladderFacingFor(target, x, y, z) {
+  if (target.normal.y === 0) {
+    return BLOCKS[target.id].solid ? [target.normal.x, target.normal.z] : null;
+  }
+  if (!BLOCKS[target.id].ladder) return null;
+  const facing = world.facingAt(target.x, target.y, target.z);
+  if (!facing) return null;
+  // The wall lies behind the ladder, on the side its facing points away from.
+  return BLOCKS[world.getBlock(x - facing[0], y, z - facing[1])].solid ? facing : null;
 }
 
 /**
@@ -7365,6 +7515,13 @@ const player = {
   dead: false,
   hurtCooldown: 0,
   regenDelay: 0,
+  /**
+   * The wall-facing of the ladder whose cell the player's feet are in, or null
+   * when nothing is holding them. This is the whole of what it means to be
+   * climbing: there is no mode to enter. The facing is kept because a rung holds
+   * a climber against the wall it hangs on.
+   */
+  onLadder: null,
   fallPeakY: 0
 };
 
@@ -7502,6 +7659,30 @@ function cellCollidesAt(bx, by, bz, minX, maxX, minY, maxY, minZ, maxZ) {
     if (centre - reach < 0) return true;
   }
   return false;
+}
+
+/**
+ * The wall-facing of the ladder holding a climber whose feet are at (x, y, z),
+ * or null when nothing is. Minecraft carves a ladder out of the whole cell even
+ * though its slab is a 3/16 plank against one wall: the block is what you climb,
+ * not the plank. So a fall down a ladder shaft is caught wherever in the shaft
+ * it happens, and a ladder is a way down as well as a way up.
+ *
+ * The feet decide, as they do in the game, with a hair of slack upwards so that
+ * standing on the block at the foot of a ladder counts as standing in the cell
+ * above it: collision leaves the feet a ten-thousandth under the surface.
+ *
+ * Deliberately not part of cellCollidesAt: a ladder stops nothing, and is the
+ * one thing in the game a player can stand inside of.
+ */
+function ladderHolding(x, y, z) {
+  const bx = Math.floor(x);
+  const by = Math.floor(y + 0.01);
+  const bz = Math.floor(z);
+  if (!BLOCKS[world.getBlock(bx, by, bz)].ladder) return null;
+  // The facing is kept because a rung holds a climber against the wall it hangs
+  // on: it is the axis the plank lies along.
+  return world.facingAt(bx, by, bz) ?? [0, 1];
 }
 
 /**
@@ -7690,6 +7871,7 @@ function updatePlayer(dt, input) {
 
   ensurePlayerChunks();
   updatePlayerEnvironment();
+  player.onLadder = ladderHolding(player.pos.x, player.pos.y, player.pos.z);
 
   // Desired horizontal direction relative to the camera yaw.
   const sin = Math.sin(yaw);
@@ -7712,7 +7894,33 @@ function updatePlayer(dt, input) {
   player.vel.z += (wishZ * moveSpeed - player.vel.z) * blend;
 
   let jumped = false;
-  if (player.inWater) {
+  // A ladder takes precedence over water: a plank nailed to the side of a well
+  // exists to be climbed, and it would be a poor one that let go because
+  // whatever stood at the bottom of it happened to be wet.
+  if (player.onLadder) {
+    // Gravity simply stops applying, which is the whole of hanging on: let go of
+    // both keys and the climber stays exactly where they stopped, and Minecraft
+    // asks no more of a ladder than that.
+    player.vel.y = 0;
+    if (input.jump) {
+      player.vel.y = LADDER_CLIMB_SPEED;
+    } else if (input.forward < 0) {
+      player.vel.y = -LADDER_CLIMB_SPEED;
+      // A rung holds the climber who is using it. Any speed carrying them off
+      // the wall is taken away, which is what makes coming down a ladder a
+      // descent rather than a way of falling off one: backing at a ladder you
+      // are facing pulls you off it, and a climb down that turned into a drop
+      // the moment it started would be no use to anyone.
+      const nx = player.onLadder[0];
+      const nz = player.onLadder[1];
+      const away = player.vel.x * nx + player.vel.z * nz;
+      if (away > 0) {
+        player.vel.x -= away * nx;
+        player.vel.z -= away * nz;
+      }
+    }
+    player.fallPeakY = player.pos.y;
+  } else if (player.inWater) {
     player.vel.y -= GRAVITY * WATER_GRAVITY_SCALE * dt;
     if (input.jump) {
       player.vel.y += WATER_SWIM_ACCEL * dt;
@@ -8583,7 +8791,7 @@ function updateHeldItemModel() {
 
   if (item.kind === 'block') {
     const block = BLOCKS[item.blockId];
-    if (block.key !== 'torch' && !block.door && !block.bed) {
+    if (block.key !== 'torch' && !block.door && !block.bed && !block.ladder) {
       const mesh = new THREE.Mesh(
         buildItemCubeGeometry(block),
         block.cutout ? heldCutoutMaterial : heldCubeMaterial
@@ -12320,7 +12528,8 @@ function blockSoundMaterial(blockId) {
     case 'door_open_top':
     case 'bed':
     case 'bed_head':
-    case 'oak_stairs': return 'wood';
+    case 'oak_stairs':
+    case 'ladder': return 'wood';
     case 'leaves': return 'leaves';
     case 'glass': return 'glass';
     case 'farmland': return 'dirt';
@@ -13925,6 +14134,7 @@ window.__voxelcraft = {
       light: block.light ?? 0,
       facings: block.facings,
       stairs: block.stairs,
+      ladder: block.ladder,
       blockEntity: block.blockEntity,
       placeable: block.placeable,
       drops: (block.drops ?? []).map((drop) => drop.item),

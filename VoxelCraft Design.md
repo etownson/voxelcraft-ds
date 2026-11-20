@@ -2268,3 +2268,152 @@ the view moved.
   the ground and let it land; the quirk is older than stairs and unrelated to
   them, a stair is just the first place in the world small enough to notice it.
 - `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+
+## Ladder addendum — a way up that is also a way down
+
+One block, and the first in this game that a player can stand inside of. The
+stairs made part of a cell solid; a ladder makes a cell climbable and nothing
+else, which turned "what stops you" and "what holds you" into two questions
+where the engine had only ever asked one.
+
+### What changed
+
+- `B.LADDER` (52), appended after the cobblestone stairs. Minecraft's own
+  numbers: hardness 0.4, an axe with no `tier`, so a bare hand still harvests it
+  and still gets one back. `solid: false, opaque: false, cutout: true` — a ladder
+  stops nothing and light goes through it as through a doorway.
+- Structurally it is a chest: `facings: true` puts the wall it leans on in the
+  existing facings map, so one id covers four walls and `SAVE_SCHEMA` stays 4.
+  `ladder: true` is the new shape flag, defaulted in the same finalising loop as
+  `bed`, `door` and `stairs`, and `blockInfo` reports it.
+- **The facing is the wall's, not the placer's.** Every other oriented block
+  here turns towards whoever set it down. A ladder is nailed to a face, so
+  `ladderFacingFor` reads the clicked face instead: the side of a solid block
+  gives its normal, and the top or bottom of a ladder already hanging there
+  borrows that ladder's facing if the wall carries on past it — which is what
+  lets a column be built upwards without threading the crosshair between rungs.
+  No wall, no placement: a toast says `A ladder needs a wall to hang on` and the
+  item stays in the pack.
+- Drawn by `appendLadderPlate` on the cutout pass: one double-sided quad, two
+  triangles, full width and height, standing `LADDER_PLANK = 1 / 16` off the
+  wall. The new `ladder` atlas tile is two rails in columns 0–1 and 14–15 and
+  four rungs in rows 1–2, 5–6, 9–10 and 13–14, transparent everywhere else so
+  the wall shows between them. It is appended to the end of the hand-written
+  `TILE_ORDER` (tile 34), ahead of the crack and wheat stages pushed on after
+  it.
+- **`ladderHolding` is the new question.** Minecraft's ladder slab is 3/16 of a
+  block thick, but its climb check is the cell at the climber's feet, and a fall
+  down a shaft catches wherever in the shaft it happens. This follows the cell:
+  the feet cell decides, with a hundredth of upward slack so that standing on
+  the block at the foot of a ladder counts as standing in the cell above it
+  (collision leaves the feet a ten-thousandth under the surface). It returns the
+  ladder's facing, and `player.onLadder` holds that — the whole of the climb
+  state, with no mode to enter. Deliberately *not* in `cellCollidesAt`: a ladder
+  stops nothing.
+- In `updatePlayer` the ladder branch comes before the water branch: gravity is
+  set to zero, `jump` climbs at `LADDER_CLIMB_SPEED = 2.3572` (Minecraft's own
+  number), `forward < 0` descends at the same speed, and while descending the
+  component of velocity carrying the climber *away* from the wall is removed, so
+  backing at a ladder is a climb down instead of a way off it. `fallPeakY` is
+  reset on every ladder frame, so touching a ladder mid-fall cancels the fall.
+- The item icon and the held-model view use the flat tile, like the torch and
+  the door, rather than the isometric cube every block item draws: thirty-two
+  pixels wide by sixty tall, which is the shape of the thing. The debug shelf
+  grew from 71 entries to 72 by itself.
+- Recipe `['S.S', 'SSS', 'S.S']` of sticks into 3 ladders, Minecraft's pattern
+  and count. Three cells wide, so it wants the crafting table like the chest and
+  the stairs, and the pattern is its own mirror.
+- Wood to the ear: `blockSoundMaterial` returns `wood`, so placing and breaking
+  use the same knock as planks.
+- The controls list gains one row: `S` climbs down a ladder, since that is where
+  the backward walk already points when you are facing one.
+
+### Checked in the world
+
+Driven through `window.__voxelcraft` on a stone deck built for it at y=80, with a
+stone wall along one side; the feet are `stats().feet`, the eye
+`stats().position`.
+
+- Placement through `place()`: aiming at a +x wall face recorded `[1, 0]` and put
+  the ladder in the cell beside the stone; aiming at a +z face recorded
+  `[0, 1]`. Aiming at the room-facing side of a ladder was refused — a ladder is
+  not a wall — as was the top of one whose wall stopped beneath it; both said
+  their piece and consumed no item. Aiming at the top of a ladder with stone
+  behind it placed the next at `[1, 0]`, and at the bottom likewise, so a column
+  grows both ways.
+- Climbing from the middle of the cell, one second of `jump`: feet 80 → 82.3572.
+  One second of nothing: 82.3572 → 82.3572, `onGround` false — it hangs. One
+  second of `forward: -1`: 82.3572 → 80.0000 at the same speed, with the x axis
+  unmoved, so the descent stays on the wall. Half a second from the far side of
+  the cell rose 1.1786, because the cell and not the plank is what holds you.
+- Walking is unaffected: aimed at the wall and walked forward for 1.2 s, the
+  player crossed the ladder cell and stopped at x=56.2999 — at the stone, not at
+  the ladder. Nothing in the collider ever sees it.
+- Falling: dropped from feet 90 into a one-cell shaft of ladders, the player was
+  caught in the top cell at feet 84.75 with 20/20 health. The same drop one cell
+  to the side landed at 80.0 and cost 6 points, with regen turned off so nothing
+  was healed back.
+- Light: sky light 15 in a ladder cell with nothing overhead but the ladder,
+  block light 0. The cutout leaves the cell open to the sky.
+- Breaking by hand: `breakTime('ladder')` 0.6 s, harvested, no tool wear, and one
+  `ladder` dropped into the pack.
+- Crafting: the recipe reads back as `S.S/SSS/S.S` → 3; seven sticks in the 3×3
+  preview 3 and craft 3.
+- Persistence: `save()`, reload, and `getBlock`/`facingAt` at the placed cell
+  came back 52 and `[1, 0]`, re-meshed on the right wall.
+- Water: in a one-cell stone channel, a source flowed to the cell beside the
+  ladder and stopped there; the ladder cell stayed a ladder, nothing appeared
+  above it, and `waterFlowCheck()` still passes all six of its cases.
+- The wall test: pulling the stone out from behind a ladder left the ladder
+  hanging and still climbing (81 → 82.1786 in half a second).
+- Zero console errors for the session; `tools/check-syntax.sh` passes.
+
+### Divergences left in place on purpose
+
+- **No support pop.** Remove the wall and the ladder stays, the way a torch stays
+  when its wall goes. Minecraft drops the ladder; this game has never had a
+  support rule and one block is not the place to grow it.
+- **The plank has no collision.** Minecraft's ladder stops you 3/16 short of the
+  wall; here you walk until the wall itself stops you and stand inside the cell.
+  The climb rule is the cell, as in Minecraft, so the slab would only ever have
+  been a 3/16 push — and it would have made placing a ladder while standing in
+  its cell impossible.
+- **No waterlogging.** One cell, one block: a ladder set into water replaces it,
+  and not being air the water cannot flow into the cell either. The bed and the
+  door made the same choice.
+- **Climb down is backward.** There is no sneak key to hold here — Shift, Ctrl
+  and B latch the sprint — so `forward < 0` is the descend input, and the
+  away-from-wall velocity is cancelled to keep that from becoming "let go". A
+  player who backs into a ladder they are facing will descend it.
+- **Mobs do not climb.** `ladderHolding` is asked by the player controller only.
+  Mob pathing has no use for a vertical rung yet and would need a climb intent,
+  not a collider.
+- The raycast and the selection outline are whole cells, as they are for the
+  stairs: aim at a ladder and the whole cell lights up, which is also the cell
+  the placement check and the break use.
+- No ladder on a ceiling, no ladder lying flat, no trapdoor. One id, four walls.
+
+### Notes for whoever picks this up next
+
+- `ladderHolding` is not the collider and must not become one. It answers "does
+  this cell hold me", which is a different question from "does this cell stop
+  me", and `cellCollidesAt` is the one that must stay false for a ladder.
+- The hundredth of slack in the feet cell is load-bearing. Collision leaves the
+  feet 1e-4 under a surface, so without it a ladder at the foot of a wall could
+  never be grabbed from a standing start: the feet cell would read as the ground
+  block, not the ladder.
+- The facing is the direction from the wall to the ladder, so the wall cell is
+  `x - facing[0]`, `z - facing[1]`. Both `ladderFacingFor` and `appendLadderPlate`
+  read it that way; anything else that wants the wall — a future support rule,
+  say — has to as well.
+- The mesh skips the `FACES` loop on purpose: a ladder is not a cube, and a new
+  sub-cell shape wants its own `append*` on the pass its material belongs to,
+  not a sixth face kind.
+- `fallPeakY` is reset on every ladder frame, and that reset is the whole of why
+  a catch cancels the drop. It has to happen while the climber is still on the
+  ladder: move it after the fall-peak branch and a shaft remembers the height it
+  was entered from.
+- The climb speed is a plain speed, not a force: the branch sets `vel.y` outright
+  every frame, so a ladder overrides gravity, water and a jump in the air alike.
+  A future block that wants buoyancy plus a climb needs a branch of its own.
+- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
