@@ -1967,3 +1967,42 @@ used through `tillDirt`, `plantSeed` and `use`, not by writing blocks:
   through it is refused. That, and not the reach, is why test platforms want their
   working row clear to y=77.
 - `tools/check-syntax.sh` is still the only check in the repo, and it passes.
+
+## Debug addendum — a shelf that hands out anything
+
+### What changed
+
+- **G** opens a debug screen, `Debug · Give Items`, that lists every entry in
+  `ITEMS` — placeable blocks first, then materials, food, tools and armour, in
+  definition order — as a nine-wide shelf of icons. Left click adds a whole
+  stack, right click adds one. The pad gets the same shelf: A whole, X one,
+  B close, D-pad and stick navigate it like any other menu.
+- The shelf is not a grid the player trades with. It has no cursor stack, it
+  never loses an item, and clicking it with something already on the cursor
+  leaves the hand alone. `giveFromShelf` goes through `addItemToInventory`,
+  so merge-then-fill ordering and durability stay exactly where they are.
+- A stack taken from the shelf is fresh: `makeStack` with no `dur`, which is
+  how every other full-durability tool enters the world.
+- A full pack swallows nothing and says so — `No room in your pack`. A partial
+  add names the item with a `— pack full` tail. Only a real add marks the save
+  dirty.
+
+### What it does not do
+
+- It is a debug option, not survival: the shelf never empties and the game
+  does not pretend it is fair. The control list says so plainly.
+- The hint line under the panel is now `#inv-hint`, set by `renderScreen` per
+  screen: the shelf's own text, the stock text restored for the others.
+
+### Checked in the world
+
+- 69 shelf entries rendered, first titled Grass Block, title and hint correct.
+- Left click a Diamond gave 64; a right click on the same cell made 65. An Iron
+  Pickaxe came out as one with no `dur`, i.e. fresh.
+- With the pack walled up with dirt, a right click on Apple added nothing and
+  the toast read `No room in your pack`.
+- Pad: A gave 64 grass, right moved the cursor to index 1, X added one, B
+  closed the screen.
+- Esc closed the shelf; E then opened the Inventory with the hint restored.
+- `__voxelcraft.openGive()` and `__voxelcraft.giveList()` report the shelf; the
+  old `give()` still works. `tools/check-syntax.sh` passes.

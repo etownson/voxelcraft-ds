@@ -344,6 +344,9 @@
   /* Chest screen: three rows of nine above the pack, echoing Minecraft's own
      chest layout, with a warm border so the box reads apart from the pack. */
   .inv-slot.chest-slot { border-color: rgba(196, 152, 84, 0.38); }
+  /* Debug give shelf: every item the game knows, laid out like a creative
+     menu. A cool border keeps it reading apart from the chest's warm one. */
+  .inv-slot.give-slot { border-color: rgba(140, 200, 222, 0.3); }
   .furnace-flame {
     position: relative; width: 16px; height: 18px;
     background: rgba(0, 0, 0, 0.42);
@@ -491,7 +494,7 @@
   <div id="screen-panel">
     <h2 id="screen-title">Inventory</h2>
     <div id="screen-body"></div>
-    <p class="inv-hint">Mouse: left pick up / place &middot; right split / one &middot; shift quick move &middot; Pad: A whole &middot; X half / one &middot; Y quick move &middot; B close</p>
+    <p id="inv-hint" class="inv-hint">Mouse: left pick up / place &middot; right split / one &middot; shift quick move &middot; Pad: A whole &middot; X half / one &middot; Y quick move &middot; B close</p>
   </div>
 </div>
 <div id="cursor-stack" class="hidden"><div class="icon"></div><span class="count"></span></div>
@@ -524,6 +527,7 @@
       <div><kbd>Esc</kbd><span>Release mouse / close screen</span></div>
       <div><kbd>T</kbd><span>Pause / resume time</span></div>
       <div><kbd>[ ]</kbd><span>Scrub time of day</span></div>
+      <div><kbd>G</kbd><span>Debug: give items</span></div>
       <div><kbd>M</kbd><span>Mute sound</span></div>
       <div><kbd>Pad</kbd><span>Left stick move &middot; right stick look</span></div>
       <div><kbd>RT / LT</kbd><span>Mine &middot; attack / place &middot; use</span></div>
@@ -10286,6 +10290,10 @@ const toastEl = document.getElementById('item-toast');
 const screenLayer = document.getElementById('screen-layer');
 const screenTitle = document.getElementById('screen-title');
 const screenBody = document.getElementById('screen-body');
+const screenHint = document.getElementById('inv-hint');
+const DEFAULT_SCREEN_HINT = screenHint.textContent;
+const GIVE_SCREEN_HINT =
+  'Mouse: left whole stack \u00b7 right one \u00b7 Pad: A whole \u00b7 X one \u00b7 B close';
 const cursorStackEl = document.getElementById('cursor-stack');
 const cursorIconEl = cursorStackEl.querySelector('.icon');
 const cursorCountEl = cursorStackEl.querySelector('.count');
@@ -10438,6 +10446,63 @@ function createScreenSlot(container, index, stack, options = {}) {
   }
   if (options.selected) el.classList.add('selected');
   return el;
+}
+
+/* ---------- Debug give shelf ---------- */
+
+/**
+ * Every item the game knows, in definition order: placeable blocks first,
+ * then materials, food, tools and armour. The debug shelf hands out any of
+ * them, which is the whole point of it.
+ */
+const GIVE_ITEMS = [...ITEMS.keys()];
+
+/**
+ * Adds one shelf item to the pack and reports it the way a hotbar announce
+ * does. Right-click gives a single item; anything else hands out a whole
+ * stack. A full pack swallows nothing, and the toast says so instead of
+ * failing silently.
+ */
+function giveFromShelf(index, button) {
+  const itemId = GIVE_ITEMS[Number(index)];
+  if (!itemId) return;
+  const def = ITEMS.get(itemId);
+  const wanted = button === 2 ? 1 : (def ? def.stack : 1);
+  const leftover = addItemToInventory(itemId, wanted);
+  const added = wanted - leftover;
+  if (added > 0) markSaveDirty();
+
+  const name = def ? def.name : itemId;
+  if (added <= 0) showToast('No room in your pack');
+  else showToast(name + (added > 1 ? ' \u00d7' + added : '') +
+    (leftover > 0 ? ' \u2014 pack full' : ''));
+}
+
+/** The shelf itself: one icon per item, no counts, no wear strips. */
+function buildGiveColumn() {
+  const column = document.createElement('div');
+  column.className = 'craft-column';
+
+  const grid = document.createElement('div');
+  grid.className = 'inv-grid give-grid';
+  GIVE_ITEMS.forEach((itemId, i) => {
+    const item = ITEMS.get(itemId);
+    const el = document.createElement('div');
+    el.className = 'slot inv-slot give-slot';
+    el.dataset.container = 'give';
+    el.dataset.index = String(i);
+    el.title = item ? item.name : itemId;
+
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    const itemIcon = ITEM_ICONS.get(itemId);
+    if (itemIcon) icon.style.backgroundImage = 'url("' + itemIcon.url + '")';
+    el.append(icon);
+    grid.append(el);
+  });
+
+  column.append(grid);
+  return column;
 }
 
 /** Furnace state behind the open furnace screen, creating one if need be. */
@@ -10700,6 +10765,20 @@ function buildFurnaceColumn() {
 function renderScreen() {
   if (!activeScreen) return;
 
+  // The give shelf shares the panel but nothing else: no pack, no crafting
+  // grid, just the shelf and the hint under it.
+  if (activeScreen === 'give') {
+    screenTitle.textContent = 'Debug \u00b7 Give Items';
+    screenHint.textContent = GIVE_SCREEN_HINT;
+    screenBody.innerHTML = '';
+    const giveLayout = document.createElement('div');
+    giveLayout.className = 'inv-layout';
+    giveLayout.append(buildGiveColumn());
+    screenBody.append(giveLayout);
+    if (gamepadState.active) applyPadCursorFocus(false);
+    return;
+  }
+
   const isFurnace = activeScreen === 'furnace';
   const isChest = activeScreen === 'chest';
   furnaceGauges = null;
@@ -10714,6 +10793,7 @@ function renderScreen() {
     return;
   }
 
+  screenHint.textContent = DEFAULT_SCREEN_HINT;
   screenTitle.textContent = isFurnace
     ? 'Furnace'
     : isChest
@@ -10746,6 +10826,12 @@ const padCursor = { section: 0, index: 0 };
  */
 function padSections() {
   if (!activeScreen) return [];
+  if (activeScreen === 'give') {
+    return [{
+      container: 'give', start: 0,
+      count: GIVE_ITEMS.length, cols: 9, column: 0
+    }];
+  }
   const storage = [
     {
       container: 'inventory', start: HOTBAR_SIZE,
@@ -10931,6 +11017,16 @@ function padActivateSlot(mode) {
   const section = sections[padCursor.section];
   const index = section.start + padCursor.index;
 
+  // The shelf only ever hands items out, so A and Y take a whole stack, X
+  // takes one, and there is nothing for quick move to move.
+  if (section.container === 'give') {
+    if (mode === 'primary' || mode === 'quick') giveFromShelf(index, 0);
+    else if (mode === 'secondary') giveFromShelf(index, 2);
+    clampPadCursor();
+    applyPadCursorFocus(true);
+    return;
+  }
+
   if (section.container === 'result') {
     if (mode === 'quick') craftCurrent(true);
     else if (mode === 'primary') craftCurrent(false);
@@ -11012,7 +11108,7 @@ function updateGamepadScreen(dt) {
 
 function openScreen(kind, at = null) {
   if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace' &&
-      kind !== 'chest') return;
+      kind !== 'chest' && kind !== 'give') return;
 
   // A furnace screen only makes sense at a real furnace, so anything pointing
   // at air or a block that has since been broken is turned away here. The
@@ -11086,6 +11182,16 @@ function toggleInventory() {
   } else if (document.pointerLockElement === canvas || fallbackControls ||
       gamepadState.active) {
     openScreen('inventory');
+  }
+}
+
+/** G opens the debug give shelf, or closes whatever screen is up. */
+function toggleGiveScreen() {
+  if (activeScreen) {
+    closeScreen();
+  } else if (document.pointerLockElement === canvas || fallbackControls ||
+      gamepadState.active) {
+    openScreen('give');
   }
 }
 
@@ -11323,6 +11429,13 @@ screenBody.addEventListener('mousedown', (event) => {
     return;
   }
 
+  // The shelf is not a grid the player trades with: a click there only ever
+  // adds items to the pack and leaves the hand on the cursor untouched.
+  if (container === 'give') {
+    giveFromShelf(index, event.button);
+    return;
+  }
+
   handleScreenSlotClick(container, index, event.button, event.shiftKey);
 });
 screenLayer.addEventListener('contextmenu', (event) => event.preventDefault());
@@ -11338,11 +11451,16 @@ window.addEventListener('keydown', (event) => {
 
   const isInventoryKey = event.code === 'KeyE' ||
     (event.key && event.key.toLowerCase() === 'e');
+  const isGiveKey = event.code === 'KeyG' ||
+    (event.key && event.key.toLowerCase() === 'g');
   const isEscape = event.code === 'Escape' || event.key === 'Escape';
 
   if (isInventoryKey) {
     event.preventDefault();
     toggleInventory();
+  } else if (isGiveKey) {
+    event.preventDefault();
+    toggleGiveScreen();
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();
@@ -13526,6 +13644,19 @@ window.__voxelcraft = {
     const leftover = addItemToInventory(itemId, count, dur);
     renderHotbar();
     return { added: count - leftover, leftover };
+  },
+  /** Opens the debug give shelf, the on-screen menu that hands out items. */
+  openGive() {
+    openScreen('give');
+    return activeScreen;
+  },
+  /** Everything the give shelf carries, in shelf order. */
+  giveList() {
+    return GIVE_ITEMS.map((id) => ({
+      id,
+      name: ITEMS.get(id).name,
+      stack: ITEMS.get(id).stack
+    }));
   },
   itemCount(itemId) {
     return countInventoryItem(itemId);
