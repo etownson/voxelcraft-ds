@@ -1499,3 +1499,91 @@ without settling, so the check fails on exactly the bug it was written for.
 
 Cosmetics: fresnel, foam at the waterline, animated UVs, caustics, the underwater tint. Flow first,
 because none of it is worth doing on a surface that is in the wrong place.
+
+## Bucket addendum — take it with you
+
+Buckets landed: smelt the iron, fold three ingots into a V, dip the empty in a
+source, carry the full one back and put the water down somewhere else.
+
+### What changed
+
+- Two items, `bucket` (stacks to 16) and `water_bucket` (one to a slot), painted
+  on the same silhouette so the only difference you have to read is the brim.
+- One shaped recipe, `['I.I', '.I.']` in the 3x3 — three ingots and no sticks,
+  the V that the painted item is drawn as. It is the last entry in `RECIPES`.
+  `matchRecipe` returns the first pattern that fits and its shapeless branch only
+  compares which ids are present, not how many, so a shapeless bucket would have
+  claimed three loose ingots off any grid that had them and starved the recipes
+  that want those ingots for themselves. Shaped, it cannot.
+- Water is still `breakable: false`, which is what it always was, so the bucket
+  is the only way to move it and a right click is the only way to fill one. That
+  is Minecraft's arrangement rather than a shortcut: you cannot mine the sea, you
+  dip a bucket in it. Nothing about the break path or the drop rolls changed.
+- Right click is dispatched to `tryUseBucket` from inside `tryPlaceSelectedBlock`,
+  after the hoe and the seeds, so an interactive block keeps first refusal: a
+  crafting table behind a puddle opens rather than flooding.
+
+### The water rules
+
+A bucket drinks only from a full source (`waterLevel === 0`). A ripple that has
+run out from its shore stays where it is, because lifting one of those would
+empty the wrong cell and leave the sheet hanging in the air behind it. Lifting a
+source is what makes a well that never runs dry: the cells beside it pour into
+the hole the moment the cell itself goes.
+
+Pouring puts a full source in the cell the crosshair points at, provided that
+cell is air or water already — the same room rule as any other placement. There
+is no test for whether that cell is the one you are standing in: pour at the face
+under your feet and the water arrives around your ankles, as it does in Minecraft,
+and the swimming code is there for exactly that. `world.setBlock` wakes the flood
+on its own, which is the whole reason a poured source starts spreading without a
+line added anywhere in the flow code. And a poured source is a source in every
+way the simulation cares about, so the same bucket will drink from it again.
+
+### Checked in the world
+
+Driven through `window.__voxelcraft` against a flat stone platform built for the
+purpose, one observation at a time:
+
+- Three ingots in a V at the table craft one bucket. The same grid minus the
+  middle ingot, laid out in the 2x2, still reads as shears, so the new pattern
+  shadows nothing that came before it.
+- Three empties in hand, dipped in a source: two left in the hand, the full one
+  gone into the next free slot. One empty in hand takes the water into its own
+  slot instead.
+- A level-7 sheet refuses the bucket and stays where it is, and so does dry
+  ground. A stone fence put between the hand and the source refuses it too, and
+  the very same aim works again the moment the fence is pulled out.
+- A poured bucket leaves a source in the cell over the face that was aimed at and
+  hands back an empty, and that fresh source is drunk again a moment later with no
+  complaint.
+- A crafting table with water behind it opens the crafting screen and pours
+  nothing, which is the whole reason the bucket is asked last.
+
+### Divergences left in place on purpose
+
+- A bucket finds water with `raycastWater`, a second walk of the same ray that
+  the highlight uses. The block ray treats water as see-through, and the water is
+  exactly what the bucket wants to see, so it gets its own accept test over the
+  same grid walk. It stops at the first solid, so a pond under a plank is still
+  out of reach.
+- No lava bucket, because there is no lava in the world yet, and no water
+  bottle, because nothing in the game is drunk. `raw_iron` and the furnace were
+  already there, so the ingots the recipe wants cost nothing new.
+- Nothing in the world hands a bucket over: no mob, no chest, no ore, no
+  generated structure. `spawnItemDrop` is there and one `drops:` entry on a block
+  would change that, but for now a bucket is crafted or it is not.
+- Only a water bucket exists. When a second filled bucket arrives, `tryUseBucket`
+  is the table to grow rather than the dispatch inside `tryPlaceSelectedBlock`.
+
+### Notes for whoever picks this up next
+
+- `RECIPES` gained one entry and mine closes it; the bed that used to close it
+  now ends with a comma. The tool and armour recipes are pushed on after the
+  literal list, so the array is longer at runtime than it looks in the source.
+- The water addendum's model is untouched: a bucket only ever writes the source
+  id or takes it away, and the flow code never learns a bucket exists.
+- Two ids rather than one id and a flag, because the save record, `stacksMergeable`
+  and `tryUseBucket` all read the id. A metadata bit would have had to be
+  threaded through every one of them to mean what the id already means.
+- `tools/check-syntax.sh` is still the only check in the repo, and it passes.

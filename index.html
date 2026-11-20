@@ -1020,6 +1020,12 @@ const isFlowWater = (id) => {
   const level = BLOCKS[id].waterLevel;
   return level > 0 && !BLOCKS[id].falling;
 };
+/**
+ * A full source, which is the only water a bucket will drink from. Every depth
+ * below it is water that has already left a source on its way somewhere, and
+ * scooping one of those up would take the wrong cell out of the flood.
+ */
+const isWaterSource = (id) => BLOCKS[id].waterLevel === 0;
 /** Water only ever moves into empty cells, so crops, torches and plants stay. */
 const waterCanOccupy = (id) => id === B.AIR;
 
@@ -1083,6 +1089,15 @@ defineItem({ id: 'wool', name: 'Wool', kind: 'material', stack: 64 });
 // Shears are the one tool with no tier: they mine nothing, swing for next to
 // nothing, and exist to take wool off a sheep without hurting it.
 defineItem({ id: 'shears', name: 'Shears', kind: 'tool', tool: 'shears', stack: 1, durability: 64, damage: 1 });
+
+// A bucket is the one item that carries something with it. Minecraft stacks
+// empty buckets sixteen and never stacks a full one, so the two states are two
+// item ids rather than one item wearing a flag. That is also the only way the
+// save record, the dropped-item entities and the slot-merge rule, which all
+// know about nothing on a stack but its id and its durability, can tell a full
+// bucket from an empty one.
+defineItem({ id: 'bucket', name: 'Bucket', kind: 'material', stack: 16 });
+defineItem({ id: 'water_bucket', name: 'Water Bucket', kind: 'material', stack: 1 });
 
 /* ---------- Item stacks ---------- */
 
@@ -2489,6 +2504,33 @@ const MATERIAL_ICON_PAINTERS = {
     px(4, 12, '#c9ccd4', 1, 1);
     px(11, 11, '#7d7d86', 3, 3);
     px(12, 12, '#c9ccd4', 1, 1);
+  },
+  bucket(px) {
+    // An iron pail: a wire handle arched over the rim, the body easing in
+    // towards a narrower foot, shine down the left where the light lands.
+    paintIconLine(px, 4, 7, 8, 2, '#a7a7af');
+    paintIconLine(px, 12, 7, 8, 2, '#a7a7af');
+    px(3, 7, '#c9c9d1', 10, 1);
+    px(3, 8, '#8b8b93', 10, 1);
+    px(3, 9, '#9a9aa2', 10, 2);
+    px(4, 11, '#91919a', 8, 2);
+    px(5, 13, '#8b8b93', 6, 1);
+    px(5, 14, '#6f6f77', 6, 1);
+    px(4, 9, '#d8d8e0', 2, 4);
+    px(11, 9, '#71717a', 2, 2);
+  },
+  water_bucket(px) {
+    // The same pail brimful: iron still round the rim, the sea in the body,
+    // and a lighter line where the water's own surface catches the light.
+    paintIconLine(px, 4, 7, 8, 2, '#a7a7af');
+    paintIconLine(px, 12, 7, 8, 2, '#a7a7af');
+    px(3, 7, '#c9c9d1', 10, 1);
+    px(3, 9, '#2a67c6', 10, 2);
+    px(4, 11, '#255cba', 8, 2);
+    px(5, 13, '#1f4fa8', 6, 2);
+    px(3, 8, '#5b9cf5', 10, 1);
+    px(4, 9, '#4285e8', 2, 4);
+    px(11, 9, '#1a4290', 2, 2);
   }
 };
 
@@ -5036,6 +5078,14 @@ const RECIPES = [
     // own pattern for a bed.
     id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' },
     result: { id: 'bed', count: 1 }
+  },
+  {
+    // Three ingots in a V, which is the cup the finished bucket is drawn as.
+    // Three ingots and no sticks: the pail is one bent sheet with a wire handle.
+    // The V is three cells across, so like the bed it has to be folded at the
+    // table rather than in the 2x2 grid carried in the inventory.
+    id: 'bucket', pattern: ['I.I', '.I.'], key: { I: 'iron_ingot' },
+    result: { id: 'bucket', count: 1 }
   }
 ];
 
@@ -5691,8 +5741,23 @@ function setCrackStage(stage) {
   uv.needsUpdate = true;
 }
 
-/** Amanatides & Woo voxel traversal. Water is transparent to the ray. */
-function raycastBlock(origin, direction, maxDistance) {
+/** The cells an ordinary right click can land on. Water is transparent to it. */
+const isRayTargetable = (id) => id !== B.AIR && !isWater(id);
+/** What a ray may keep walking through on its way to what it is looking for. */
+const isRaySeeThrough = (id) => id === B.AIR || isWater(id);
+
+/**
+ * Amanatides & Woo voxel traversal. `accept` names the cell to stop on and
+ * `pass` the cells the ray is allowed to walk through; anything else is in the
+ * way and the ray gives up rather than reaching past it.
+ *
+ * Two questions rather than one because a bucket has to be aimed at a cell the
+ * block ray below cannot even see. Water is transparent to a crosshair, so the
+ * only way to point at the sea is to walk the same cells again asking a
+ * different question — and to stop at exactly the solid things the ordinary
+ * crosshair stops at, or a bucket would drink from the pond behind a wall.
+ */
+function raycastCell(origin, direction, maxDistance, accept, pass) {
   let x = Math.floor(origin.x);
   let y = Math.floor(origin.y);
   let z = Math.floor(origin.z);
@@ -5717,9 +5782,8 @@ function raycastBlock(origin, direction, maxDistance) {
 
   for (let guard = 0; guard < 128; guard++) {
     const id = world.getBlock(x, y, z);
-    if (id !== B.AIR && !isWater(id)) {
-      return { x, y, z, id, normal, distance };
-    }
+    if (accept(id)) return { x, y, z, id, normal, distance };
+    if (!pass(id)) return null;
 
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
       x += stepX;
@@ -5742,6 +5806,19 @@ function raycastBlock(origin, direction, maxDistance) {
   }
 
   return null;
+}
+
+function raycastBlock(origin, direction, maxDistance) {
+  return raycastCell(origin, direction, maxDistance, isRayTargetable, () => true);
+}
+
+/**
+ * The water the crosshair is on, with line of sight held to air and water.
+ * Flow is walked through rather than refused, so a source sitting under the
+ * thin sheet of a wave still reads as the source underneath it.
+ */
+function raycastWater(origin, direction, maxDistance) {
+  return raycastCell(origin, direction, maxDistance, isWaterSource, isRaySeeThrough);
 }
 
 function updateTarget() {
@@ -5992,7 +6069,12 @@ function updateMining(dt, held) {
 
 function tryPlaceSelectedBlock() {
   updateTarget();
-  if (!currentTarget) return false;
+
+  // A bucket is aimed at the water itself rather than at a block face, and the
+  // crosshair walks straight through water, so standing in the sea leaves no
+  // target at all. The bucket still gets its turn there, ahead of every check
+  // below that needs a block under the crosshair to ask anything of.
+  if (!currentTarget) return tryUseBucket();
 
   // Right-clicking a crafting table opens the 3x3 screen, whatever is held.
   if (currentTarget.id === B.CRAFTING_TABLE) {
@@ -6023,6 +6105,12 @@ function tryPlaceSelectedBlock() {
 
   // Seeds on farmland start a crop the same way.
   if (plantSeedsOnTarget()) return true;
+
+  // And a bucket, which pours onto the face under the crosshair or drinks from
+  // the water behind it. Like the hoe it loses to anything that opens on a
+  // right click: a crafting table with the sea behind it opens, and does not
+  // get flooded.
+  if (tryUseBucket()) return true;
 
   const stack = getSelectedStack();
   if (!stack) return false;
@@ -6126,6 +6214,104 @@ function plantSeedsOnTarget() {
   consumeSelectedItem();
   playHoeTillSound(x + 0.5, y + 0.5, z + 0.5);
   return true;
+}
+
+/* ---------- Buckets ---------- */
+
+/**
+ * Trades the stack in hand for another item id without either half of the trade
+ * going anywhere near the ground: pouring a full bucket leaves the empty one
+ * behind, and filling an empty one leaves the full one. A stack that was holding
+ * more than one hands over the single item the action needs and keeps holding
+ * the rest — which is why a full bucket, never stacked and one to a slot, needs
+ * a slot of its own before a stack of empties can be dipped.
+ */
+function swapHeldFor(itemId) {
+  const stack = getSelectedStack();
+  if (!stack) return false;
+
+  if (stack.count > 1) {
+    // addItemToInventory reports what it could not fit, and one item either
+    // fits or does not, so a refusal here leaves the trade untouched.
+    if (addItemToInventory(itemId, 1) > 0) return false;
+    stack.count -= 1;
+  } else {
+    inventory[selectedSlot] = freshStack(itemId);
+  }
+  renderHotbar();
+  markSaveDirty();
+  return true;
+}
+
+/**
+ * Scooping a bucketful out of the water the crosshair is on. Minecraft lets a
+ * bucket drink only from a full source, and this keeps to that: the skin of a
+ * wave that has run out from the shore stays where it is, because taking one of
+ * those up would empty the wrong cell and leave the sheet hanging behind it.
+ * Taking the source itself lifts the whole cell and lets the water beside it
+ * pour back into the hole, which is where a well that never runs dry comes from.
+ */
+function fillBucket() {
+  camera.getWorldDirection(rayDirection);
+  const hit = raycastWater(camera.position, rayDirection, FOCUS_REACH);
+  if (!hit) {
+    showToast('No source to fill from');
+    return false;
+  }
+
+  const stack = getSelectedStack();
+  if (stack.count > 1 && !inventoryHasRoom('water_bucket', 1)) {
+    showToast('Nowhere to put the water');
+    return false;
+  }
+  if (!swapHeldFor('water_bucket')) return false;
+
+  world.setBlock(hit.x, hit.y, hit.z, B.AIR);
+  triggerHeldSwing();
+  playFillBucketSound(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+  showToast('Bucket filled');
+  return true;
+}
+
+/**
+ * Emptying a bucket onto the face under the crosshair. It keeps to the same room
+ * rule as any other placement — the cell has to be air or water already — and a
+ * full source is what lands there, so a poured bucket refills the very hole it
+ * was scooped from instead of starting a fresh wave somewhere down the slope.
+ */
+function pourBucket() {
+  if (!currentTarget) return false;
+
+  const x = currentTarget.x + currentTarget.normal.x;
+  const y = currentTarget.y + currentTarget.normal.y;
+  const z = currentTarget.z + currentTarget.normal.z;
+  if (y < 0 || y >= WORLD_HEIGHT) return false;
+
+  const roomId = world.getBlock(x, y, z);
+  if (roomId !== B.AIR && !isWater(roomId)) {
+    showToast('Nowhere for the water to go');
+    return false;
+  }
+  if (!world.setBlock(x, y, z, B.WATER)) return false;
+
+  // The swap's return is ignored on purpose: a bucket emptied over your own head
+  // still empties, even when there is no room left to keep the empty one.
+  swapHeldFor('bucket');
+  triggerHeldSwing();
+  playPourBucketSound(x + 0.5, y + 0.5, z + 0.5);
+  return true;
+}
+
+/**
+ * A right click with a bucket in hand, which means one of two opposite things
+ * depending on which of the two states happens to be held.
+ */
+function tryUseBucket() {
+  const stack = getSelectedStack();
+  if (!stack) return false;
+  if (stack.id === 'bucket') return fillBucket();
+  if (stack.id === 'water_bucket') return pourBucket();
+  return false;
 }
 
 /* ---------- Doors ---------- */
@@ -11368,6 +11554,13 @@ const BLOCK_SOUND_PROFILES = {
   glass: {
     type: 'bandpass', freq: 3200, freqEnd: 2100, q: 2.4,
     duration: 0.13, volume: 0.2, tone: 1560, toneVolume: 0.07
+  },
+  // Water running over a rim: no impact in it at all, so a band of noise
+  // swept back down instead of a strike, with a low note under it for the
+  // weight of a whole bucketful.
+  splash: {
+    type: 'bandpass', freq: 1500, freqEnd: 340, q: 0.9,
+    duration: 0.26, volume: 0.26, tone: 300, toneVolume: 0.05
   }
 };
 
@@ -11511,6 +11704,31 @@ function playShearSound(x, y, z) {
     pitch: 1.9 + Math.random() * 0.25,
     volume: 0.32,
     durationScale: 0.35,
+    range: 16
+  });
+}
+
+/**
+ * A bucketful going in: the same water drawn high and short, a gulp off the
+ * surface. Minecraft carries both bucket sounds sixteen blocks, so this does too.
+ */
+function playFillBucketSound(x, y, z) {
+  return playMaterialNoise('splash', x, y, z, {
+    pitch: 1.3 + Math.random() * 0.16,
+    durationScale: 0.7,
+    range: 16
+  });
+}
+
+/**
+ * A bucketful coming out: the same water run lower and longer, so it reads as
+ * a pour that takes a moment rather than a single splash.
+ */
+function playPourBucketSound(x, y, z) {
+  return playMaterialNoise('splash', x, y, z, {
+    pitch: 0.82 + Math.random() * 0.12,
+    volume: 0.9,
+    durationScale: 1.6,
     range: 16
   });
 }
