@@ -10,7 +10,7 @@
 # Pages serves it.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-EXPECTED=115
+EXPECTED=116
 
 if ! command -v ffprobe >/dev/null 2>&1; then
   echo "check-audio: ffprobe not found; skipping decode check" >&2

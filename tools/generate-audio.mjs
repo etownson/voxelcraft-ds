@@ -461,25 +461,65 @@ function makeZombie(variant) {
 }
 
 function makeCreeper() {
+  // A lit fuse, not a breath: bright sizzle, irregular sputter, and a handful
+  // of crackles that get denser as the blast approaches. The length matches
+  // the 1.55 s creeper fuse so the sound stops when the explosion starts.
   const sr = SFX_RATE;
-  const duration = 1.45;
+  const duration = 1.55;
   const out = makeBuffer(duration, sr);
-  const hiss = makeBuffer(duration, sr);
-  addNoise(hiss, sr, {
-    seed: 8100, volume: 0.42, attack: 0.4,
-    release: duration * 0.7, curve: 1.2
+  const rand = mulberry32(8100);
+
+  const sizzle = noiseArray(out.length, rand, 'white');
+  biquad(sizzle, sr, 'highpass', 1200, 0.7);
+  biquad(sizzle, sr, 'bandpass', 2600, 0.8);
+
+  // A slow random control signal makes the sizzle catch and sputter instead
+  // of sitting at one flat level.
+  const controlRate = 240;
+  const control = noiseArray(Math.ceil(duration * controlRate), mulberry32(8101), 'white');
+  biquad(control, controlRate, 'lowpass', 20, 0.7);
+  let controlPeak = 0;
+  for (let i = 0; i < control.length; i++) {
+    controlPeak = Math.max(controlPeak, Math.abs(control[i]));
+  }
+  const controlScale = controlPeak > 1e-6 ? 1 / controlPeak : 0;
+
+  for (let i = 0; i < sizzle.length; i++) {
+    const t = i / sizzle.length;
+    const c = Math.min(control.length - 1, Math.floor(t * control.length));
+    const sputter = 0.35 + 0.65 * (0.5 + 0.5 * control[c] * controlScale);
+    const rise = 0.35 + 0.65 * Math.pow(t, 0.75);
+    out[i] += sizzle[i] * sputter * rise * 0.5;
+  }
+
+  const crackle = makeBuffer(duration, sr);
+  const crackleRand = mulberry32(8102);
+  const crackles = 38;
+  for (let n = 0; n < crackles; n++) {
+    // Bias the ticks toward the end of the fuse.
+    const at = Math.pow(crackleRand(), 0.65) * (duration - 0.02);
+    const length = Math.max(2, Math.floor((0.003 + crackleRand() * 0.012) * sr));
+    const start = Math.floor(at * sr);
+    const gain = (0.18 + crackleRand() * 0.5) * (0.3 + 0.7 * (at / duration));
+    for (let j = 0; j < length && start + j < crackle.length; j++) {
+      const env = Math.pow(1 - j / length, 3);
+      crackle[start + j] += (crackleRand() * 2 - 1) * gain * env;
+    }
+  }
+  biquad(crackle, sr, 'highpass', 1200, 0.7);
+  biquad(crackle, sr, 'bandpass', 2800, 0.9);
+  mixInto(out, crackle, 0.95);
+
+  const bed = makeBuffer(duration, sr);
+  addNoise(bed, sr, {
+    seed: 8103, color: 'brown', volume: 0.18,
+    attack: 0.08, release: duration * 0.8, curve: 1.1
   });
-  sweepLowpass(hiss, sr, (t) => 500 + t * 2300);
-  biquad(hiss, sr, 'bandpass', 1500, 1.1);
-  mixInto(out, hiss, 1);
-  const rumble = makeBuffer(duration, sr);
-  addSine(rumble, sr, {
-    type: 'triangle', from: 64, to: 48, duration,
-    volume: 0.15, attack: 0.2, release: duration * 0.7
-  });
-  mixInto(out, rumble, 0.7);
-  normalize(out, 0.75);
-  fadeEdges(out, sr, 0.02);
+  biquad(bed, sr, 'lowpass', 340, 0.8);
+  mixInto(out, bed, 0.35);
+
+  normalize(out, 0.72);
+  fadeEdges(out, sr, 0.012);
   return out;
 }
 
@@ -1113,18 +1153,26 @@ function makeUnderwaterLoop() {
   return seamlessLoop(out, sr, loopSeconds, 1.0);
 }
 
-function makeMusicLoop() {
+function makeMusicLoop(variant = 'retro') {
   const sr = LOOP_RATE;
   const loopSeconds = 32;
   const renderSeconds = loopSeconds + 2;
   const out = makeBuffer(renderSeconds, sr);
-  // A slow A-minor pad with a gentle turn at the halfway point.
-  const chords = [
-    [110, 164.81, 220, 261.63],
-    [98, 146.83, 196, 246.94],
-    [87.31, 130.81, 174.61, 220],
-    [82.41, 123.47, 164.81, 207.65]
-  ];
+  // A slow pad with a gentle turn at the halfway point. "sad" is the darker
+  // reference for dusk; "retro" stands in for the morning slot.
+  const chords = variant === 'sad'
+    ? [
+      [110, 130.81, 164.81, 220],
+      [98, 123.47, 146.83, 196],
+      [87.31, 110, 130.81, 174.61],
+      [82.41, 103.83, 123.47, 164.81]
+    ]
+    : [
+      [110, 164.81, 220, 261.63],
+      [98, 146.83, 196, 246.94],
+      [87.31, 130.81, 174.61, 220],
+      [82.41, 123.47, 164.81, 207.65]
+    ];
   const segment = renderSeconds / chords.length;
   chords.forEach((chord, index) => {
     const at = index * segment;
@@ -1152,10 +1200,13 @@ function makeMusicLoop() {
     });
   });
   // Distant, sparse bell notes.
-  const bellRand = mulberry32(31100);
+  const bellRand = mulberry32(variant === 'sad' ? 31150 : 31100);
+  const bellNotes = variant === 'sad'
+    ? [392, 466.16, 523.25, 622.25]
+    : [440, 523.25, 659.25, 783.99];
   for (let i = 0; i < 12; i++) {
     const at = bellRand() * (renderSeconds - 2);
-    const freq = [440, 523.25, 659.25, 783.99][Math.floor(bellRand() * 4)];
+    const freq = bellNotes[Math.floor(bellRand() * 4)];
     addSine(out, sr, {
       type: 'sine', from: freq, to: freq * 0.998,
       duration: 1.4, volume: 0.018,
@@ -1238,6 +1289,7 @@ writeSfx('ambient_water_1', makeWaterLoop(), LOOP_RATE);
 writeSfx('ambient_cave_1', makeCaveLoop(), LOOP_RATE);
 writeSfx('ambient_fire_1', makeFireLoop(), LOOP_RATE);
 writeSfx('ambient_underwater_1', makeUnderwaterLoop(), LOOP_RATE);
-writeSfx('music_ambient_1', makeMusicLoop(), LOOP_RATE);
+writeSfx('music_sad_descent_1', makeMusicLoop('sad'), LOOP_RATE);
+writeSfx('music_retro_mystic_1', makeMusicLoop('retro'), LOOP_RATE);
 
 console.log(`wrote ${written.length} files to ${path.relative(ROOT, OUT_DIR)}`);

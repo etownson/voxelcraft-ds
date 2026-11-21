@@ -63,12 +63,39 @@ def convert_one(src, dst, max_seconds, volume=1.0):
     ])
 
 
-def convert_loop(src, dst, seconds, volume=1.0):
-    """Make a mono 22.05 kHz loop. The source is already seamless."""
+def convert_loop(src, dst, seconds, volume=1.0, crossfade=0.0):
+    """Make a mono 22.05 kHz loop.
+
+    With `crossfade`, fold the tail of the source over the head so a music
+    track that does not end on its first sample still loops without a click.
+    `seconds` is the source span consumed; the output is `seconds` minus the
+    fade.
+    """
+    if crossfade <= 0:
+        run([
+            "ffmpeg", "-y", "-loglevel", "error", "-i", src,
+            "-ac", "1", "-ar", str(LOOP_RATE), "-t", f"{seconds}",
+            "-af", f"volume={volume},alimiter=limit=0.95",
+            "-c:a", "pcm_s16le", dst,
+        ])
+        return
+
+    fade = min(crossfade, seconds / 4)
+    loop_seconds = max(0.1, seconds - fade)
+    graph = (
+        f"[0:a]volume={volume},atrim=0:{seconds},asetpts=PTS-STARTPTS,"
+        f"asplit=2[head][tail];"
+        f"[head]atrim=0:{loop_seconds},asetpts=PTS-STARTPTS,"
+        f"afade=t=in:st=0:d={fade:.3f}[h];"
+        f"[tail]atrim={loop_seconds}:{seconds},asetpts=PTS-STARTPTS,"
+        f"afade=t=out:st=0:d={fade:.3f}[t];"
+        f"[h][t]amix=inputs=2:duration=first:normalize=0,"
+        f"alimiter=limit=0.95[aout]"
+    )
     run([
         "ffmpeg", "-y", "-loglevel", "error", "-i", src,
-        "-ac", "1", "-ar", str(LOOP_RATE), "-t", f"{seconds}",
-        "-af", f"volume={volume},alimiter=limit=0.95",
+        "-filter_complex", graph, "-map", "[aout]",
+        "-ac", "1", "-ar", str(LOOP_RATE), "-t", f"{loop_seconds}",
         "-c:a", "pcm_s16le", dst,
     ])
 
@@ -221,7 +248,6 @@ def build(staging):
     one["mob_sheep_2"] = (s(*baby, "Baa.ogg"), 1.0)
     one["mob_chicken_1"] = (s(*baby, "Peeps.ogg"), 0.7)
     one["mob_chicken_2"] = (s(*baby, "Peeps.ogg"), 0.5)
-    one["mob_creeper_1"] = (o("creature80", "breath.ogg"), 1.2)
 
     # ---------- Events ----------
     one["event_hurt_player_1"] = (o("creature80", "hurt_01.ogg"), 0.7)
@@ -244,6 +270,9 @@ def build(staging):
     one["event_land_1"] = (k("foley_sounds", "Rocks", "stonesHit1.ogg"), 0.5)
     one["event_land_2"] = (k("impact_sounds", "impactSoft_heavy_000.ogg"), 0.5)
     one["event_land_3"] = (o("cc0-sfx-100", "slam_04.ogg"), 0.5)
+    # The creeper fuse is synthesized rather than sampled: a lit fuse needs
+    # irregular sputter and crackle, and no CC0 pack in the bank has a match.
+    one["mob_creeper_1"] = (os.path.join(GENERATED, "mob_creeper_1.wav"), 1.55)
     one["event_jump_1"] = (k("foley_sounds", "Woosh", "woosh4.ogg"), 0.4)
     one["event_ui_click_1"] = (k("interface_sounds", "click_001.ogg"), 0.2)
     one["event_ui_open_1"] = (k("interface_sounds", "open_001.ogg"), 0.3)
@@ -287,14 +316,26 @@ def build(staging):
         loops["ambient_fire_1"] = (
             s("spritepilot", "spritepilot-sound-effects-ambient", "ogg", "ambient", "campfire.ogg"), 13.2, 0.8)
         loops["ambient_underwater_1"] = (s("Underwater-Ambient-Pad.ogg"), 16.67, 0.8)
-        loops["music_ambient_1"] = (
-            k("music_loops", "Loops", "Night at the Beach.ogg"), 10.75, 0.8)
+
+        # ---------- Music ----------
+        # The Kenney loops do not begin where they end, so each one folds its
+        # tail over its head for a click-free repeat. The two gain figures are
+        # loudness-matched: Sad Descent is ~8 dB hotter than Retro Mystic as
+        # delivered, and dusk must not sound louder than morning.
+        loops["music_sad_descent_1"] = (
+            k("music_loops", "Loops", "Sad Descent.ogg"), 24.03, 0.52, 0.75)
+        loops["music_retro_mystic_1"] = (
+            k("music_loops", "Retro", "Retro Mystic.ogg"), 47.98, 1.28, 0.75)
 
         # ---------- Build ----------
         for name, (src, seconds) in one.items():
             convert_one(src, os.path.join(OUT, name + ".wav"), seconds)
-        for name, (src, seconds, volume) in loops.items():
-            convert_loop(src, os.path.join(OUT, name + ".wav"), seconds, volume)
+        for name, spec in loops.items():
+            src, seconds, volume = spec[:3]
+            crossfade = spec[3] if len(spec) > 3 else 0.0
+            convert_loop(
+                src, os.path.join(OUT, name + ".wav"), seconds, volume, crossfade
+            )
         for name, (sources, seconds) in mixes.items():
             convert_mix(sources, os.path.join(OUT, name + ".wav"), seconds)
 

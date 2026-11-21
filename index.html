@@ -266,8 +266,14 @@
   }
   #overlay .save-settings button:hover { background: rgba(255,255,255,0.16); }
   #overlay .audio-settings {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
     margin: -4px 0 16px; font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
+  }
+  #overlay .audio-settings .audio-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  #overlay .audio-settings .audio-label {
+    min-width: 78px; text-align: right;
   }
   #overlay .audio-settings input[type="range"] {
     width: 124px; accent-color: var(--accent); cursor: pointer;
@@ -565,9 +571,21 @@
       <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
     </div>
     <div class="audio-settings" id="audio-settings">
-      <span>Volume</span>
-      <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume">
-      <span id="audio-volume-value" class="audio-value">70%</span>
+      <div class="audio-row">
+        <span class="audio-label">Master</span>
+        <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume">
+        <span id="audio-volume-value" class="audio-value">70%</span>
+      </div>
+      <div class="audio-row">
+        <span class="audio-label">Sound effects</span>
+        <input id="audio-sfx-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Sound effects volume">
+        <span id="audio-sfx-volume-value" class="audio-value">100%</span>
+      </div>
+      <div class="audio-row">
+        <span class="audio-label">Music</span>
+        <input id="audio-music-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Music volume">
+        <span id="audio-music-volume-value" class="audio-value">70%</span>
+      </div>
     </div>
     <button id="start-button" class="cta" type="button">CLICK TO START</button>
     <p class="fineprint">Explore forests, jungles, deserts, mountains, rivers, and caves. Torches light the dark, animals roam the grass, and hostile things stir at night. Stone, coal, and iron wait underground, with diamonds far below. Make a furnace, arm yourself, and sow wheat &mdash; an empty hunger bar is a slow way to die.</p>
@@ -12322,6 +12340,8 @@ function updateWaterLook(dt) {
    ============================================================ */
 
 const AUDIO_DEFAULT_VOLUME = 0.7;
+const AUDIO_DEFAULT_SFX_VOLUME = 1;
+const AUDIO_DEFAULT_MUSIC_VOLUME = 0.7;
 const AUDIO_MAX_VOICES = 40;
 const AUDIO_NOISE_SECONDS = 2;
 const AUDIO_ASSET_ROOT = 'assets/audio/';
@@ -12408,12 +12428,17 @@ const AUDIO_ASSETS = {
   ambient_cave: ['ambient_cave_1.wav'],
   ambient_fire: ['ambient_fire_1.wav'],
   ambient_underwater: ['ambient_underwater_1.wav'],
-  music_ambient: ['music_ambient_1.wav']
+  music_sad_descent: ['music_sad_descent_1.wav'],
+  music_retro_mystic: ['music_retro_mystic_1.wav']
 };
 
 const audioStateEl = document.getElementById('audio-state');
 const audioVolumeEl = document.getElementById('audio-volume');
 const audioVolumeValueEl = document.getElementById('audio-volume-value');
+const audioSfxVolumeEl = document.getElementById('audio-sfx-volume');
+const audioSfxVolumeValueEl = document.getElementById('audio-sfx-volume-value');
+const audioMusicVolumeEl = document.getElementById('audio-music-volume');
+const audioMusicVolumeValueEl = document.getElementById('audio-music-volume-value');
 let audioCtx = null;
 let audioMaster = null;
 let audioMuffle = null;
@@ -12421,6 +12446,7 @@ let audioCompressor = null;
 let audioSfxBus = null;
 let audioAmbientBus = null;
 let audioUiBus = null;
+let audioMusicBus = null;
 let audioReverbSend = null;
 let audioReverb = null;
 let audioReverbGain = null;
@@ -12429,6 +12455,9 @@ let audioPinkBuffer = null;
 let audioBrownBuffer = null;
 let audioMuted = false;
 let audioVolume = AUDIO_DEFAULT_VOLUME;
+let audioSfxVolume = AUDIO_DEFAULT_SFX_VOLUME;
+let audioMusicVolume = AUDIO_DEFAULT_MUSIC_VOLUME;
+let audioMusicTrack = null;
 let audioVoices = new Set();
 let audioVoiceSerial = 0;
 const audioBuffers = new Map();
@@ -12439,7 +12468,7 @@ const audioLoops = new Map();
 let audioAmbientTimer = 0;
 let audioAmbientSnapshot = {
   underwater: false, openSky: true, nearWater: false, fireDistance: Infinity,
-  wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0
+  wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0, musicTrack: null
 };
 let audioHeartbeatTimer = 0;
 let audioSwimAccumulator = 0;
@@ -12454,19 +12483,21 @@ function audioStorageSet(key, value) {
   try { window.localStorage.setItem(key, value); } catch (unavailable) {}
 }
 
-function loadAudioVolume() {
-  const stored = audioStorageGet(AUDIO_SETTINGS_KEY + ':volume');
+function loadAudioLevel(key, fallback) {
+  const stored = audioStorageGet(AUDIO_SETTINGS_KEY + key);
   // Number(null) is 0, which would silently mute a first visit.
-  if (stored === null || stored === '') return AUDIO_DEFAULT_VOLUME;
+  if (stored === null || stored === '') return fallback;
   const raw = Number(stored);
-  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : AUDIO_DEFAULT_VOLUME;
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : fallback;
 }
 
 function loadAudioMuted() {
   return audioStorageGet(AUDIO_SETTINGS_KEY + ':muted') === '1';
 }
 
-audioVolume = loadAudioVolume();
+audioVolume = loadAudioLevel(':volume', AUDIO_DEFAULT_VOLUME);
+audioSfxVolume = loadAudioLevel(':sfx', AUDIO_DEFAULT_SFX_VOLUME);
+audioMusicVolume = loadAudioLevel(':music', AUDIO_DEFAULT_MUSIC_VOLUME);
 audioMuted = loadAudioMuted();
 
 let audioStepAccumulator = 0;
@@ -12536,11 +12567,13 @@ function buildImpulseResponse(ctx) {
  */
 function buildAudioGraph() {
   audioSfxBus = audioCtx.createGain();
-  audioSfxBus.gain.value = 1;
+  audioSfxBus.gain.value = audioSfxVolume;
   audioAmbientBus = audioCtx.createGain();
-  audioAmbientBus.gain.value = 1;
+  audioAmbientBus.gain.value = audioSfxVolume;
   audioUiBus = audioCtx.createGain();
-  audioUiBus.gain.value = 1;
+  audioUiBus.gain.value = audioSfxVolume;
+  audioMusicBus = audioCtx.createGain();
+  audioMusicBus.gain.value = audioMusicVolume;
 
   audioMuffle = audioCtx.createBiquadFilter();
   audioMuffle.type = 'lowpass';
@@ -12567,6 +12600,7 @@ function buildAudioGraph() {
   audioSfxBus.connect(audioMuffle);
   audioAmbientBus.connect(audioMuffle);
   audioUiBus.connect(audioMuffle);
+  audioMusicBus.connect(audioMuffle);
   audioMuffle.connect(audioMaster);
   audioMaster.connect(audioCompressor);
   audioCompressor.connect(audioCtx.destination);
@@ -12594,11 +12628,21 @@ function updateAudioHud() {
     audioStateEl.textContent = text;
   }
   audioStateEl.classList.toggle('off', off);
-  const percent = Math.round(audioVolume * 100);
+  const masterPercent = Math.round(audioVolume * 100);
+  const sfxPercent = Math.round(audioSfxVolume * 100);
+  const musicPercent = Math.round(audioMusicVolume * 100);
   if (audioVolumeEl && document.activeElement !== audioVolumeEl) {
-    audioVolumeEl.value = String(percent);
+    audioVolumeEl.value = String(masterPercent);
   }
-  if (audioVolumeValueEl) audioVolumeValueEl.textContent = percent + '%';
+  if (audioVolumeValueEl) audioVolumeValueEl.textContent = masterPercent + '%';
+  if (audioSfxVolumeEl && document.activeElement !== audioSfxVolumeEl) {
+    audioSfxVolumeEl.value = String(sfxPercent);
+  }
+  if (audioSfxVolumeValueEl) audioSfxVolumeValueEl.textContent = sfxPercent + '%';
+  if (audioMusicVolumeEl && document.activeElement !== audioMusicVolumeEl) {
+    audioMusicVolumeEl.value = String(musicPercent);
+  }
+  if (audioMusicVolumeValueEl) audioMusicVolumeValueEl.textContent = musicPercent + '%';
 }
 
 function setAudioVolume(value, persist = true) {
@@ -12613,6 +12657,29 @@ function setAudioVolume(value, persist = true) {
   }
   updateAudioHud();
   return audioVolume;
+}
+
+function setAudioSfxVolume(value, persist = true) {
+  audioSfxVolume = clamp(audioNumber(Number(value), AUDIO_DEFAULT_SFX_VOLUME), 0, 1);
+  if (persist) audioStorageSet(AUDIO_SETTINGS_KEY + ':sfx', String(audioSfxVolume));
+  if (audioCtx) {
+    const now = audioCtx.currentTime;
+    for (const bus of [audioSfxBus, audioUiBus, audioAmbientBus]) {
+      if (bus) bus.gain.setTargetAtTime(audioSfxVolume, now, 0.025);
+    }
+  }
+  updateAudioHud();
+  return audioSfxVolume;
+}
+
+function setAudioMusicVolume(value, persist = true) {
+  audioMusicVolume = clamp(audioNumber(Number(value), AUDIO_DEFAULT_MUSIC_VOLUME), 0, 1);
+  if (persist) audioStorageSet(AUDIO_SETTINGS_KEY + ':music', String(audioMusicVolume));
+  if (audioMusicBus && audioCtx) {
+    audioMusicBus.gain.setTargetAtTime(audioMusicVolume, audioCtx.currentTime, 0.025);
+  }
+  updateAudioHud();
+  return audioMusicVolume;
 }
 
 /**
@@ -12709,14 +12776,19 @@ function setAudioMuted(value) {
   return audioMuted;
 }
 
-if (audioVolumeEl) {
-  audioVolumeEl.addEventListener('input', () => {
+for (const [element, setter] of [
+  [audioVolumeEl, setAudioVolume],
+  [audioSfxVolumeEl, setAudioSfxVolume],
+  [audioMusicVolumeEl, setAudioMusicVolume]
+]) {
+  if (!element) continue;
+  element.addEventListener('input', () => {
     ensureAudio();
-    setAudioVolume(Number(audioVolumeEl.value) / 100);
+    setter(Number(element.value) / 100);
   });
-  // The pause panel itself is a click-to-resume surface; the slider is not.
+  // The pause panel itself is a click-to-resume surface; a slider is not.
   for (const type of ['click', 'pointerdown']) {
-    audioVolumeEl.addEventListener(type, (event) => event.stopPropagation());
+    element.addEventListener(type, (event) => event.stopPropagation());
   }
 }
 
@@ -12776,6 +12848,7 @@ function audioNumber(value, fallback) {
 
 function audioBusNode(bus) {
   if (bus === 'ambient') return audioAmbientBus;
+  if (bus === 'music') return audioMusicBus;
   if (bus === 'ui') return audioUiBus;
   return audioSfxBus;
 }
@@ -12973,9 +13046,10 @@ function audioStartLoop(name, gain = 0) {
   const gainNode = audioCtx.createGain();
   gainNode.gain.value = 0;
 
+  const bus = name.startsWith('music_') ? 'music' : 'ambient';
   source.connect(filter);
   filter.connect(gainNode);
-  gainNode.connect(audioConnectOutput(0, 'ambient', 0));
+  gainNode.connect(audioConnectOutput(0, bus, 0));
   source.start();
 
   const entry = { source, filter, gain: gainNode, name };
@@ -13008,7 +13082,9 @@ function audioStopLoop(name) {
   entry.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.25);
   window.setTimeout(() => {
     try { entry.source.stop(); } catch (error) {}
-    audioLoops.delete(name);
+    // Scrubbing the clock back across a music window inside the fade starts a
+    // fresh copy of the same bed; that one keeps the slot, not this one.
+    if (audioLoops.get(name) === entry) audioLoops.delete(name);
   }, 900);
 }
 
@@ -13113,6 +13189,13 @@ function ambientNearFire() {
   return best;
 }
 
+/** The two scheduled music windows, in the same clock the HUD shows. */
+function musicTrackForClock(hours) {
+  if (hours >= 6 && hours < 14) return 'music_retro_mystic';
+  if (hours >= 18 && hours < 24) return 'music_sad_descent';
+  return null;
+}
+
 function updateAmbient(dt) {
   if (!audioCtx) return;
   audioAmbientTimer -= dt;
@@ -13134,7 +13217,15 @@ function updateAmbient(dt) {
     ? 0
     : 0.16 * (1 - fireDistance / 9);
   let under = underwater ? 0.22 : 0;
-  let music = underwater ? 0.012 : (openSky ? 0.042 : 0.026);
+
+  // Sunrise to 14:00 is Retro Mystic; dusk to midnight is Sad Descent. The
+  // gap from 14:00 to dusk and midnight to sunrise has no music at all.
+  const musicTrack = musicTrackForClock(clockHours());
+  if (musicTrack !== audioMusicTrack) {
+    if (audioMusicTrack) audioStopLoop(audioMusicTrack);
+    audioMusicTrack = musicTrack;
+  }
+  let music = musicTrack ? (underwater ? 0.04 : (openSky ? 0.16 : 0.12)) : 0;
   if (player.dead) {
     music = 0;
     under = 0;
@@ -13152,12 +13243,12 @@ function updateAmbient(dt) {
   audioSetLoop('ambient_cave', cave, 300);
   audioSetLoop('ambient_fire', fire, 2600);
   audioSetLoop('ambient_underwater', under, 500);
-  audioSetLoop('music_ambient', music, 700);
+  if (musicTrack) audioSetLoop(musicTrack, music, 6000);
   audioSetMuffle(underwater);
 
   audioAmbientSnapshot = {
     underwater, openSky, nearWater, fireDistance,
-    wind, water, cave, fire, under, music
+    wind, water, cave, fire, under, music, musicTrack
   };
 }
 
@@ -13202,12 +13293,18 @@ function playSwimSound(x, y, z) {
 }
 
 function playJumpSound() {
+  // The jump sample is mostly a 500–1000 Hz woosh with a hissy top end. It also
+  // plays back a little slow, which drops the whole woosh about three semitones,
+  // and the low-pass comes down to 850 Hz with it — the shifted body lands at
+  // 420–840 Hz and keeps that weight, while the whistle that used to sit on top
+  // is gone. Volume gives back what the extra filtering takes off.
   if (audioSample('event_jump', {
-    spatial: false, volume: 0.32, bus: 'sfx', priority: 0
+    spatial: false, volume: 0.38, bus: 'sfx', priority: 0,
+    pitch: 0.84, cutoff: 850
   })) return true;
   return audioNoiseHit({
-    type: 'bandpass', freq: 800, freqEnd: 1200, q: 0.7,
-    duration: 0.12, volume: 0.12
+    type: 'lowpass', freq: 1000, freqEnd: 460, q: 0.7,
+    duration: 0.14, volume: 0.13
   }, player.pos.x, player.pos.y, player.pos.z, { spatial: false, priority: 0 });
 }
 
@@ -13621,36 +13718,54 @@ function playCreeperHiss(x, y, z) {
     pitch: 0.96 + Math.random() * 0.08
   })) return true;
 
+  // Without the bank, build the fuse from bright noise: a high-passed hiss
+  // with a randomly stepping level so it catches and sputters, plus a low
+  // bed to give it weight.
   const ctx = ensureAudio();
   if (!ctx) return false;
   const spatial = audioSpatial(x, y, z, 28);
   if (spatial.gain <= 0.001) return false;
 
-  const duration = 1.35;
+  const duration = 1.55;
   if (!audioBeginVoice(duration, 2)) return false;
 
   const now = ctx.currentTime;
   const source = ctx.createBufferSource();
   source.buffer = audioNoiseBuffer;
 
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.Q.value = 1.1;
-  filter.frequency.setValueAtTime(620, now);
-  filter.frequency.exponentialRampToValueAtTime(2400, now + duration);
+  const highpass = ctx.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = 1200;
+  highpass.Q.value = 0.7;
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.setValueAtTime(2400, now);
+  band.frequency.exponentialRampToValueAtTime(3200, now + duration);
+  band.Q.value = 0.8;
 
   const gain = ctx.createGain();
-  const peak = 0.24 * spatial.gain;
+  const peak = 0.2 * spatial.gain;
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(peak, now + 0.42);
+  gain.gain.exponentialRampToValueAtTime(peak, now + 0.06);
+  for (let t = 0.1; t < duration - 0.08; t += 0.035 + Math.random() * 0.09) {
+    const rise = 0.45 + 0.55 * (t / duration);
+    gain.gain.setValueAtTime(peak * rise * (0.35 + Math.random() * 0.65), now + t);
+  }
   gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
-  source.connect(filter);
-  filter.connect(gain);
+  source.connect(highpass);
+  highpass.connect(band);
+  band.connect(gain);
   gain.connect(audioConnectOutput(spatial.pan, 'sfx', 0.22));
-  const maxOffset = Math.max(0.01, audioNoiseBuffer.duration - duration - 0.05);
-  source.start(now, Math.random() * maxOffset, duration);
+  source.start(now);
   source.stop(now + duration + 0.04);
+
+  audioTone({
+    type: 'triangle', from: 64, to: 46, duration: 1.1,
+    volume: 0.07 * spatial.gain, pan: spatial.pan,
+    priority: 2, reverb: 0.12
+  });
   return true;
 }
 
@@ -13916,15 +14031,31 @@ function playHoeTillSound(x, y, z) {
 
 function playExplosionSound(x, y, z) {
   if (audioSample('event_explosion', {
-    x, y, z, volume: 0.92, range: 52, priority: 4, reverb: 0.3
-  })) return true;
+    x, y, z, volume: 1.04, range: 58, priority: 4, reverb: 0.38
+  })) {
+    const spatial = audioSpatial(x, y, z, 58);
+    if (spatial.gain > 0.001) {
+      // The recorded blast is mostly sub-bass, which small speakers swallow.
+      // A short midrange crack and a sub drop give it the extra weight.
+      audioNoiseHit({
+        type: 'bandpass', freq: 1500, freqEnd: 500, q: 0.7,
+        duration: 0.22, volume: 0.22
+      }, x, y, z, { range: 58, priority: 4, reverb: 0.3 });
+      audioTone({
+        type: 'sine', from: 74, to: 30, duration: 0.72,
+        volume: 0.3 * spatial.gain, pan: spatial.pan,
+        priority: 4, reverb: 0.28
+      });
+    }
+    return true;
+  }
 
   const ctx = ensureAudio();
   if (!ctx) return false;
-  const spatial = audioSpatial(x, y, z, 52);
+  const spatial = audioSpatial(x, y, z, 58);
   if (spatial.gain <= 0.001) return false;
 
-  const duration = 1.15;
+  const duration = 1.2;
   if (!audioBeginVoice(duration, 4)) return false;
 
   const now = ctx.currentTime;
@@ -13933,30 +14064,34 @@ function playExplosionSound(x, y, z) {
   source.buffer = noise;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(2400, now);
+  filter.frequency.setValueAtTime(2800, now);
   filter.frequency.exponentialRampToValueAtTime(140, now + duration);
   filter.Q.value = 0.7;
   const gain = ctx.createGain();
-  const volume = 0.52 * spatial.gain;
+  const volume = 0.58 * spatial.gain;
   gain.gain.setValueAtTime(0.0001, now);
   gain.gain.exponentialRampToValueAtTime(volume, now + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
   source.connect(filter);
   filter.connect(gain);
-  gain.connect(audioConnectOutput(spatial.pan, 'sfx', 0.3));
+  gain.connect(audioConnectOutput(spatial.pan, 'sfx', 0.32));
   const maxOffset = Math.max(0.01, noise.duration - duration - 0.05);
   source.start(now, Math.random() * maxOffset, duration);
   source.stop(now + duration + 0.04);
 
+  audioNoiseHit({
+    type: 'bandpass', freq: 1600, freqEnd: 460, q: 0.7,
+    duration: 0.24, volume: 0.14
+  }, x, y, z, { range: 58, priority: 4, reverb: 0.3 });
   audioTone({
     type: 'sine',
     from: 94,
     to: 30,
     duration: 0.82,
-    volume: 0.42 * spatial.gain,
+    volume: 0.46 * spatial.gain,
     pan: spatial.pan,
     priority: 4,
-    reverb: 0.3
+    reverb: 0.32
   });
   return true;
 }
@@ -14075,6 +14210,9 @@ function audioStatus() {
     muted: audioMuted,
     volume: audioVolume,
     masterVolume: audioVolume,
+    sfxVolume: audioSfxVolume,
+    musicVolume: audioMusicVolume,
+    musicTrack: audioMusicTrack,
     activeVoices: audioVoices.size,
     maxVoices: AUDIO_MAX_VOICES,
     noiseBuffer: !!audioNoiseBuffer,
@@ -15554,6 +15692,14 @@ window.__voxelcraft = {
   },
   setVolume(value) {
     setAudioVolume(Number(value));
+    return audioStatus();
+  },
+  setSfxVolume(value) {
+    setAudioSfxVolume(Number(value));
+    return audioStatus();
+  },
+  setMusicVolume(value) {
+    setAudioMusicVolume(Number(value));
     return audioStatus();
   },
   toggleMute() {

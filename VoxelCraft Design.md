@@ -418,7 +418,7 @@ Use the Web Audio API for every sound. The game now has three layers:
 - The active CC0 bank in `assets/audio/`, built by
   `tools/build-cc0-bank.py` from Kenney, OpenGameArt, and SpritePilot packs.
   It covers block break/place, footsteps, mob voices, player and mob hurt,
-  explosions, UI, water, chests, furnaces, and six ambient/music loops.
+  explosions, UI, water, chests, furnaces, and seven ambient/music loops.
 - The generated fallback/reference bank in `assets/audio-generated/`, produced
   by `tools/generate-audio.mjs`. It is not loaded at runtime; it keeps the
   original synthesized bank reproducible and supplies the generated heartbeat.
@@ -440,7 +440,8 @@ Sound coverage now includes:
 - Player hurt, mob hurt, death, and a low-health heartbeat
 - Crafting, eating, tool breaking, doors, shears, buckets, hoes, chests, and furnaces
 - Landing thuds, water entry, swimming, jumping, item pickup, and UI feedback
-- Wind, water, cave, fire, underwater, and music beds mixed by the environment
+- Wind, water, cave, fire, and underwater beds mixed by the environment
+- Two music loops, scheduled by time of day: morning and dusk
 
 ## Technical requirements
 
@@ -2459,18 +2460,24 @@ convincing break; two hundred footsteps from the same envelope sound like a
 machine. Four variants per material, three per break, and runtime pitch/level
 jitter are what stop that.
 
+Two active slots are synthesized instead of sampled. The heartbeat was always
+better generated, and the creeper fuse needs a sputtering, cracking burn that
+no CC0 pack in the bank matches. `tools/generate-audio.mjs` writes the fuse to
+the reference bank, and `tools/build-cc0-bank.py` copies that slot into the
+active bank; everything else stays sampled.
+
 ### What is in the banks
 
-`assets/audio/` is the active CC0 bank: 115 mono 16-bit WAVs, 8.4 MB in total:
+`assets/audio/` is the active CC0 bank: 116 mono 16-bit WAVs, 11 MB in total:
 
 - 28 footsteps (7 materials × 4)
 - 24 breaks (8 materials × 3) and 16 places (8 × 2)
 - 11 mob voices
 - 30 event one-shots
-- 5 ambient beds plus one music loop
+- 5 ambient beds plus two music loops
 
 `assets/audio-generated/` is the synthesized fallback/reference bank: the same
-115 slots, 7.9 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
+116 slots, 9.3 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
 runtime; the code synthesizer is the runtime fallback. It is kept so the
 original bank is reproducible and because the heartbeat is still better
 generated than sampled.
@@ -2503,7 +2510,10 @@ of ending the frame. `audioStatus().assets` reports
 
 ### The mix
 
-- `voice → sfx/ambient/ui bus → low-pass muffler → master gain → compressor → destination`.
+- `voice → sfx/ambient/ui/music bus → low-pass muffler → master gain →
+  compressor → destination`. The three effect-ish buses are driven by the sound
+  effects slider and the music bus by the music slider, so the master slider is
+  the only thing that pulls everything together.
 - A `DynamicsCompressorNode` (threshold −18 dB, knee 20, ratio 5, 3 ms attack,
   250 ms release) catches the explosion-plus-footsteps case.
 - A generated stereo impulse response feeds a `ConvolverNode`; each one-shot
@@ -2519,12 +2529,62 @@ of ending the frame. `audioStatus().assets` reports
 
 ### Ambient mix
 
-`updateAmbient(dt)` runs every 0.5 s and sets six loop gains: wind
+`updateAmbient(dt)` runs every 0.5 s and sets five environmental loop gains: wind
 (height/outdoors), water (a 9 × 9 × 5 water sample around the feet), cave (no
 solid sky above, deeper is louder), fire (nearest torch or burning furnace
-within 9 blocks), underwater, and music. The loops fade with
+within 9 blocks) and underwater. The loops fade with
 `setTargetAtTime`, and a paused or dead player ducks the world.
 `audioStatus().ambient` is the snapshot the checks read.
+
+### Music
+
+Music is scheduled by the in-game clock rather than by the environment, so
+`musicTrackForClock(clockHours())` is the whole rule:
+
+- 06:00–14:00 — Kenney's "Retro Mystic"
+- 18:00–24:00 — Kenney's "Sad Descent"
+- 14:00–18:00 and 00:00–06:00 — nothing
+
+`updateAmbient` resolves the track each pass and, when it differs from the one
+already playing, fades the old bed out with `audioStopLoop` and opens the new one
+at 0.16 in open sky, 0.12 under a roof, 0.04 with the head underwater, and 0 when
+the player is dead; paused keeps the ×0.55 duck the rest of the world gets. Music
+is a loop, so it has no synthesizer behind it: over `file://` the beds and
+one-shots degrade to the synthesizer and the music simply is not there.
+
+`audioStartLoop` routes any name starting with `music_` to the music bus instead
+of the ambient bus, which is what lets the music slider move the score without
+touching wind or footsteps. The two tracks are loudness-matched in
+`tools/build-cc0-bank.py` (both land at 0.075 RMS) because "Sad Descent" is
+roughly 8 dB hotter than "Retro Mystic" as delivered, and neither Kenney loop
+ends where it begins, so the build folds the last 0.75 s over the first for a
+click-free repeat. `audioStatus()` reports the current slot as `musicTrack`.
+
+`audioStopLoop` only clears its `audioLoops` slot if the entry there is still the
+one it faded: scrubbing the clock back across a music window inside the 900 ms
+fade starts a fresh copy of the same bed, and the dying source must not delete
+the living one.
+
+### Level and EQ passes
+
+Three sounds were retuned against the recorded bank:
+
+- The jump sample carries its energy around 500–1000 Hz with a hissy top, so it
+  now plays at `pitch: 0.84` through a 850 Hz low-pass. The playback rate drops
+  the woosh about three semitones and the filter comes down with it, so the
+  shifted body at 420–840 Hz keeps its weight while the top end goes: spectral
+  centroid 966 Hz → 738 Hz, energy above 900 Hz 6.0% → 0.8%, and 0.32 → 0.38
+  gain gives back the ~0.5 dB the extra filtering costs. The synthesizer
+  fallback was re-cut to a 1000 → 460 Hz sweep over 0.14 s so `file://` sounds
+  like the sample.
+- The creeper is a lit fuse rather than a breath: 1.55 s of high-passed sizzle
+  with a randomly stepping gain, 38 later-biased crackles and a low brown bed,
+  synthesized in `tools/generate-audio.mjs` and copied into the active bank. The
+  fuse timer is the same 1.55 s, so the sound ends as it detonates.
+- The explosion sample is sub-heavy and quiet, so the sampled hit runs at 1.04
+  gain over a 58-block range with a heavier reverb send (0.38), and gains a
+  1500 → 500 Hz band-passed crack plus a 74 → 30 Hz sine drop on top of it.
+  Camera shake, flash and particles were deliberately left alone.
 
 ### Passive animals
 
@@ -2536,9 +2596,16 @@ sheep from dominating the mix. Hostile cadence is unchanged.
 
 ### Settings
 
-- Master volume defaults to 70%, persists under `voxelcraft:audio:v1`, and has a
-  slider in the pause panel. `M` still mutes.
-- `__voxelcraft.setVolume(value)` and `audio()` are the debug hooks.
+- Three sliders live in the pause panel: **Master** (default 70%), **Sound
+  effects** (100%, drives the sfx, ambient and ui buses together) and **Music**
+  (70%, drives the music bus). They persist as `:volume`, `:sfx` and `:music`
+  under `voxelcraft:audio:v1`. `M` still mutes the master.
+- The pause panel is a click-to-resume surface, so each slider stops
+  `click`/`pointerdown` from propagating, and `updateAudioHud` will not overwrite
+  a slider the pointer is on.
+- `__voxelcraft.setVolume(value)`, `setSfxVolume(value)`, `setMusicVolume(value)`
+  and `audio()` are the debug hooks; `audio()` reports `sfxVolume`,
+  `musicVolume` and `musicTrack`.
 - The tab suspends the context on `visibilitychange` and resumes it on return.
 
 ### GitHub Pages
@@ -2548,8 +2615,8 @@ sheep from dominating the mix. Hostile cadence is unchanged.
 - `.nojekyll` is committed so Jekyll leaves the audio folder alone.
 - Do not use Git LFS for either bank: Pages serves the pointer, not the sample.
   The published site limit is 1 GB, each git file is capped at 100 MiB, and the
-  soft bandwidth limit is 100 GB/month. The active bank is 8.4 MB and the
-  generated reference bank is 7.9 MB, both comfortably inside the limits.
+  soft bandwidth limit is 100 GB/month. The active bank is 11 MB and the
+  generated reference bank is 9.3 MB, both comfortably inside the limits.
 - `file://` cannot fetch local assets. Opening `index.html` directly still runs
   the game, but the synth fallback is what you hear. Serve it with
   `python3 -m http.server` (or Pages) to hear the bank.
@@ -2559,10 +2626,10 @@ sheep from dominating the mix. Hostile cadence is unchanged.
 ### Checks run for this change
 
 - `tools/check-syntax.sh` passes.
-- `tools/check-audio.sh` passes both banks: active 115 files, 8.4 MB; generated
-  115 files, 7.9 MB; every file decodes.
+- `tools/check-audio.sh` passes both banks: active 116 files, 11 MB; generated
+  116 files, 9.3 MB; every file decodes.
 - In the in-app browser at `http://127.0.0.1:8765`:
-  - 115/115 active assets loaded, 0 failed, 0 console errors.
+  - 116/116 active assets loaded, 0 failed, 0 console errors.
   - All 35 named `playSound` entries returned true at close range on the
     recorded bank, and the original procedural names still resolve.
   - Spawned passive mobs exposed `soundTimer` values of 17.97 s and 33.52 s,
@@ -2575,7 +2642,15 @@ sheep from dominating the mix. Hostile cadence is unchanged.
     `cave: 0.127`; a shore at (-22, 49, 0) produced `nearWater: true`,
     `water: 0.066`; a torch two blocks away produced
     `fireDistance: 2.00`, `fire: 0.075`. All six ambient loops started.
-  - Volume 25% → 45% and mute/unmute persisted through `localStorage`.
+  - Volume 25% → 45% and mute/unmute persisted through `localStorage`. The
+    sound effects and music sliders drive their own buses, report through
+    `audio()`, and survive a reload; scrubbing the clock back across a music
+    window inside the 900 ms fade leaves exactly one copy of the bed running.
+- At `http://127.0.0.1:8000` the music windows were read through
+  `__voxelcraft.audio()` while the game loop ran: 08:53 and 13:59 played
+  `music_retro_mystic` at 0.16, 14:00 and 17:59 played nothing, 18:00 and 23:59
+  played `music_sad_descent` at 0.16, and 00:00 and 03:36 played nothing. No
+  console errors.
 
 ### Notes for whoever picks this up next
 
@@ -2589,10 +2664,13 @@ sheep from dominating the mix. Hostile cadence is unchanged.
 - The bank count and the `AUDIO_ASSETS` manifest must move together. If you add
   a variant, add the file and the manifest entry, then rerun
   `tools/check-audio.sh`.
-- The active loops come from SpritePilot, Kenney Music Loops, and the
-  OpenGameArt underwater pad and are already seamless. The generated bank's
-  loops are crossfaded from a render one second longer than the loop length;
-  don't apply that extra crossfade to the active files.
+- The active ambient loops come from SpritePilot and the OpenGameArt underwater
+  pad and are already seamless — do not crossfade them again. The two active
+  *music* loops are the exception: the Kenney tracks are folded tail-over-head
+  by `convert_loop` in `tools/build-cc0-bank.py`, which is the only loop build
+  that takes a crossfade argument. The generated bank's loops, including its own
+  sad and retro music reference slots, are crossfaded from a render one second
+  longer than the loop length.
 - The generated heartbeat in `assets/audio/event_heartbeat_1.wav` comes from
   `assets/audio-generated/`. If you remove the generated bank, keep a copy of
   that one file or make the heartbeat a synth fallback again.
