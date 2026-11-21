@@ -12428,8 +12428,18 @@ const AUDIO_ASSETS = {
   ambient_cave: ['ambient_cave_1.wav'],
   ambient_fire: ['ambient_fire_1.wav'],
   ambient_underwater: ['ambient_underwater_1.wav'],
-  music_sad_descent: ['music_sad_descent_1.wav'],
-  music_retro_mystic: ['music_retro_mystic_1.wav']
+  // The scheduled songs are full tracks staged under assets/music/, not bank
+  // samples. `audioStartLoop` draws one at random from the slot's list each
+  // time a window opens. Add files here when a folder gains a song.
+  music_dawn: ["music/dawn/Daybreak's First Note.m4a"],
+  music_noon: ['music/noon/Midday Calm.m4a'],
+  music_dusk: [
+    'music/dusk/Dusk Chamber 1.m4a',
+    'music/dusk/Dusk Chamber 2.m4a',
+    'music/dusk/Dusk Piano 1.m4a',
+    'music/dusk/Dusk Piano 2.m4a'
+  ],
+  music_midnight: ['music/midnight/Midnight Pulse 1.m4a']
 };
 
 const audioStateEl = document.getElementById('audio-state');
@@ -12458,6 +12468,8 @@ let audioVolume = AUDIO_DEFAULT_VOLUME;
 let audioSfxVolume = AUDIO_DEFAULT_SFX_VOLUME;
 let audioMusicVolume = AUDIO_DEFAULT_MUSIC_VOLUME;
 let audioMusicTrack = null;
+/** True once the current window's one-shot song has started; silence follows its end. */
+let audioMusicPlayed = false;
 let audioVoices = new Set();
 let audioVoiceSerial = 0;
 const audioBuffers = new Map();
@@ -12465,6 +12477,7 @@ const audioAssetLoad = {
   total: 0, loaded: 0, failed: 0, ready: false, started: false
 };
 const audioLoops = new Map();
+const audioLoopPicks = new Map();
 let audioAmbientTimer = 0;
 let audioAmbientSnapshot = {
   underwater: false, openSky: true, nearWater: false, fireDistance: Infinity,
@@ -12705,7 +12718,13 @@ async function loadAudioAssets() {
     while (next < entries.length) {
       const entry = entries[next++];
       try {
-        const response = await fetch(AUDIO_ASSET_ROOT + entry.file);
+        // A file with a path sits beside the bank under assets/ (the music
+        // folders); everything else is a bank sample. encodeURI because the
+        // music files carry real spaces in their names.
+        const url = entry.file.includes('/')
+          ? 'assets/' + entry.file
+          : AUDIO_ASSET_ROOT + entry.file;
+        const response = await fetch(encodeURI(url));
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.arrayBuffer();
         const buffer = await new Promise((resolve, reject) => {
@@ -13023,6 +13042,20 @@ function audioSample(name, options = {}) {
   return true;
 }
 
+/**
+ * Picks one loaded variant of a loop at random, rerolling when the draw lands
+ * on the same index as last time so dusk does not play the same song every
+ * evening while four are waiting.
+ */
+function audioPickVariant(name, list) {
+  let index = Math.floor(Math.random() * list.length);
+  if (list.length > 1 && index === audioLoopPicks.get(name)) {
+    index = (index + 1 + Math.floor(Math.random() * (list.length - 1))) % list.length;
+  }
+  audioLoopPicks.set(name, index);
+  return { index, buffer: list[index] };
+}
+
 function audioStartLoop(name, gain = 0) {
   if (!audioCtx || audioMuted) return null;
   const existing = audioLoops.get(name);
@@ -13030,13 +13063,19 @@ function audioStartLoop(name, gain = 0) {
 
   const list = audioBuffers.get(name);
   if (!list || !list.length) return null;
-  const buffer = list[0];
+  const pick = audioPickVariant(name, list);
 
+  // Ambient beds are continuous, so they loop forever. A music slot plays its
+  // song straight through once, and the finished bed clears its slot in
+  // `onended` so the silence holds until the next window.
+  const looping = !name.startsWith('music_');
   const source = audioCtx.createBufferSource();
-  source.buffer = buffer;
-  source.loop = true;
-  source.loopStart = 0;
-  source.loopEnd = buffer.duration;
+  source.buffer = pick.buffer;
+  source.loop = looping;
+  if (looping) {
+    source.loopStart = 0;
+    source.loopEnd = pick.buffer.duration;
+  }
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'lowpass';
@@ -13046,14 +13085,23 @@ function audioStartLoop(name, gain = 0) {
   const gainNode = audioCtx.createGain();
   gainNode.gain.value = 0;
 
+  // Bus by name, not by looping: music_ beds ride the music bus so the music
+  // slider moves them, everything else rides the ambient bus.
   const bus = name.startsWith('music_') ? 'music' : 'ambient';
   source.connect(filter);
   filter.connect(gainNode);
   gainNode.connect(audioConnectOutput(0, bus, 0));
   source.start();
 
-  const entry = { source, filter, gain: gainNode, name };
+  const entry = { source, filter, gain: gainNode, name, variant: pick.index, stopTimer: null };
   audioLoops.set(name, entry);
+  source.onended = () => {
+    // A straight-through playthrough ends here: clear the slot so the window
+    // falls silent, but never a bed that has since taken the slot.
+    if (audioLoops.get(name) !== entry) return;
+    if (entry.stopTimer) window.clearTimeout(entry.stopTimer);
+    audioLoops.delete(name);
+  };
   audioSetLoop(name, gain, 20000);
   return entry;
 }
@@ -13066,6 +13114,13 @@ function audioSetLoop(name, target, cutoff = 20000) {
     return null;
   }
   if (!audioCtx) return entry;
+  if (entry.stopTimer && level > 0.001) {
+    // The bed was fading out and the world asked for it again — within a music
+    // window's fade that is a scrub back across the boundary, and the song
+    // survives rather than dying mid-fade and staying dead.
+    window.clearTimeout(entry.stopTimer);
+    entry.stopTimer = null;
+  }
   const now = audioCtx.currentTime;
   entry.gain.gain.setTargetAtTime(level, now, 0.45);
   entry.filter.frequency.setTargetAtTime(
@@ -13080,10 +13135,12 @@ function audioStopLoop(name) {
   const entry = audioLoops.get(name);
   if (!entry || !audioCtx) return;
   entry.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.25);
-  window.setTimeout(() => {
+  if (entry.stopTimer) window.clearTimeout(entry.stopTimer);
+  entry.stopTimer = window.setTimeout(() => {
+    entry.stopTimer = null;
     try { entry.source.stop(); } catch (error) {}
-    // Scrubbing the clock back across a music window inside the fade starts a
-    // fresh copy of the same bed; that one keeps the slot, not this one.
+    // The timer may outlive the bed it was armed for; only the entry still
+    // holding the slot gets cleared by it.
     if (audioLoops.get(name) === entry) audioLoops.delete(name);
   }, 900);
 }
@@ -13189,11 +13246,12 @@ function ambientNearFire() {
   return best;
 }
 
-/** The two scheduled music windows, in the same clock the HUD shows. */
+/** The four scheduled music windows, in the same clock the HUD shows. */
 function musicTrackForClock(hours) {
-  if (hours >= 6 && hours < 14) return 'music_retro_mystic';
-  if (hours >= 18 && hours < 24) return 'music_sad_descent';
-  return null;
+  if (hours >= 6 && hours < 12) return 'music_dawn';
+  if (hours >= 12 && hours < 18) return 'music_noon';
+  if (hours >= 18 && hours < 24) return 'music_dusk';
+  return 'music_midnight';
 }
 
 function updateAmbient(dt) {
@@ -13218,14 +13276,17 @@ function updateAmbient(dt) {
     : 0.16 * (1 - fireDistance / 9);
   let under = underwater ? 0.22 : 0;
 
-  // Sunrise to 14:00 is Retro Mystic; dusk to midnight is Sad Descent. The
-  // gap from 14:00 to dusk and midnight to sunrise has no music at all.
+  // The clock picks the slot and the slot opens on a random song from its
+  // folder: dawn from sunrise, noon from midday, dusk from eighteen, and
+  // midnight from zero. The song plays straight through once, then the window
+  // stays quiet until the next one opens.
   const musicTrack = musicTrackForClock(clockHours());
   if (musicTrack !== audioMusicTrack) {
     if (audioMusicTrack) audioStopLoop(audioMusicTrack);
     audioMusicTrack = musicTrack;
+    audioMusicPlayed = false;
   }
-  let music = musicTrack ? (underwater ? 0.04 : (openSky ? 0.16 : 0.12)) : 0;
+  let music = underwater ? 0.04 : (openSky ? 0.16 : 0.12);
   if (player.dead) {
     music = 0;
     under = 0;
@@ -13243,7 +13304,12 @@ function updateAmbient(dt) {
   audioSetLoop('ambient_cave', cave, 300);
   audioSetLoop('ambient_fire', fire, 2600);
   audioSetLoop('ambient_underwater', under, 500);
-  if (musicTrack) audioSetLoop(musicTrack, music, 6000);
+  // Ride the level with the environment while the song is running, but once
+  // its one playthrough has ended, leave the window in silence: starting it
+  // again is the next window's job.
+  if (!audioMusicPlayed || audioLoops.has(musicTrack)) {
+    if (audioSetLoop(musicTrack, music, 6000)) audioMusicPlayed = true;
+  }
   audioSetMuffle(underwater);
 
   audioAmbientSnapshot = {
@@ -14213,6 +14279,8 @@ function audioStatus() {
     sfxVolume: audioSfxVolume,
     musicVolume: audioMusicVolume,
     musicTrack: audioMusicTrack,
+    musicVariant: (audioLoops.get(audioMusicTrack) || {}).variant ?? null,
+    musicPlayed: audioMusicPlayed,
     activeVoices: audioVoices.size,
     maxVoices: AUDIO_MAX_VOICES,
     noiseBuffer: !!audioNoiseBuffer,

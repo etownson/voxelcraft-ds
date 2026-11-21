@@ -441,7 +441,7 @@ Sound coverage now includes:
 - Crafting, eating, tool breaking, doors, shears, buckets, hoes, chests, and furnaces
 - Landing thuds, water entry, swimming, jumping, item pickup, and UI feedback
 - Wind, water, cave, fire, and underwater beds mixed by the environment
-- Two music loops, scheduled by time of day: morning and dusk
+- Scheduled music, one random song played once per window from `assets/music/`: dawn, noon, dusk, midnight, with silence between
 
 ## Technical requirements
 
@@ -2539,31 +2539,46 @@ within 9 blocks) and underwater. The loops fade with
 ### Music
 
 Music is scheduled by the in-game clock rather than by the environment, so
-`musicTrackForClock(clockHours())` is the whole rule:
+`musicTrackForClock(clockHours())` is the whole rule. The clock picks one of
+four slots, and each slot is a folder of songs under `assets/music/` whose
+files are listed in `AUDIO_ASSETS` (`music/dawn/`, `music/noon/`,
+`music/dusk/`, `music/midnight/`):
 
-- 06:00–14:00 — Kenney's "Retro Mystic"
-- 18:00–24:00 — Kenney's "Sad Descent"
-- 14:00–18:00 and 00:00–06:00 — nothing
+- 06:00–12:00 — a random song from dawn, once
+- 12:00–18:00 — a random song from noon, once
+- 18:00–24:00 — a random song from dusk, once
+- 00:00–06:00 — a random song from midnight, once
 
-`updateAmbient` resolves the track each pass and, when it differs from the one
+`updateAmbient` resolves the slot each pass and, when it differs from the one
 already playing, fades the old bed out with `audioStopLoop` and opens the new one
 at 0.16 in open sky, 0.12 under a roof, 0.04 with the head underwater, and 0 when
-the player is dead; paused keeps the ×0.55 duck the rest of the world gets. Music
-is a loop, so it has no synthesizer behind it: over `file://` the beds and
-one-shots degrade to the synthesizer and the music simply is not there.
+the player is dead; paused keeps the ×0.55 duck the rest of the world gets. Each
+song plays straight through once and then the window is silent until the next one
+opens: the slot only asks for its bed while the fade timer has not yet cleared it,
+and once the bed ends the pass stops calling `audioSetLoop` for it. Music has no
+synthesizer behind it, so over `file://` the beds and one-shots degrade to the
+synthesizer and the music simply is not there.
 
 `audioStartLoop` routes any name starting with `music_` to the music bus instead
 of the ambient bus, which is what lets the music slider move the score without
-touching wind or footsteps. The two tracks are loudness-matched in
-`tools/build-cc0-bank.py` (both land at 0.075 RMS) because "Sad Descent" is
-roughly 8 dB hotter than "Retro Mystic" as delivered, and neither Kenney loop
-ends where it begins, so the build folds the last 0.75 s over the first for a
-click-free repeat. `audioStatus()` reports the current slot as `musicTrack`.
+touching wind or footsteps, and it draws the song at random from the slot's
+loaded buffers, rerolling when it lands on the same one it played last so dusk
+does not repeat a song every evening while four are waiting. Ambient beds keep
+their endless loop; a music slot sets `source.loop = false` so the song ends when
+the file ends. The scheduled tracks are the Suno-generated files staged under
+`assets/music/`, fetched whole rather than through the bank, so they keep their
+own endings. The two Kenney loops they replaced stay in the bank and in
+`CREDITS.md`, but no slot plays them. `audioStatus()` reports the current slot as
+`musicTrack`, the index of the song playing inside it as `musicVariant` (null
+once the window has fallen silent), and `musicPlayed` — true once this window has
+played, false only right after the window opened.
 
-`audioStopLoop` only clears its `audioLoops` slot if the entry there is still the
-one it faded: scrubbing the clock back across a music window inside the 900 ms
-fade starts a fresh copy of the same bed, and the dying source must not delete
-the living one.
+`audioStopLoop` fades the bed and arms a 900 ms stop. `audioSetLoop` cancels that
+timer when the world asks for the bed again at a positive level — a scrub back
+across the window boundary inside the fade revives the same song rather than
+killing the window outright, since a finished one-shot music bed would never
+restart. The stop and its clearing only fire if the entry still holds the slot, so
+a dying source never clears a living one.
 
 ### Level and EQ passes
 
@@ -2646,10 +2661,26 @@ sheep from dominating the mix. Hostile cadence is unchanged.
     sound effects and music sliders drive their own buses, report through
     `audio()`, and survive a reload; scrubbing the clock back across a music
     window inside the 900 ms fade leaves exactly one copy of the bed running.
-- At `http://127.0.0.1:8000` the music windows were read through
-  `__voxelcraft.audio()` while the game loop ran: 08:53 and 13:59 played
-  `music_retro_mystic` at 0.16, 14:00 and 17:59 played nothing, 18:00 and 23:59
-  played `music_sad_descent` at 0.16, and 00:00 and 03:36 played nothing. No
+- At `http://127.0.0.1:8123` the music windows were read through
+  `__voxelcraft.audio()`: 07:00 opened `music_dawn`, 13:00 `music_noon`,
+  19:00 `music_dusk`, and 01:00 `music_midnight`, each as the only live
+  `music_*` loop once the previous bed's 900 ms fade cleared its slot. All
+  seven tracks under `assets/music/` fetched and decoded
+  (`assets.failed === 0`), including the Opus-in-MP4 `.m4a` container, and the
+  retired Kenney WAVs were never requested. Six dusk re-entries drew variants
+  0, 1, 3, 1, 0, 3 — every song in the folder played, none back to back.
+- The one-shot pass: opening a window started exactly one bed and twenty more
+  simulated seconds did not restart or redraw it (`musicPlayed` true,
+  `musicVariant` unchanged). Scrubbing out and back inside the 900 ms fade
+  revived the same bed — it survived the point where the stop timer would have
+  fired — and leaving for good cleared the slot entirely while
+  `ambient_wind` kept looping. Midnight through dawn and dawn through dusk
+  each left exactly one live `music_*` loop. Music beds set `loop = false`;
+  the natural end of a song falls silent through the same `onended` path that
+  clears the slot, which minutes of real playback confirmed only by code
+  path, not by clock. One regression surfaced and was fixed here: the bus
+  choice had been tied to `looping`, which put music on the ambient bus and
+  ambient beds on the music bus; it keys on the `music_` prefix again. No
   console errors.
 
 ### Notes for whoever picks this up next

@@ -16,7 +16,8 @@ The file-to-source mapping is in `tools/build-cc0-bank.py`. The conversion
 | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) | Kenney | CC0 1.0 | UI click, open, close, confirmation, pickup |
 | [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) | Kenney | CC0 1.0 | Door, chest creak/latch, knife/shear |
 | [Kenney Foley Sounds](https://gamesounds.xyz/?dir=Kenney%27s%20Sound%20Pack/Foley%20Sounds) | Kenney | CC0 1.0 (pack `readme.txt`) | Stone hits, sword/tool break, water fill/pour, whooshes |
-| [Kenney Music Loops](https://gamesounds.xyz/?dir=Kenney%27s%20Sound%20Pack/Music%20Loops) | Kenney | CC0 1.0 (pack `readme.txt`) | `music_sad_descent_1` (“Sad Descent”, dusk), `music_retro_mystic_1` (“Retro Mystic”, morning) |
+| [Kenney Music Loops](https://gamesounds.xyz/?dir=Kenney%27s%20Sound%20Pack/Music%20Loops) | Kenney | CC0 1.0 (pack `readme.txt`) | `music_sad_descent_1` (“Sad Descent”) and `music_retro_mystic_1` (“Retro Mystic”), still in the bank but retired from the schedule |
+| Suno (generated for this project) | Project author | Own use | Scheduled music under `assets/music/`: “Daybreak's First Note” (dawn), “Midday Calm” (noon), “Dusk Chamber 1/2” and “Dusk Piano 1/2” (dusk), “Midnight Pulse 1” (midnight) |
 | [Fantozzi’s Footsteps](https://opengameart.org/content/fantozzis-footsteps-grasssand-stone) | Fantozzi, submitted by qubodup | CC0 1.0 | Sand and stone footsteps |
 | [Different Steps](https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud) | TinyWorlds | CC0 1.0 | Dirt/mud, gravel, leaves footsteps |
 | [Zombies Sound Pack](https://opengameart.org/content/zombies-sound-pack) | artisticdude | CC0 1.0 | Zombie voices |
