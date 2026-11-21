@@ -8939,7 +8939,14 @@ function updateHeldItem(dt) {
  * herd can no longer decide how dangerous the night is.
  */
 const MOB_CAP = 32;
-const PASSIVE_CAP = 16;
+/**
+ * Animals are deliberately scarce. Steak is the best food in the game — worth
+ * nearly twice a loaf of bread — and a landscape that refills itself with cows
+ * makes farming optional forever. A herd this thin, arriving this rarely,
+ * cannot keep a busy player in meat, so wheat becomes the meal they plan the
+ * day around. See the animal scarcity addendum in the design document.
+ */
+const PASSIVE_CAP = 10;
 const HOSTILE_CAP = 16;
 const MOB_SALT = 0x4D0B5A17;
 /**
@@ -8950,7 +8957,12 @@ const MOB_SALT = 0x4D0B5A17;
 const PASSIVE_SPAWN_RADIUS = 76;
 /** Never roll a herd under the player's own feet; save it for a chunk ahead. */
 const PASSIVE_SPAWN_MIN_RADIUS = 20;
-const PASSIVE_SPAWN_INTERVAL = 3;
+/**
+ * Seconds between sweeps for unspent herd rolls. A hunted valley refills at a
+ * walk, not a run: over an entire session, seeing an animal should be an
+ * event, not scenery.
+ */
+const PASSIVE_SPAWN_INTERVAL = 5;
 /**
  * Hostiles spawn in a band rather than anywhere nearby: close enough to reach
  * the player in seconds, far enough that they arrive out of the dark instead of
@@ -10096,7 +10108,9 @@ function rollChunkHerd(chunk) {
   chunk.mobSpawnChecked = true;
 
   const rand = chunkRandom(chunk.cx, chunk.cz, MOB_SALT);
-  if (rand() > 0.62) return false;
+  // Fewer than half of grassy chunks hold a herd, so green country is still
+  // no guaranteed butcher.
+  if (rand() > 0.38) return false;
 
   let spot = null;
   for (let attempt = 0; attempt < 22; attempt++) {
@@ -10127,7 +10141,8 @@ function rollChunkHerd(chunk) {
   }
 
   let spawned = false;
-  const herd = 1 + Math.floor(rand() * 2);
+  // Mostly one animal grazing alone, occasionally a pair.
+  const herd = rand() < 0.8 ? 1 : 2;
   for (let i = 0; i < herd && countMobs(false) < PASSIVE_CAP; i++) {
     const ox = spot.x + (rand() - 0.5) * 1.8;
     const oz = spot.z + (rand() - 0.5) * 1.8;

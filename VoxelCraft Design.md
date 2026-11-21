@@ -280,7 +280,7 @@ bodies with a head, body, and four legs), textured with the same 16×16 procedur
 approach. Passive animals:
 
 - Cows, pigs, sheep, and chickens
-- Spawn on grass surface blocks in plains, forest, and rainforest biomes as chunks load, with a per-chunk spawn cap
+- Spawn on grass surface blocks in plains, forest, and rainforest biomes as chunks load, with a per-chunk spawn cap — and deliberately scarce: the wild population cannot feed a player on its own, so farming is the reliable half of the food economy
 - Wander idly: pick a random nearby point, walk to it, pause, repeat
 - Simple leg-swing walking animation and head bobbing
 - Affected by gravity and block collision; can hop up one block
@@ -304,6 +304,7 @@ Mob management:
 - Cap total live mobs for performance, and split that cap into a passive half and a hostile half that add up to no more than the total. Caps that overlap put the two groups in competition for the last few slots, and animals win that fight: a healthy herd left room for nine zombies and nights never filled
 - Mobs persist while their area is loaded and are removed when their chunk unloads
 - A chunk's herd roll is spent only while the player is close enough to have seen it, and a timer draws on the rolls still unspent around the player, so herds arrive as the player travels rather than only around the first spawn point
+- Meat is a find, not a stipend: the passive cap, the herd roll, and the refill timer together make hunted ground stay empty long enough that the pressure lands on the wheat field rather than the nearest cow
 
 ## Block changes and persistence
 
@@ -1035,6 +1036,58 @@ slots cost nothing measurable.
 - Accepted behaviour changes: idle hostiles now vanish well before 96 blocks, so a cave the player
   walks away from empties out instead of seasoning the walk back; and animals are capped at 16
   rather than 20, so a very green valley now holds a thinner herd than it used to.
+
+## Animal scarcity addendum — meat is a find, not a stipend
+
+The report was that hunger stopped being a system: there was always a cow within a minute, a sword
+beat any field, and nobody sowed wheat. Hunger is only a system while food is uncertain, and while
+animals refilled the wilds, meat never was.
+
+Meat stays the premium food — steak 8 against bread 5, apple 4, wheat 2 (see the hunger parity
+addendum). Nerfing it would have made hunting a chore instead of a goal and punished the player who
+had just learned to cook. The lever is supply. Thinned to this, hunting is a windfall — you spot a
+herd, you eat well tonight — and farming is the plan: sow today or there is no bread on Thursday.
+Every animal killed is now a decision the field answers.
+
+### The knobs
+
+| Knob | Was | Now | Effect |
+| --- | --- | --- | --- |
+| `PASSIVE_CAP` | 16 | 10 | The hard ceiling on live animals, wherever the player stands |
+| Grassy chunks holding a herd | 62% of rolls | 38% | Green country is no longer a guaranteed butcher |
+| Herd size | 1–2, even | lone animal 80%, pair 20% | Mean animals per successful roll: 1.5 → 1.2 |
+| `PASSIVE_SPAWN_INTERVAL` | 3 s | 5 s | A hunted valley refills at a walk |
+
+Expected animals per grassy chunk: 0.93 → 0.46. There is no breeding, and passives have no despawn
+roll of their own, so these four knobs are the whole supply — no back door was left open behind them.
+
+### What did not move
+
+- **Nights.** `PASSIVE_CAP` + `HOSTILE_CAP` still fit inside `MOB_CAP`, so a full herd (or its
+  absence) cannot decide how dangerous the dark is, which was the rule the mob budget addendum set.
+- **The hunger side.** Respawn feeding, saturation, and exhaustion prices are untouched. All of the
+  new pressure is on supply; a player with a field in the ground feels none of it.
+- **The first hour.** The spawn area is green enough that the new cap fills within a minute — day
+  one still teaches steak, the scarcity is what you feel when you come back for more.
+
+### Measured afterwards
+
+Same seed, both builds, clock frozen at noon, driven through `tick()`:
+
+| Situation | Result |
+| --- | --- |
+| Fresh world, 60 s at spawn | 10 animals, the new cap (old build: 16, its cap) |
+| Hunt the herd to zero, watch the refill | cap again at 70 s ≈ 0.14 animals/s (old build: its cap in 60 s ≈ 0.27/s) |
+| Midnight with the herd full at 10 | hostile cap in 30 s, total steady at 26 of 32 |
+
+### Notes for whoever picks this up next
+
+- `spawnReport().caps.passive` reads 10; the hostile half of every midnight table in the mob budget
+  addendum still measures the same with a full herd, because the group caps never overlapped.
+- If playtesting says the first day is too lean, back off the herd roll (the `0.38` in
+  `rollChunkHerd`) before the cap or the interval: it thins the whole world evenly, while those two
+  decide what a hunted valley feels like. And keep the two group caps inside `MOB_CAP` — that
+  invariant is load-bearing for night quality, not for animal scarcity.
 
 ---
 
