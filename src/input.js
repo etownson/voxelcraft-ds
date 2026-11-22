@@ -975,7 +975,6 @@ export function updatePadStatus() {
 }
 
 function activeGamepad() {
-  if (virtualPad.active) return null;
   if (!navigator.getGamepads) return null;
 
   let pads;
@@ -996,6 +995,22 @@ function activeGamepad() {
   return null;
 }
 
+/** Whether a physical pad has an actual button down or a stick pushed. */
+function gamepadHasInput(pad) {
+  if (!pad) return false;
+  for (const button of pad.buttons || []) {
+    if (!button) continue;
+    if (typeof button === 'number') {
+      if (button > 0.5) return true;
+    } else if (button.pressed || button.value > 0.5) {
+      return true;
+    }
+  }
+  const axes = pad.axes || [];
+  return Math.hypot(axes[0] || 0, axes[1] || 0) > GP_DEADZONE ||
+    Math.hypot(axes[2] || 0, axes[3] || 0) > GP_DEADZONE;
+}
+
 export function releasePadMining() {
   if (!padMiningDown) return;
   padMiningDown = false;
@@ -1008,6 +1023,20 @@ export function releasePadMining() {
  */
 function pollGamepad(dt) {
   const pad = activeGamepad();
+
+  /* The synthetic pad is a debug surface and must never own the controls for
+     good: a scripted check that leaves it active would otherwise keep a real
+     controller silent until the page is reloaded. The first real button or
+     stick movement clears it and the physical pad takes over. */
+  if (virtualPad.active && gamepadHasInput(pad)) {
+    virtualPad.active = false;
+    virtualPad.axes = [0, 0, 0, 0];
+    virtualPad.buttons = new Array(17).fill(false);
+    gamepadState.prev.fill(false);
+    say('Gamepad active');
+    updatePadStatus();
+  }
+
   const connected = !!pad || virtualPad.active;
   const wasConnected = gamepadState.connected;
 
