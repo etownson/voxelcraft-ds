@@ -213,6 +213,7 @@ import {
   restoreSavedPlayer, resumeAutosave, saveReport, saveWorld, setSaveArrival, setSaveSpawn,
   stopAutosave, updateSaveLoop
 } from './src/save.js';
+import { registerSpeaker, say } from './src/say.js';
 import {
   advanceDayTime, applyDayNight, clockHours, dayTime, daylight, formatClock, isNight,
   nudgeDayTime, setDayTime, setTimeScale, timeScale, toggleTimeFrozen, updateDayNight,
@@ -1415,7 +1416,7 @@ function wearArmour(absorbed) {
 
   armorSlots[index] = null;
   const item = ITEMS.get(stack.id);
-  showToast((item ? item.name : 'Armour') + ' broke');
+  say((item ? item.name : 'Armour') + ' broke');
   playToolBreakSound();
   paintArmorBar();
   markWorldDirty();
@@ -1557,7 +1558,7 @@ function tryEatSelectedItem() {
   // Raw meat feeds nobody straight out of a cow: the furnace is the only way
   // past it, so say so instead of silently swallowing the right click.
   if (item.needsCooking) {
-    if (player.hunger < HUNGER_MAX) showToast(item.name + ' needs cooking in a furnace');
+    if (player.hunger < HUNGER_MAX) say(item.name + ' needs cooking in a furnace');
     return false;
   }
   if (!item.hunger) return false;
@@ -1566,7 +1567,7 @@ function tryEatSelectedItem() {
   // a topped-up bar mends at the slow four-second rate until something is eaten at
   // 19 or below. Eating early is the whole trick.
   if (player.hunger >= HUNGER_MAX) {
-    showToast("You're already full");
+    say("You're already full");
     return false;
   }
   if (eatTimer > 0) return false;
@@ -1891,19 +1892,19 @@ function tryShearMob(mode = 'use') {
     // opens rather than being told what it is not.
     if (mode !== 'use') return false;
     if (currentTarget && hit.distance >= currentTarget.distance - 0.04) return false;
-    showToast('Nothing to shear here');
+    say('Nothing to shear here');
     return true;
   }
 
   triggerHeldSwing();
   if (mob.sheared) {
-    if (mode !== 'held') showToast('That sheep is already sheared');
+    if (mode !== 'held') say('That sheep is already sheared');
     return true;
   }
   shearMob(mob);
   wearHeldTool(1);
   addExhaustion(EXHAUSTION.mine);
-  if (mode !== 'held') showToast('Sheared');
+  if (mode !== 'held') say('Sheared');
   return true;
 }
 
@@ -3340,6 +3341,10 @@ setAimBlocked(() => !!activeScreen || player.dead);
 
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */
+/* The screen also says how a sentence reaches the player, so that a layer which
+   has just run out of something can say so without knowing about toasts. */
+registerSpeaker(showToast);
+
 setHungerPainter(renderHunger);
 
 /* The hearts are the same kind of picture, and so is the red wash: the body
