@@ -1008,6 +1008,7 @@ function padActivateSlot(mode) {
   // The shelf only ever hands items out, so A and Y take a whole stack, X
   // takes one, and there is nothing for quick move to move.
   if (section.container === 'give') {
+    playUiClickSound();
     if (mode === 'primary' || mode === 'quick') giveFromShelf(index, 0);
     else if (mode === 'secondary') giveFromShelf(index, 2);
     clampPadCursor();
@@ -1016,14 +1017,18 @@ function padActivateSlot(mode) {
   }
 
   if (section.container === 'result') {
+    // The result pad answers with the crafting chime, not a pick click: it is
+    // a confirmation, and the two together would double every craft.
     if (mode === 'quick') craftCurrent(true);
     else if (mode === 'primary') craftCurrent(false);
   } else if (mode === 'quick') {
+    playUiClickSound();
     quickMoveStack(section.container, index);
     renderScreen();
     renderHotbar();
     updateCursorVisual();
   } else {
+    playUiClickSound();
     handleScreenSlotClick(section.container, index, mode === 'secondary' ? 2 : 0, false);
   }
 

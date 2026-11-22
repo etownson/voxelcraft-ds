@@ -269,7 +269,9 @@ empty hand shows nothing.
 - Drops go into the inventory automatically, stacking first; if the pack is full they
   stay in the world as entities. The player starts with an empty inventory
 - A stack can also ride the cursor between screens; the gamepad walks every grid with
-  the rules listed under Player and controls
+  the rules listed under Player and controls, and a pad pick in the grid answers with
+  the simple UI click — the same tick the hotbar makes. The crafting result pad keeps
+  its own chime, so a craft is not a click with a second answer on top
 
 ## Crafting system
 
