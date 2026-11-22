@@ -726,7 +726,10 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   the save line with New world, and the volume sliders; Journal repeats the recipes
   the beacons have transmitted. Start — or a click on the dark around the panel —
   locks the pointer and lets the walker go; the pad walks the choices with the
-  D-pad or left stick and picks with A, while Start on the pad means resume
+  D-pad or left stick and picks with A, while Start on the pad means resume.
+  Every choice answers with the neutral UI click — the same voice the hotbar
+  uses — and the menu is allowed no other sound: a pick that resumes the game
+  is spent, not a jump, even while held
 - While the menu has the page, its input belongs to the menu and never reaches the
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`

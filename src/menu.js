@@ -11,6 +11,7 @@
  * meant "back to the game", so it still means that here.
  */
 
+import { playUiClickSound } from './audio.js';
 import { buildJournalColumn } from './hud.js';
 import {
   PAD_BUTTON, gamepadState, gpAxis, overlayEl, padMenuDirection, padMenuRepeat,
@@ -51,11 +52,15 @@ function openPanel(name) {
   }
 }
 
-function choose(name) {
+function choose(name, padResume = false) {
   selection = name;
   paintSelection();
+  // Every choice answers with the same neutral click the hotbar makes: the
+  // menu is allowed no other voice, and a walker browsing it must never hear
+  // the world answer back.
+  playUiClickSound();
   if (name === 'start') {
-    startFromOverlay(false);
+    startFromOverlay(padResume);
     return;
   }
   const alreadyOpen = !panels[name].classList.contains('hidden');
@@ -108,9 +113,6 @@ export function padMenuTick(dt) {
   if (dy) moveSelection(dy);
 
   if (pressed[PAD_BUTTON.b]) openPanel(null);
-  if (pressed[PAD_BUTTON.a]) {
-    if (selection === 'start') startFromOverlay(true);
-    else choose(selection);
-  }
+  if (pressed[PAD_BUTTON.a]) choose(selection, selection === 'start');
   if (pressed[PAD_BUTTON.start]) startFromOverlay(true);
 }
