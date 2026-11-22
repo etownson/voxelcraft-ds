@@ -7253,6 +7253,8 @@ function updateDayNight(dt) {
  * The water's living look: the clock the swells and ripples run on, and the murk
  * that closes in once the camera goes under. Both keep running behind a paused
  * screen, so the sea seen through the instructions never hangs mid-swell.
+ * Whether the head is under is told to it rather than read off the player: the
+ * sky knows about water, not about whoever happens to be standing in it.
  */
 let waterTime = 0;
 let underwaterBlend = 0;
@@ -7263,10 +7265,10 @@ const waterTintEl = document.getElementById('water-tint');
 const UNDERWATER_FOG_NEAR = 0.5;
 const UNDERWATER_FOG_FAR = 24;
 
-function updateWaterLook(dt) {
+function updateWaterLook(dt, headUnderwater) {
   waterTime += dt;
 
-  const target = player.headInWater ? 1 : 0;
+  const target = headUnderwater ? 1 : 0;
   underwaterBlend += (target - underwaterBlend) * Math.min(1, dt * 5);
   if (Math.abs(target - underwaterBlend) < 0.003) underwaterBlend = target;
   const b = underwaterBlend;
@@ -11429,7 +11431,7 @@ function animate(now) {
 
   // Runs after the day/night pass so the water's murk sits on top of the sky's
   // fog, and outside the pause branch so the sea keeps breathing behind a screen.
-  updateWaterLook(dt);
+  updateWaterLook(dt, player.headInWater);
 
   world.updateStreaming(player.pos.x, player.pos.z);
   updateAudio(dt);
