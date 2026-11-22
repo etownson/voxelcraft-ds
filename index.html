@@ -412,6 +412,18 @@ let miningDelay = 0;
 let miningHitTimer = 0;
 let miningHitKey = '';
 
+/**
+ * What the loop is busy with, in one read: the block under the pickaxe, how far
+ * it has gone, and the gap Minecraft leaves before the next one gives way.
+ * Whoever is showing the mining asks, and is not handed the loop itself.
+ */
+function miningReport() {
+  return { ...miningState, delay: miningDelay };
+}
+
+/** True while a block is being broken right now. */
+function isMining() { return miningState.active; }
+
 /** Repeated contact sound for the block under the crosshair, per swing. */
 function updateMiningHitSound(dt, target) {
   const stack = getSelectedStack();
@@ -4247,7 +4259,7 @@ function heldFrame() {
     speed: Math.hypot(player.vel.x, player.vel.z),
     onGround: player.onGround,
     hidden: !!activeScreen || player.dead,
-    mining: isMiningHeld() && miningState.active && !player.dead,
+    mining: isMiningHeld() && isMining() && !player.dead,
     swingInterval: MINING_SWING_INTERVAL
   };
 }
@@ -5034,9 +5046,10 @@ window.__voxelcraft = {
   },
   /** Snapshot of the mining loop, including the tool it is wearing down. */
   mining() {
+    const loop = miningReport();
     return {
-      ...miningState,
-      delay: Number(miningDelay.toFixed(3)),
+      ...loop,
+      delay: Number(loop.delay.toFixed(3)),
       held: slotInfo(getSelectedStack())
     };
   },
@@ -5477,6 +5490,7 @@ window.__voxelcraft = {
     for (const chunk of world.chunks.values()) if (chunk.meshed) meshed++;
     const selected = getSelectedStack();
     const craftRecipe = currentCraftRecipe();
+    const miningLoop = miningReport();
     return {
       version: '0.1.0-milestone-12',
       seed: WORLD_SEED,
@@ -5579,9 +5593,9 @@ window.__voxelcraft = {
         name: BLOCKS[currentTarget.id].name
       } : null,
       mining: {
-        active: miningState.active,
-        progress: miningState.progress,
-        duration: miningState.duration,
+        active: miningLoop.active,
+        progress: miningLoop.progress,
+        duration: miningLoop.duration,
         stage: shownCrackStage()
       }
     };
