@@ -1216,8 +1216,13 @@ function toggleJournal() {
 let beaconJumper = null;
 export function setBeaconJumper(jump) { beaconJumper = jump; }
 
-/* How much one press of the debug essence key hands out. */
-const DEBUG_ESSENCE_GRANT = 5;
+/*
+ * How much one press of the debug essence key hands out. It is a hundred
+ * because the prices are: the far monuments now ask for several hundred each,
+ * and a grant of a few at a press would need two hundred presses to test the
+ * last one.
+ */
+const DEBUG_ESSENCE_GRANT = 100;
 
 /**
  * Shift+G grants essence. The give shelf has no tile for it because essence

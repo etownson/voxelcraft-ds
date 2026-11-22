@@ -728,7 +728,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   armour — as a nine-wide grid of icons: left click adds a whole stack, right click
   one, on mouse and pad alike. It is a debug option, not a shop: the shelf never
   empties, and a full pack says *No room in your pack*
-- `Shift+G` hands out essence, five at a press: the shelf's key shifted, because
+- `Shift+G` hands out essence, a hundred at a press: the shelf's key shifted, because
   essence never sits in a slot to be clicked
 - `T` walks a debug tour — SP0, then the five monuments in mission order, then home —
   and `Shift+T` walks it back. Each stop stands the walker three blocks out from the
