@@ -17,7 +17,12 @@
 html, body {
   margin: 0; padding: 0; width: 100%; height: 100%;
   overflow: hidden; background: #0d1117;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The color emoji families sit just above the generic one so the emoji the
+     transmitter signs its lines with draw in colour rather than as outline
+     boxes: none of the monospace faces carry glyphs for them, and a browser
+     left to guess can land on a black-and-white one or on nothing. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", monospace;
   user-select: none; -webkit-user-select: none;
 }
 #viewport, #viewport canvas {

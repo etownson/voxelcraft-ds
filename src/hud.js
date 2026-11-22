@@ -1741,16 +1741,35 @@ export function showTransmission(lines) {
 
   let at = TRANSMISSION_HANDSHAKE_MS;
   for (const line of lines) {
+    // Spotted and cut into keystrokes once, up here, so the breath allotted to
+    // the next line is the breath the words actually spoken will take.
+    const spoken = transmissionClusters(spotTransmissionLine(line));
     window.setTimeout(() => {
       if (token !== transmissionToken) return;
-      typeTransmissionLine(said, line, token, () => {
+      typeTransmissionLine(said, spoken, token, () => {
         linesLeft--;
         if (linesLeft === 0) finishTransmission(token);
       });
     }, at);
     at += TRANSMISSION_LINE_MS +
-      line.length * (TRANSMISSION_CHAR_MS + TRANSMISSION_CHAR_JITTER_MS / 2);
+      spoken.length * (TRANSMISSION_CHAR_MS + TRANSMISSION_CHAR_JITTER_MS / 2);
   }
+}
+
+/* One keystroke per thing a reader sees, not per slot in the string. The
+   transmitter signs some lines with an emoji, and an emoji is two halves of one
+   character in a JavaScript string: typed a half at a time, each half lands as a
+   box of noise that has nothing to do with the line being bad. So a line is cut
+   into clusters before it is typed — a grapheme cluster where the page can name
+   one, which also keeps an emoji with a skin tone or a variation selector to
+   itself, and a whole code point where it cannot. */
+const clusterReader = typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter('en', { granularity: 'grapheme' })
+  : null;
+
+function transmissionClusters(line) {
+  if (clusterReader) return Array.from(clusterReader.segment(line), (part) => part.segment);
+  return Array.from(line);
 }
 
 /**
@@ -1760,6 +1779,10 @@ export function showTransmission(lines) {
  * start or the end of it — a word keeps its first and last letter and a reader
  * still holds its shape. The swap keeps the line exactly as long as it was, so
  * nothing re-wraps halfway through being typed.
+ *
+ * It also only ever looks at runs of plain letters, which is what keeps the
+ * emoji whole: the noise has no way to reach one, let alone bite a piece out of
+ * it, so the sender's feelings arrive exactly as sent even on a bad line.
  */
 const TRANSMISSION_GLITCH_CHARS = '#%&*+?@~^$![]{}=<>|/';
 const TRANSMISSION_GLITCH_ODDS = 0.18;
@@ -1778,12 +1801,13 @@ function spotTransmissionLine(line) {
 }
 
 /**
- * Types one line into the panel, a character at a time, until the transmission
- * it belongs to is superseded or closed. Spaces are silent — nothing clicks when
- * the thumb hits the space bar — and a full stop costs the typist a beat.
+ * Types one line into the panel, a keystroke at a time, until the transmission
+ * it belongs to is superseded or closed. The line arrives already cut into
+ * clusters, so an emoji is one keystroke and one click like any other letter.
+ * Spaces are silent — nothing clicks when the thumb hits the space bar — and a
+ * full stop costs the typist a beat.
  */
-function typeTransmissionLine(said, line, token, done) {
-  const text = spotTransmissionLine(line);
+function typeTransmissionLine(said, clusters, token, done) {
   const p = document.createElement('p');
   const caret = document.createElement('span');
   caret.className = 'transmission-caret';
@@ -1794,12 +1818,12 @@ function typeTransmissionLine(said, line, token, done) {
   let i = 0;
   const keystroke = () => {
     if (token !== transmissionToken) return;
-    if (i >= text.length) {
+    if (i >= clusters.length) {
       caret.remove();
       if (done) done();
       return;
     }
-    const char = text[i++];
+    const char = clusters[i++];
     caret.before(document.createTextNode(char));
     if (char !== ' ') playKeyClickSound();
     let wait = TRANSMISSION_CHAR_MS + Math.random() * TRANSMISSION_CHAR_JITTER_MS;

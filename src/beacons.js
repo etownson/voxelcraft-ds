@@ -43,9 +43,17 @@ import { playBeaconSound } from './audio.js';
 /**
  * The bubble that meets the walker at SP0, before any beacon has been found:
  * the mission, told spotty, because the line is bad rather than the sender.
+ *
+ * The sender's feelings are spelled with emoji, sparingly: one per line at
+ * most, on the words that carry the weight — the apology, the promise, the
+ * thanks. They are picked from the astral planes (each one two halves of a
+ * character in a JavaScript string), and `hud.js` types them a cluster at a
+ * time so they land whole rather than as the boxes an emoji split down the
+ * middle makes. The line noise never touches them either: it swaps letters
+ * inside runs of A-Z only.
  */
 export const SPAWN_TRANSMISSION = [
-  'Can you hear me? The teleport held. Good.',
+  'Can you hear me? 📡 The teleport held. Good.',
   'You are disoriented. That is the teleport. It fades. Listen instead.',
   'You were sent here to bring the beacons back online. All of them.',
   'One stands near where you fell. Find it. That is the first step.',
@@ -61,34 +69,34 @@ export const SPAWN_TRANSMISSION = [
  */
 export const TRANSMISSIONS = [
   [
-    'You lit it. The grid stirs. I have recipes queued — they are in your journal now.',
-    'I am sorry. You are flesh in that world: it will want feeding, and it can be hurt.',
+    'You lit it. 💠 The grid stirs. I have recipes queued — they are in your journal now.',
+    'I am sorry. 💔 You are flesh in that world: it will want feeding, and it can be hurt.',
     'The creatures are worst after dark. Do not hide from them. Essence is what they pay.',
-    'Find the second beacon. Build a shelter before you light it. Promise me.'
+    'Find the second beacon. Build a shelter before you light it. Promise me. 🤝'
   ],
   [
-    'Two of five. The world is waking past this valley.',
+    'Two of five. 🌄 The world is waking past this valley.',
     'The chaos you see has a history. It was made, not born. More of it once you are ready.',
     'You will want to farm: sow seeds on tilled soil beside water, and the wheat will rise.',
-    'More recipes are in the journal. The next beacon is farther out. Be brave.'
+    'More recipes are in the journal. The next beacon is farther out. Be brave. 💪'
   ],
   [
     'Three. The far grid hums now, and the creatures with it.',
-    'Where I come from, this was the part that went wrong. We are out of second chances.',
+    'Where I come from, this was the part that went wrong. We are out of second chances. 🕯',
     'Iron will carry you farther than wood ever did. More is in the journal.',
     'The next beacon stands at the edge of everything I can see for you.'
   ],
   [
     'Four! One left, and it is the farthest. Listen.',
     'This time will be different for this world. I have staked everything on it.',
-    'Diamond cuts whatever the last valley holds between you and the finish.',
-    'Find it. Finish it.'
+    'Diamond cuts whatever the last valley holds between you and the finish. 💎',
+    'Find it. Finish it. 🔥'
   ],
   [
-    'Five. All five.',
+    'Five! ... All five! 🎉 ... 🎉 ... 🎉 ... 🎉!',
     'The teleport lattice is whole. You can go home a hero, and the way stays open.',
-    'Or stay. Finish the base. Make it ready for the colonizers behind you.',
-    'Whatever you choose: thank you.'
+    'Or stay. Finish the base. Make it ready for the colonizers behind you. 🏠',
+    'Whatever you choose: thank you. 🙏'
   ]
 ];
 
