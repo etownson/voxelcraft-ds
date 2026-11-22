@@ -141,8 +141,8 @@ import {
   stacksMergeable, waterCanOccupy, waterLevel, waterSurfaceHeight
 } from './src/blocks.js';
 import {
-  World, clearWorldDirty, isWorldDirty, markWorldDirty, meshChunk, onChunkMeshed,
-  setBlockEntityFactory
+  clearWorldDirty, isWorldDirty, markWorldDirty, meshChunk, onChunkMeshed,
+  setBlockEntityFactory, world
 } from './src/chunks.js';
 import {
   AIR_ACCEL, B, BLOCK_ENTITY_TICK_RANGE, CHUNK_SIZE, COLLISION_EPSILON, DAY_LENGTH_SECONDS,
@@ -9798,8 +9798,6 @@ window.addEventListener('visibilitychange', () => {
 /* ============================================================
    21. MAIN ANIMATION LOOP AND DEBUG HOOKS
    ============================================================ */
-
-const world = new World(WORLD_SEED);
 
 const loadedSave = readSavedWorld();
 if (loadedSave) {

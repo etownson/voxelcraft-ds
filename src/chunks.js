@@ -16,7 +16,7 @@ import { BLOCKS, isWater } from './blocks.js';
 import {
   B, CHUNK_AREA, CHUNK_BUDGET_MS, CHUNK_SIZE, CHUNK_VOLUME, DATA_RADIUS, LIGHT_MAX,
   RENDER_DISTANCE, SEA_LEVEL, UNLOAD_RADIUS, WATER_NEIGHBORS, WATER_REMESH_BUDGET,
-  WATER_REMESH_MS, WORLD_HEIGHT, blockIndex, chunkKey
+  WATER_REMESH_MS, WORLD_HEIGHT, WORLD_SEED, blockIndex, chunkKey
 } from './config.js';
 import { computeChunkLightLocal, propagateSeeds, updateLightForEdit } from './lighting.js';
 import { buildChunkMesh } from './mesh.js';
@@ -907,3 +907,14 @@ export class World {
     return SEA_LEVEL;
   }
 }
+
+/**
+ * The one world. Every function in this file is a function of a world, in and
+ * out, and none of them reads this line — but the layers above need the very
+ * object those functions get handed, and used to keep it up there and pass it
+ * back down. A world is decided by its seed alone, and the seed is configured,
+ * so the decision belongs down here beside the class rather than up there:
+ * nothing in a constructor but empty maps and counters, so nothing happens at
+ * load beyond deciding which world the game is standing on.
+ */
+export const world = new World(WORLD_SEED);
