@@ -48,8 +48,8 @@ const BUBBLE_FADE = 3;
 const BUBBLE_REACH = 0.9;
 const BUBBLE_REACH_BELOW = 0.4;
 const BUBBLE_REACH_ABOVE = 2.2;
-/** A bubble's drawn size, in world units. Half a block across. */
-const BUBBLE_SCALE = 0.21;
+/** A bubble's drawn size, in world units. A quarter block across. */
+const BUBBLE_SCALE = 0.105;
 
 /* ---------- The running total ---------- */
 
