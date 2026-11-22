@@ -97,7 +97,7 @@ You understand the following from the transmission:
 | Leather leggings      |
 | Leather boots         |
   
-## —  
+—  
 ## Beacon Number 3 Transmission  
 You understand the following from the transmission:  
 - More of what happened in the world you came from that makes it urgent for you to prepare this world for colonization  
@@ -118,7 +118,7 @@ You understand the following from the transmission:
 | Iron helmet     |
 | Iron chestplate |
 | Iron leggings   |
-| Iron bootss     |
+| Iron boots      |
   
 —  
 ## Beacon Number 4 Transmission  
