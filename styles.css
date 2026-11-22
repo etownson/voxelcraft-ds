@@ -207,7 +207,29 @@ html, body {
   font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
   color: #7fe3ef; margin-bottom: 4px;
 }
-#transmission p { margin: 4px 0; }
+/* Each line of a transmission is its own thought, and the transmitter pauses
+   between them. The gap is the pause: enough that a new sentence does not look
+   like the tail of the one before it. */
+#transmission .transmission-lines {
+  display: flex; flex-direction: column; gap: 15px;
+}
+#transmission p { margin: 0; }
+/* The cursor of the line being typed: it rides the end of the words and goes
+   away when the line finishes. */
+#transmission .transmission-caret { color: #7fe3ef; animation: caret-blink 0.9s steps(1, end) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+/* The dialing spinner: it rides the connect line while only the carrier is up,
+   and comes out with the dialing words the moment the line connects. */
+#transmission .transmission-spinner {
+  display: inline-block; width: 9px; height: 9px; margin-left: 7px;
+  border: 2px solid rgba(127, 227, 239, 0.28); border-top-color: #7fe3ef;
+  border-radius: 50%; vertical-align: -1px;
+  animation: transmission-spin 0.75s linear infinite;
+}
+@keyframes transmission-spin { to { transform: rotate(360deg); } }
+/* What the body of the panel holds while the line is dialing: something there,
+   rather than a box of nothing under one line of text. */
+#transmission .transmission-waiting { color: rgba(159, 180, 199, 0.5); }
 /* The panel no longer goes away on its own, so it says how it goes away. */
 #transmission .transmission-hint {
   margin-top: 7px; font-size: 11px; letter-spacing: 0.06em;

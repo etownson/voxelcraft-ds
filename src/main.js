@@ -447,13 +447,24 @@ updateDebug();
 rememberSavedWorld((loadedSave && loadedSave.savedAt) || 0);
 initSaveUi(Boolean(loadedSave));
 
+/** The arrival transmission is armed at boot and spent by the frame loop. */
+let arrivalWaiting = false;
+let arrivalAt = 0;
+/** The beat of quiet between the overlay lifting and the line dialing. */
+const ARRIVAL_DELAY_MS = 550;
+
 /* A world nobody has walked yet opens the way the design opens it: the walker
    starts with no items but exactly one activation's worth of essence —
    beacon 1's price — and the transmitter's first bubble arrives over the
-   landing. A saved world keeps its own purse and its own quiet. */
+   landing. A saved world keeps its own purse and its own quiet.
+
+   The bubble itself waits for the game to begin: the start overlay sits above
+   the whole HUD, so a transmission fired at boot is words nobody sees, and the
+   audio clock is stopped until the first click, so the line would dial itself in
+   a heap. It lands a beat after the overlay lifts. */
 if (!loadedSave) {
   addEssence(startingEssence());
-  showTransmission(SPAWN_TRANSMISSION);
+  arrivalWaiting = true;
 }
 renderMission();
 
@@ -1936,6 +1947,17 @@ function animate(now) {
   const dt = Math.min(Math.max(rawDt, 0), 0.1);
 
   updateGamepad(dt);
+
+  /* The arrival transmission lands once the walker is really in the world: the
+     overlay hides the HUD, and the audio context only wakes on the click that
+     lifts it, so the dial tone would otherwise be spent unheard. */
+  if (arrivalWaiting && overlayEl.classList.contains('hidden')) {
+    if (!arrivalAt) arrivalAt = now + ARRIVAL_DELAY_MS;
+    else if (now >= arrivalAt) {
+      arrivalWaiting = false;
+      showTransmission(SPAWN_TRANSMISSION);
+    }
+  }
 
   // The pause overlay and the inventory/crafting screens freeze the whole
   // world, Minecraft-style. Rendering, chunk streaming, pad menu navigation,

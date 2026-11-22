@@ -897,6 +897,56 @@ function audioTone(config = {}) {
   oscillator.onended = () => audioEndVoice(voice);
 }
 
+/** Whether the mix can actually be heard: a context that has never had a user
+ *  gesture is suspended, and its clock is stopped, so a sequence scheduled into
+ *  it would arrive in a heap the moment the player clicks. Callers that stage
+ *  several sounds ahead of time ask this first and stay quiet instead. */
+function audioIsAudible() {
+  return !!audioCtx && !audioMuted && audioCtx.state === 'running';
+}
+
+/**
+ * The static half of a synthesised sound: the noise bed of `audioNoiseHit`, but
+ * centred, dry, and schedulable ahead of time like `audioTone`. The two exist
+ * because a sound that is dialing a line has no position and no room around it,
+ * and a handshake is a whole sequence of events rather than one strike.
+ */
+function audioStatic(config = {}) {
+  if (!audioCtx || !audioNoiseBuffer) return;
+  const now = audioNumber(config.now, audioCtx.currentTime);
+  const duration = Math.max(0.03, audioNumber(config.duration, 0.12));
+  const volume = Math.max(0.0002, audioNumber(config.volume, 0.08));
+  const voice = audioBeginVoice(duration, config.priority ?? 1);
+  if (!voice) return;
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = audioNoiseBuffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = config.type || 'bandpass';
+  const from = Math.max(40, audioNumber(config.freq, 1200));
+  const to = Math.max(40, audioNumber(config.freqEnd, from));
+  filter.frequency.setValueAtTime(from, now);
+  if (Math.abs(to - from) > 0.5) {
+    filter.frequency.exponentialRampToValueAtTime(to, now + duration);
+  }
+  filter.Q.value = audioNumber(config.q, 1);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(volume, now + Math.min(0.02, duration * 0.3));
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioConnectOutput(0, config.bus || 'ui', config.reverb ?? 0));
+
+  const maxOffset = Math.max(0.01, audioNoiseBuffer.duration - duration - 0.02);
+  source.start(now, Math.random() * maxOffset, duration);
+  source.stop(now + duration + 0.03);
+  source.onended = () => audioEndVoice(voice);
+}
+
 /* ---------- Ambient mix: wind, water, caves, fire, underwater ---------- */
 
 function ambientIsOpenSky() {
@@ -1122,6 +1172,95 @@ export function playBeaconSound() {
     volume: 0.07, bus: 'ui', priority: 0
   });
   return !!audioCtx && !audioMuted;
+}
+
+/**
+ * How long `playTransmissionHandshakeSound` takes, so the page that shows the
+ * panel knows when the line is actually connected. Audio owns the shape of the
+ * handshake; the HUD only owns the words.
+ */
+export const TRANSMISSION_HANDSHAKE_MS = 2400;
+
+export function playTransmissionHandshakeSound() {
+  // Nothing else in the game dials a line, so this is built outright rather than
+  // sampled: three low womps of carrier — the machine waking up with nobody on
+  // the other end — and then a little under a second and a half of modem, which
+  // is what says the far end has answered and a speed has been agreed.
+  if (!audioIsAudible()) return false;
+  const start = audioCtx.currentTime + 0.02;
+
+  for (let i = 0; i < 3; i++) {
+    const now = start + i * 0.32;
+    audioTone({
+      type: 'sawtooth', from: 152, to: 86, duration: 0.26,
+      filterType: 'lowpass', filterFreq: 520, filterQ: 1.2,
+      volume: 0.09, now, bus: 'ui', priority: 1
+    });
+    audioTone({
+      type: 'sine', from: 74, to: 52, duration: 0.3,
+      volume: 0.06, now, bus: 'ui', priority: 1
+    });
+  }
+
+  // The handshake proper: an answer tone, a carrier held flat, a falling sweep,
+  // and the static wash of two machines arguing their way up to 14.4k.
+  const dial = start + 1.06;
+  audioTone({
+    type: 'sine', from: 980, to: 1240, duration: 0.16,
+    volume: 0.05, now: dial, bus: 'ui', priority: 1
+  });
+  audioTone({
+    type: 'square', from: 2100, to: 2100, duration: 0.14,
+    filterType: 'lowpass', filterFreq: 2600,
+    volume: 0.022, now: dial + 0.2, bus: 'ui', priority: 1
+  });
+  audioStatic({
+    type: 'bandpass', freq: 1100, freqEnd: 2600, q: 1.1, duration: 0.14,
+    volume: 0.05, now: dial + 0.36, bus: 'ui', priority: 1
+  });
+  audioTone({
+    type: 'sine', from: 1800, to: 620, duration: 0.2,
+    volume: 0.04, now: dial + 0.5, bus: 'ui', priority: 1
+  });
+  audioTone({
+    type: 'square', from: 1400, to: 2300, duration: 0.18,
+    filterType: 'bandpass', filterFreq: 1800, filterQ: 1.6,
+    volume: 0.02, now: dial + 0.62, bus: 'ui', priority: 1
+  });
+  audioStatic({
+    type: 'bandpass', freq: 2400, freqEnd: 900, q: 0.9, duration: 0.3,
+    volume: 0.07, now: dial + 0.74, bus: 'ui', priority: 1
+  });
+  audioStatic({
+    type: 'highpass', freq: 900, freqEnd: 1700, q: 0.7, duration: 0.28,
+    volume: 0.05, now: dial + 1.04, bus: 'ui', priority: 1
+  });
+  audioTone({
+    type: 'triangle', from: 1500, to: 1500, duration: 0.12,
+    volume: 0.025, now: dial + 1.16, bus: 'ui', priority: 1
+  });
+  return true;
+}
+
+export function playKeyClickSound() {
+  // One keystroke of the keyboard the transmitter is working: the plastic tick
+  // on top, and the small thock of the key bottoming out underneath it. It has
+  // to survive twenty of these a second, so it is short, dry and quiet, and it
+  // is the least important voice in the mix — a block break outranks it every
+  // time, which is the right way round for a sound nobody should notice.
+  if (!audioIsAudible()) return false;
+  const now = audioCtx.currentTime;
+  // Never the same keystroke twice: a machine-gun click is instantly obvious.
+  const jitter = 0.85 + Math.random() * 0.35;
+  audioStatic({
+    type: 'bandpass', freq: 2600 * jitter, freqEnd: 1500 * jitter, q: 1.3,
+    duration: 0.03, volume: 0.05, now, bus: 'ui', priority: 0
+  });
+  audioTone({
+    type: 'triangle', from: 240 * jitter, to: 130 * jitter, duration: 0.04,
+    volume: 0.03, now, bus: 'ui', priority: 0
+  });
+  return true;
 }
 
 export function playUiClickSound() {

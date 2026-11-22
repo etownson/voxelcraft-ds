@@ -20,8 +20,9 @@
 
 import { clearTarget, updateTarget } from './aim.js';
 import {
-  playChestCloseSound, playChestOpenSound, playUiClickSound, playUiCloseSound, playUiOpenSound,
-  toggleAudioMuted
+  playChestCloseSound, playChestOpenSound, playKeyClickSound, playTransmissionHandshakeSound,
+  playUiClickSound, playUiCloseSound, playUiOpenSound,
+  toggleAudioMuted, TRANSMISSION_HANDSHAKE_MS
 } from './audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, CHEST_SLOTS, ITEMS,
@@ -1568,7 +1569,20 @@ export function showToast(text) {
    whole of it, even the part that lands while they are running, so nothing
    unspeaks it on a timer. The player ends it — Esc, or B on the pad — and a
    newer transmission supersedes an older one mid-sentence, the token being what
-   drops the lines of the old one that had not landed yet. */
+   drops the lines of the old one that had not landed yet.
+
+   The line is dialled before it is spoken: three womps of carrier and a burst of
+   modem over the connect line, and only then does the transmitter start typing.
+   The words come one keystroke at a time, slow and with the keys audible, so the
+   panel reads as somebody at a keyboard at the far end rather than a caption. */
+
+/** How long a keystroke takes, and how much it varies. Deliberately slow: the
+   transmitter is working a machine, not thinking at the speed of the page. */
+const TRANSMISSION_CHAR_MS = 26;
+const TRANSMISSION_CHAR_JITTER_MS = 22;
+/** The breath taken after a full stop, and between one line and the next. */
+const TRANSMISSION_STOP_MS = 240;
+const TRANSMISSION_LINE_MS = 900;
 let transmissionToken = 0;
 
 export function showTransmission(lines) {
@@ -1576,23 +1590,74 @@ export function showTransmission(lines) {
   transmissionEl.innerHTML = '';
   const from = document.createElement('div');
   from.className = 'transmission-from';
-  from.textContent = 'Transmission \u2014 the line is spotty';
+  from.textContent = 'Dialing \u2014 carrier only';
+  /* A spinner while there is only a carrier tone: the panel would otherwise be
+     one line of text floating over nothing, which reads as a caption rather
+     than as a machine working. It is a child of the connect line, so writing
+     that line's text out again is also what stops it. */
+  const spinner = document.createElement('span');
+  spinner.className = 'transmission-spinner';
+  from.append(spinner);
   const said = document.createElement('div');
   said.className = 'transmission-lines';
+  const waiting = document.createElement('div');
+  waiting.className = 'transmission-waiting';
+  waiting.textContent = '\u00b7 \u00b7 \u00b7';
+  said.append(waiting);
   const hint = document.createElement('div');
   hint.className = 'transmission-hint';
   hint.textContent = 'Esc or B closes';
   transmissionEl.append(from, said, hint);
   transmissionEl.classList.add('active');
+  playTransmissionHandshakeSound();
 
-  lines.forEach((line, i) => {
+  window.setTimeout(() => {
+    if (token !== transmissionToken) return;
+    // The line is up: the spinner goes with the dialing words, and the waiting
+    // dots go with them both, because the transmitter is at the keyboard now.
+    from.textContent = 'Connected 14.4k \u2014 the line is spotty';
+    waiting.remove();
+  }, TRANSMISSION_HANDSHAKE_MS);
+
+  let at = TRANSMISSION_HANDSHAKE_MS;
+  for (const line of lines) {
     window.setTimeout(() => {
       if (token !== transmissionToken) return;
-      const p = document.createElement('p');
-      p.textContent = line;
-      said.append(p);
-    }, 400 + i * 2400);
-  });
+      typeTransmissionLine(said, line, token);
+    }, at);
+    at += TRANSMISSION_LINE_MS +
+      line.length * (TRANSMISSION_CHAR_MS + TRANSMISSION_CHAR_JITTER_MS / 2);
+  }
+}
+
+/**
+ * Types one line into the panel, a character at a time, until the transmission
+ * it belongs to is superseded or closed. Spaces are silent — nothing clicks when
+ * the thumb hits the space bar — and a full stop costs the typist a beat.
+ */
+function typeTransmissionLine(said, text, token) {
+  const p = document.createElement('p');
+  const caret = document.createElement('span');
+  caret.className = 'transmission-caret';
+  caret.textContent = '\u258b';
+  p.append(caret);
+  said.append(p);
+
+  let i = 0;
+  const keystroke = () => {
+    if (token !== transmissionToken) return;
+    if (i >= text.length) {
+      caret.remove();
+      return;
+    }
+    const char = text[i++];
+    caret.before(document.createTextNode(char));
+    if (char !== ' ') playKeyClickSound();
+    let wait = TRANSMISSION_CHAR_MS + Math.random() * TRANSMISSION_CHAR_JITTER_MS;
+    if ('.!?'.includes(char)) wait += TRANSMISSION_STOP_MS;
+    window.setTimeout(keystroke, wait);
+  };
+  keystroke();
 }
 
 /** Whether the transmitter is still talking on the page. */
