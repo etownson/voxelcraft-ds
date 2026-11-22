@@ -422,6 +422,10 @@ const itemSpriteMaterials = new Map();
 const itemEntities = [];
 let itemEntitySerial = 0;
 
+/* Whose pack a touched drop goes into, and the only way this layer can fill
+   anything: it asks, and is told back how much did not fit. */
+let itemPickup = null;
+
 
 function itemSpriteMaterial(itemId) {
   let material = itemSpriteMaterials.get(itemId);
@@ -520,8 +524,8 @@ function updateItemEntities(dt) {
       }
       entity.vel.set(0, 0, 0);
 
-      if (distance <= 0.6) {
-        const leftover = addItemToInventory(entity.itemId, entity.count, entity.dur);
+      if (distance <= 0.6 && itemPickup) {
+        const leftover = itemPickup(entity.itemId, entity.count, entity.dur);
         if (leftover <= 0) {
           playPickupSound();
           removeItemEntity(i);
@@ -564,6 +568,9 @@ function updateItemEntities(dt) {
     entity.mesh.rotation.y += dt * 2.6;
   }
 }
+
+/** Handed once, at bootstrap, whose pack a touched drop empties itself into. */
+function setItemPickup(sink) { itemPickup = sink; }
 
 /* ---------- Voxel raycast and target outline ---------- */
 
@@ -4594,6 +4601,9 @@ setBlockEntityView({
     }
   }
 });
+
+/* Drops go into the pack, and the pack says how much did not fit. */
+setItemPickup((itemId, count, dur) => addItemToInventory(itemId, count, dur));
 
 /* The held item's frame: the view model reads the game only through this. */
 function heldFrame() {
