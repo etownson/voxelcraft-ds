@@ -37,7 +37,7 @@ import {
   clearCursorStack, craftCurrent, cursorCarried, dropEmptyCursorStack, returnCursorStack,
   setCursorStack
 } from './cursor.js';
-import { essenceCount } from './essence.js';
+import { essenceCount, grantEssence } from './essence.js';
 import { respawnPlayer } from './health.js';
 import { ITEM_ICONS } from './icons.js';
 import {
@@ -1089,6 +1089,19 @@ function toggleGiveScreen() {
   }
 }
 
+/* How much one press of the debug essence key hands out. */
+const DEBUG_ESSENCE_GRANT = 5;
+
+/**
+ * Shift+G grants essence. The give shelf has no tile for it because essence
+ * never sits in a slot, so the shelf's own key, shifted, is where handing it
+ * out lives.
+ */
+function grantDebugEssence() {
+  const total = grantEssence(DEBUG_ESSENCE_GRANT);
+  showToast('+' + DEBUG_ESSENCE_GRANT + ' Essence \u00b7 ' + total);
+}
+
 function screenGridFor(container) {
   if (container === 'inventory') return inventory;
   if (container === 'armor') return armorSlots;
@@ -1359,7 +1372,10 @@ window.addEventListener('keydown', (event) => {
     toggleInventory();
   } else if (isGiveKey) {
     event.preventDefault();
-    toggleGiveScreen();
+    // Shift+G is the shelf's own key shifted: it hands out essence, which has
+    // no shelf tile because it never sits in a slot.
+    if (event.shiftKey) grantDebugEssence();
+    else toggleGiveScreen();
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();
