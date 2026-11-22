@@ -185,8 +185,9 @@ import {
 } from './src/held.js';
 import { ITEM_ICONS } from './src/icons.js';
 import {
-  HOTBAR_SIZE, INVENTORY_SIZE, armorDefense, armorSlots, currentSlot, equipSlotFor, equipStack,
-  inventory, selectSlot, unequipSlot
+  HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
+  consumeSelectedItem, currentSlot, emptyHand, equipSlotFor, equipStack, getSelectedStack,
+  inventory, inventoryHasRoom, paintPack, selectSlot, setPackPainter, unequipSlot
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -246,33 +247,6 @@ function craftingContext() {
 function currentCraftRecipe() {
   const context = craftingContext();
   return context ? matchRecipe(context.grid, context.size) : null;
-}
-
-/* The pack is drawn in more than one place — the hotbar, and whichever screen is
-   showing the same slots — and which screens those are is not the pack's
-   business. The page hands one painter over at bootstrap; until then the pack
-   can change and nothing notices. */
-let packPainter = () => {};
-function setPackPainter(paint) { packPainter = paint; }
-
-/**
- * Redraws the pack wherever it is being shown. Anything that has just moved a
- * stack calls this and knows nothing about where the picture of it gets drawn.
- */
-function paintPack() {
-  packPainter();
-}
-
-function inventoryHasRoom(itemId, count) {
-  const def = ITEMS.get(itemId);
-  if (!def) return false;
-  let room = 0;
-  for (const slot of inventory) {
-    if (!slot) room += def.stack;
-    else if (slot.id === itemId) room += def.stack - slot.count;
-    if (room >= count) return true;
-  }
-  return false;
 }
 
 /**
@@ -362,50 +336,6 @@ function countInventoryItem(itemId) {
     if (slot && slot.id === itemId) total += slot.count;
   }
   return total;
-}
-
-function addItemToInventory(itemId, count, dur) {
-  const def = ITEMS.get(itemId);
-  if (!def || count <= 0) return count;
-  const maxStack = def.stack;
-  const probe = makeStack(itemId, count, dur);
-  let remaining = count;
-
-  for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
-    const slot = inventory[i];
-    if (!slot || !stacksMergeable(probe, slot) || slot.count >= maxStack) continue;
-    const moved = Math.min(remaining, maxStack - slot.count);
-    slot.count += moved;
-    remaining -= moved;
-  }
-
-  for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
-    if (inventory[i]) continue;
-    const moved = Math.min(remaining, maxStack);
-    inventory[i] = makeStack(itemId, moved, dur);
-    remaining -= moved;
-  }
-
-  if (remaining !== count) paintPack();
-  return remaining;
-}
-
-function getSelectedStack() {
-  return inventory[currentSlot()] || null;
-}
-
-function consumeSelectedItem(count = 1) {
-  const stack = getSelectedStack();
-  if (!stack) return false;
-  stack.count -= count;
-  if (stack.count <= 0) emptyHand();
-  paintPack();
-  return true;
-}
-
-/** The stack the hand is out with is gone, whether spent or worn out. */
-function emptyHand() {
-  inventory[currentSlot()] = null;
 }
 
 /** Plain readable snapshot of a stack, used by the debug hooks. */
