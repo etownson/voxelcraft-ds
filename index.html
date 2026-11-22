@@ -166,6 +166,56 @@ import {
    5. CHUNK DATA AND CHUNK MANAGER
    ============================================================ */
 
+/* Four things that let the chunk layer stop reaching up.
+
+   Generation fills this layer, lighting and the mesher read it, and a block
+   edit has to be remembered by persistence — but all three of those sit above
+   it, and a bottom layer that calls the top is an import cycle with no bundler
+   around to untangle it. So nothing above is named here: the first three are
+   ways for a higher layer to leave something down here for a lower one to use,
+   and the last is a call that was pointing the wrong way. */
+
+/**
+ * Whether the world differs from what was last written to storage. Everything
+ * that changes what a save would contain — a block placed, a chest's contents,
+ * a crop that grew — says so here, and persistence reads it from up there.
+ */
+let worldDirty = false;
+function markWorldDirty() { worldDirty = true; }
+function isWorldDirty() { return worldDirty; }
+function clearWorldDirty() { worldDirty = false; }
+
+/**
+ * A chest or a furnace keeps a state object beside its block id, and what lives
+ * in that object — how many slots, whether something is burning — is the
+ * inventory's business, not the chunk's. The inventory hands the recipe down
+ * when it loads; until then nothing can have placed a container.
+ */
+let blockEntityFactory = null;
+function setBlockEntityFactory(make) { blockEntityFactory = make; }
+
+/**
+ * Who wants to hear that a chunk has just been meshed. The mob layer gives a
+ * freshly meshed chunk its herd, and the mesher has no business knowing that
+ * animals are a thing.
+ */
+const chunkMeshedListeners = new Set();
+function onChunkMeshed(listener) { chunkMeshedListeners.add(listener); }
+function notifyChunkMeshed(chunk) {
+  for (const listener of chunkMeshedListeners) listener(chunk);
+}
+
+/**
+ * The one way a chunk is given its geometry. The mesher is a function of a
+ * world and a chunk and nothing else — it builds faces and stops — so the
+ * announcement that there is now something solid to stand on belongs out here,
+ * with whoever had to ask for the mesh in the first place.
+ */
+function meshChunk(world, chunk) {
+  buildChunkMesh(world, chunk);
+  notifyChunkMeshed(chunk);
+}
+
 class Chunk {
   constructor(cx, cz) {
     this.cx = cx;
@@ -405,7 +455,7 @@ class World {
     } else {
       if (oldBlock.blockEntity !== newBlock.blockEntity) this.blockEntities.delete(key);
       if (!this.blockEntities.has(key)) {
-        this.blockEntities.set(key, createBlockEntity(newBlock.blockEntity));
+        this.blockEntities.set(key, blockEntityFactory(newBlock.blockEntity));
       }
     }
     if (facing) this.facings.set(key, facing);
@@ -446,7 +496,7 @@ class World {
     const key = gx + ',' + gy + ',' + gz;
     let entity = this.blockEntities.get(key);
     if (!entity && kind) {
-      entity = createBlockEntity(kind);
+      entity = blockEntityFactory(kind);
       this.blockEntities.set(key, entity);
     }
     return entity ?? null;
@@ -477,7 +527,7 @@ class World {
     const lx = gx - cx * CHUNK_SIZE;
     const lz = gz - cz * CHUNK_SIZE;
     chunkOverrides.set(blockIndex(lx, gy, lz), id);
-    markSaveDirty();
+    markWorldDirty();
   }
 
   /**
@@ -573,7 +623,7 @@ class World {
     for (const key of dirty) {
       const chunk = this.chunks.get(key);
       if (!chunk || !chunk.generated || !chunk.meshed) continue;
-      buildChunkMesh(this, chunk);
+      meshChunk(this, chunk);
       this.lightDirty.delete(key);
     }
     return dirty.size;
@@ -642,7 +692,7 @@ class World {
       this.flowRemesh.delete(key);
       const chunk = this.chunks.get(key);
       if (!chunk || !chunk.generated || !chunk.meshed) continue;
-      buildChunkMesh(this, chunk);
+      meshChunk(this, chunk);
       this.lightDirty.delete(key);
       built++;
       // Checking the clock only after a mesh keeps it honest: the loop cannot
@@ -662,7 +712,7 @@ class World {
     for (const key of dirty) {
       const chunk = this.chunks.get(key);
       if (!chunk || !chunk.generated || !chunk.meshed) continue;
-      buildChunkMesh(this, chunk);
+      meshChunk(this, chunk);
       this.lightDirty.delete(key);
     }
   }
@@ -789,7 +839,7 @@ class World {
         this.spreadLightAround(chunk.cx, chunk.cz);
         chunk.lightSettled = true;
       }
-      buildChunkMesh(this, chunk);
+      meshChunk(this, chunk);
       chunk.group.visible = true;
       this.lightDirty.delete(chunkKey(chunk.cx, chunk.cz));
       this.meshedThisFrame++;
@@ -808,7 +858,7 @@ class World {
       const chunk = this.chunks.get(key);
       this.lightDirty.delete(key);
       if (!chunk || !chunk.generated || !chunk.meshed) continue;
-      buildChunkMesh(this, chunk);
+      meshChunk(this, chunk);
       rebuilt++;
       if (performance.now() - start >= budgetMs) break;
     }
@@ -1448,7 +1498,6 @@ function buildChunkMesh(world, chunk) {
   commitChunkMesh(chunk, cutout, cutoutMaterial, 'cutout');
   commitChunkMesh(chunk, water, waterMaterial, 'water');
   chunk.meshed = true;
-  onChunkMeshed(chunk);
 }
 
 /**
@@ -3304,7 +3353,7 @@ function swapHeldFor(itemId) {
     inventory[selectedSlot] = freshStack(itemId);
   }
   renderHotbar();
-  markSaveDirty();
+  markWorldDirty();
   return true;
 }
 
@@ -3915,6 +3964,10 @@ function createBlockEntity(kind) {
   return { kind, slots: [null, null, null] };
 }
 
+/* The chunk layer makes room for a container without knowing what a container
+ * holds, so this is the point where the shape of one goes down to it. */
+setBlockEntityFactory(createBlockEntity);
+
 function isFurnaceBlock(blockId) {
   const block = BLOCKS[blockId];
   return !!block && block.blockEntity === 'furnace';
@@ -3955,7 +4008,7 @@ function tickFurnace(state, dt) {
     state.burnTotal = burn;
     fuel.count -= 1;
     if (fuel.count <= 0) state.slots[FURNACE_FUEL] = null;
-    markSaveDirty();
+    markWorldDirty();
   }
   if (state.burnTime <= 0) {
     state.cookTime = Math.max(0, state.cookTime - dt);
@@ -4034,7 +4087,7 @@ function updateBlockEntities(dt) {
       if (!stillThere) {
         world.blockEntities.delete(key);
         world.facings.delete(key);
-        markSaveDirty();
+        markWorldDirty();
         continue;
       }
     }
@@ -4049,7 +4102,7 @@ function updateBlockEntities(dt) {
     }
     if (finished) {
       playFurnaceFinishSound(x + 0.5, y + 0.5, z + 0.5);
-      markSaveDirty();
+      markWorldDirty();
       if (key === openKey) renderScreen();
     }
     if (key === openKey) updateFurnaceGauges(state);
@@ -4724,7 +4777,7 @@ function prepareSpawnChunks(cx, cz) {
 
   const chunk = world.getChunk(cx, cz);
   chunk.lightSettled = true;
-  buildChunkMesh(world, chunk);
+  meshChunk(world, chunk);
   chunk.group.visible = true;
 }
 
@@ -6740,10 +6793,10 @@ function rollChunkHerd(chunk) {
   return spawned;
 }
 
-/** Gives a freshly meshed chunk its herd, if the player is close enough for it. */
-function onChunkMeshed(chunk) {
-  rollChunkHerd(chunk);
-}
+/* A freshly meshed chunk rolls for its herd, and that is the whole of what the
+   mob layer does with the event: the registration is the only thing the mesher
+   has to know about, so it never learns that animals exist. */
+onChunkMeshed(rollChunkHerd);
 
 /**
  * Keeps animals coming while the player travels. Chunk meshing alone cannot do
@@ -6865,7 +6918,7 @@ function wearArmour(absorbed) {
   showToast((item ? item.name : 'Armour') + ' broke');
   playToolBreakSound();
   renderArmorBar();
-  markSaveDirty();
+  markWorldDirty();
 }
 
 function damagePlayer(amount, cause = 'unknown') {
@@ -6958,7 +7011,7 @@ function respawnPlayer() {
   // A death and a respawn change the save even when the world itself does not, so
   // the refilled stomach has to be written: without this, closing the tab before
   // the next autosave brings back the empty bar the save was holding.
-  markSaveDirty();
+  markWorldDirty();
   damageFlashTimer = 0;
   damageFlashEl.style.opacity = '0';
   deathScreenEl.classList.add('hidden');
@@ -7068,7 +7121,7 @@ function tryEatSelectedItem() {
   renderHunger();
   triggerHeldSwing();
   playEatSound();
-  markSaveDirty();
+  markWorldDirty();
   return true;
 }
 
@@ -7650,7 +7703,7 @@ function giveFromShelf(index, button) {
   const wanted = button === 2 ? 1 : (def ? def.stack : 1);
   const leftover = addItemToInventory(itemId, wanted);
   const added = wanted - leftover;
-  if (added > 0) markSaveDirty();
+  if (added > 0) markWorldDirty();
 
   const name = def ? def.name : itemId;
   if (added <= 0) showToast('No room in your pack');
@@ -8436,7 +8489,7 @@ function quickMoveStack(container, index) {
       armorSlots[wearInto] = source;
       sourceGrid[index] = null;
     }
-    if (container === 'furnace' || container === 'chest') markSaveDirty();
+    if (container === 'furnace' || container === 'chest') markWorldDirty();
     return;
   }
 
@@ -8459,7 +8512,7 @@ function quickMoveStack(container, index) {
         const rest = mergeStackInto(source, state.slots, 0, CHEST_SLOTS);
         if (rest <= 0) sourceGrid[index] = null;
         else source.count = rest;
-        markSaveDirty();
+        markWorldDirty();
         return;
       }
     }
@@ -8469,7 +8522,7 @@ function quickMoveStack(container, index) {
       const rest = mergeStackInto(source, state.slots, wantedFurnaceSlot, wantedFurnaceSlot + 1);
       if (rest <= 0) sourceGrid[index] = null;
       else source.count = rest;
-      markSaveDirty();
+      markWorldDirty();
       return;
     }
 
@@ -8490,15 +8543,15 @@ function quickMoveStack(container, index) {
   const remaining = mergeStackInto(source, targetArray, targetStart, targetEnd);
   if (remaining <= 0) sourceGrid[index] = null;
   else source.count = remaining;
-  if (container === 'furnace' || container === 'chest') markSaveDirty();
+  if (container === 'furnace' || container === 'chest') markWorldDirty();
 }
 
 function handleScreenSlotClick(container, index, button, shift) {
   const grid = screenGridFor(container);
   if (!grid) return;
-  if (container === 'furnace') markSaveDirty();
-  if (container === 'chest') markSaveDirty();
-  if (container === 'armor') markSaveDirty();
+  if (container === 'furnace') markWorldDirty();
+  if (container === 'chest') markWorldDirty();
+  if (container === 'armor') markWorldDirty();
 
   // Shift always quick-moves first, including out of the furnace result slot.
   if (button === 0 && shift) {
@@ -11257,13 +11310,8 @@ const startButton = document.getElementById('start-button');
 let lastSaveAt = 0;
 let lastSaveBytes = 0;
 let lastSaveError = null;
-let saveDirty = false;
 let saveDisabled = false;
 let autosaveTimer = AUTOSAVE_SECONDS;
-
-function markSaveDirty() {
-  saveDirty = true;
-}
 
 function serializeWorldSave() {
   const edits = {};
@@ -11347,7 +11395,7 @@ function saveWorld() {
     lastSaveAt = Date.now();
     lastSaveBytes = new Blob([json]).size;
     lastSaveError = null;
-    saveDirty = false;
+    clearWorldDirty();
     refreshSaveStatus();
     return true;
   } catch (err) {
@@ -11732,7 +11780,7 @@ window.__voxelcraft = {
       savedAt: lastSaveAt || null,
       bytes: lastSaveBytes,
       edits: world.overrides.size,
-      dirty: saveDirty,
+      dirty: isWorldDirty(),
       error: lastSaveError
     };
   },
@@ -11753,7 +11801,7 @@ window.__voxelcraft = {
     // Same guard the "New world" button uses: pagehide also writes a save, so
     // without this the wiped world comes straight back on the next load.
     saveDisabled = true;
-    saveDirty = false;
+    clearWorldDirty();
     lastSaveAt = 0;
     lastSaveBytes = 0;
     lastSaveError = null;
@@ -11806,14 +11854,14 @@ window.__voxelcraft = {
     // down with it rather than leaving an invisible cushion on an empty stomach.
     player.saturation = Math.min(player.saturation, player.hunger);
     renderHunger();
-    markSaveDirty();
+    markWorldDirty();
     return this.hunger();
   },
   /** Sets the hidden saturation counter, which can never exceed the food. */
   setSaturation(points) {
     player.saturation = clamp(Number(points) || 0, 0, player.hunger);
     renderHunger();
-    markSaveDirty();
+    markWorldDirty();
     return this.hunger();
   },
   /** Eats one bite of whatever food is held, as a right click would. */
@@ -12058,7 +12106,7 @@ window.__voxelcraft = {
     if (spare) inventory[Number(slotIndex)] = spare;
     renderArmorBar();
     renderHotbar();
-    markSaveDirty();
+    markWorldDirty();
     return this.armour();
   },
   /** Takes a piece off into the first free slot. False when the pack is full. */
@@ -12069,7 +12117,7 @@ window.__voxelcraft = {
     if (moved) {
       renderArmorBar();
       renderHotbar();
-      markSaveDirty();
+      markWorldDirty();
     }
     return moved;
   },
