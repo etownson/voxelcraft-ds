@@ -705,7 +705,8 @@ function audioSample(name, options = {}) {
   if (volume <= 0.001) return false;
 
   const pitch = clamp(
-    audioNumber(options.pitch, 1) * (0.97 + Math.random() * 0.06),
+    audioNumber(options.pitch, 1) *
+      (options.jitter === false ? 1 : 0.97 + Math.random() * 0.06),
     0.25,
     4
   );
@@ -1266,6 +1267,23 @@ export function playKeyClickSound() {
 export function playUiClickSound() {
   if (audioSample('event_ui_click', {
     spatial: false, volume: 0.5, bus: 'ui', priority: 0
+  })) return true;
+  audioTone({
+    type: 'triangle', from: 760, to: 680, duration: 0.06,
+    volume: 0.06, bus: 'ui', priority: 0
+  });
+  return !!audioCtx && !audioMuted;
+}
+
+/**
+ * The menu's own voice: the same neutral tick every time. It skips the pitch
+ * jitter the world's samples carry, because a sound that answers a choice must
+ * sound like one answer — the same click for Controls, Settings, Journal and
+ * Start, and nothing else layered on top of it.
+ */
+export function playMenuClickSound() {
+  if (audioSample('event_ui_click', {
+    spatial: false, volume: 0.5, bus: 'ui', priority: 0, jitter: false
   })) return true;
   audioTone({
     type: 'triangle', from: 760, to: 680, duration: 0.06,

@@ -727,10 +727,12 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   the beacons have transmitted. Start — or a click on the dark around the panel —
   locks the pointer and lets the walker go; the pad walks the choices with the
   D-pad or left stick and picks with A, while Start on the pad means resume.
-  Every choice answers with the neutral UI click — the same voice the hotbar
-  uses — and the menu is allowed no other sound: a pick that resumes the game
-  is spent, not a jump — held or tapped again at once — until the thumb has
-  been off A for a quiet moment
+  Every choice answers with one neutral click at a fixed pitch — not the
+  world's jittered sample — and a repeated pick inside a moment is swallowed,
+  so a doubled button event still sounds like a single answer. The menu is
+  allowed no other sound: a pick that resumes the game is spent, not a jump —
+  held or tapped again at once — until the thumb has been off A for a quiet
+  moment
 - While the menu has the page, its input belongs to the menu and never reaches the
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`

@@ -11,7 +11,7 @@
  * meant "back to the game", so it still means that here.
  */
 
-import { playUiClickSound } from './audio.js';
+import { playMenuClickSound } from './audio.js';
 import { buildJournalColumn } from './hud.js';
 import {
   PAD_BUTTON, gamepadState, gpAxis, overlayEl, padMenuDirection, padMenuRepeat,
@@ -31,6 +31,15 @@ const journalBody = document.getElementById('journal-menu-body');
 
 /** The choice the pad or the arrow keys are pointing at. */
 let selection = 'start';
+
+/* One pick, one answer. A controller can deliver the same choice twice — a pad
+   button and the keyboard key a mapping sends alongside it, or a button that
+   chatters across two polls — and two clicks for one press is exactly what the
+   menu must never sound like. A repeat of the same choice inside this window is
+   swallowed whole: no sound, no toggle. */
+const CHOICE_REPEAT_MS = 120;
+let lastChoice = '';
+let lastChoiceAt = 0;
 
 function paintSelection() {
   for (const name of CHOICES) {
@@ -53,12 +62,17 @@ function openPanel(name) {
 }
 
 function choose(name, padResume = false) {
+  const at = performance.now();
+  if (name === lastChoice && at - lastChoiceAt < CHOICE_REPEAT_MS) return;
+  lastChoice = name;
+  lastChoiceAt = at;
+
   selection = name;
   paintSelection();
-  // Every choice answers with the same neutral click the hotbar makes: the
-  // menu is allowed no other voice, and a walker browsing it must never hear
-  // the world answer back.
-  playUiClickSound();
+  // Every choice answers with the same neutral click: the menu is allowed no
+  // other voice, and a walker browsing it must never hear the world answer
+  // back.
+  playMenuClickSound();
   if (name === 'start') {
     startFromOverlay(padResume);
     return;
