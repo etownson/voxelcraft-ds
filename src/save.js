@@ -10,17 +10,29 @@
  * record a bed moves mid-session, because the save copies the spawn out but does
  * not own it, and a wipe asks for `stopAutosave` instead of reaching for a flag.
  *
- * Putting a save back is not here. Laying a walker down on dry ground, unbending
- * a view that was gliding over chunks that no longer exist, and refilling the
- * armour row is choreography with the camera and the HUD, which this layer
- * cannot see: the page does that, with these exports.
+ * Reading a save back is here, as far as a saved record reaches: the walk, the
+ * look, the body's two counters and the worn row come out of it. What happens
+ * after the numbers are written is not: whether the saved cell turns out to be
+ * inside a tree, who makes the chunks around it, who catches the camera's glide
+ * up and who repaints the two bars. Those four verbs arrive through
+ * `setSaveArrival`, and the bars come through the painters the body and the pack
+ * already keep, so a load that nothing is registered with still restores and
+ * simply starts where the world says the player should be.
  */
 
-import { BLOCKS, CHEST_SLOTS, ITEMS, createBlockEntity, isChestBlock, isFurnaceBlock, makeStack } from './blocks.js';
+import {
+  ARMOR_SLOTS, BLOCKS, CHEST_SLOTS, ITEMS, createBlockEntity, isChestBlock, isFurnaceBlock,
+  makeStack
+} from './blocks.js';
 import { clearWorldDirty, world } from './chunks.js';
-import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_SEED, clamp } from './config.js';
-import { INVENTORY_SIZE, armorSlots, currentSlot, inventory } from './inventory.js';
-import { player, view } from './player.js';
+import { playerCollidesAt } from './collision.js';
+import {
+  CHUNK_SIZE, EXHAUSTION_THRESHOLD, HUNGER_MAX, SATURATION_ON_RESPAWN, WORLD_HEIGHT,
+  WORLD_SEED, clamp
+} from './config.js';
+import { syncHeldAngles } from './held.js';
+import { INVENTORY_SIZE, armorSlots, currentSlot, inventory, paintArmorBar } from './inventory.js';
+import { applyLook, paintHunger, player, restorePlayerLook, view } from './player.js';
 import { dayTime } from './sky.js';
 
 /**
@@ -364,3 +376,70 @@ export function updateSaveLoop(dt) {
   saveWorld();
 }
 
+/* Putting a saved body back into a world that has not been built yet is nobody
+   in the save's business to know: which chunks to make before anything around the
+   player can be trusted, what height to fall to when the saved cell turns out to
+   be inside solid ground, how the camera's glide is caught up, and where the view
+   is set. Whoever is walking the player hands all four over at bootstrap. Until
+   they do, a save still loads its edits, its furnaces and its pack, and the
+   player simply starts where the world says they should. */
+const saveArrival = {
+  makeChunks: () => {},
+  groundUnder: () => 0,
+  resetStep: () => {},
+  placeCamera: () => {}
+};
+
+export function setSaveArrival(coming) { Object.assign(saveArrival, coming); }
+
+export function restoreSavedPlayer(save) {
+  const p = save.player;
+  if (!p) return false;
+  player.pos.set(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0);
+  player.vel.set(0, 0, 0);
+  player.onGround = false;
+  // Wherever the view was left mid-glide, the world it was gliding over is gone.
+  saveArrival.resetStep();
+  // Nothing around a restored position exists yet, so nothing can be trusted
+  // until its chunks are made: an older build could write the player into solid
+  // ground, and a read that sees only air would keep them buried there.
+  saveArrival.makeChunks();
+  if (playerCollidesAt(player.pos.x, player.pos.y, player.pos.z)) {
+    player.pos.y = saveArrival.groundUnder(Math.floor(player.pos.x), Math.floor(player.pos.z));
+    player.onGround = true;
+  }
+  restorePlayerLook(p);
+  player.health = clamp(Number(p.health) || player.maxHealth, 1, player.maxHealth);
+  player.hunger = clamp(Number(p.hunger ?? HUNGER_MAX), 0, HUNGER_MAX);
+  // Saturation rides along from schema 4. A missing value cannot survive the
+  // schema check, so the fallback is Minecraft's own starting cushion rather
+  // than nothing, and both counters are pulled back inside their invariants:
+  // saturation never sits above the food it cushions, and exhaustion never
+  // reaches the point where it would spend a bite the instant the world loads.
+  player.saturation = clamp(Number(p.saturation ?? SATURATION_ON_RESPAWN), 0, player.hunger);
+  player.exhaustion = clamp(Number(p.exhaustion) || 0, 0, EXHAUSTION_THRESHOLD);
+  // A counter that has already reached a whole bite cannot be trusted: it would
+  // spend a point the instant the world opened, so it starts over instead.
+  if (player.exhaustion >= EXHAUSTION_THRESHOLD) player.exhaustion = 0;
+  paintHunger();
+  applyLook();
+  saveArrival.placeCamera();
+  syncHeldAngles(view.yaw, view.pitch);
+  return true;
+}
+
+/**
+ * Worn armour, put back only if it is still the right kind of armour for the
+ * slot it is stored in.
+ */
+export function restoreSavedArmour(save) {
+  if (!Array.isArray(save.armour)) return;
+  for (let i = 0; i < armorSlots.length; i++) {
+    const restored = stackFromRecord(save.armour[i]);
+    if (!restored) continue;
+    const item = ITEMS.get(restored.id);
+    if (item.kind !== 'armor' || item.armorSlot !== ARMOR_SLOTS[i]) continue;
+    armorSlots[i] = restored;
+  }
+  paintArmorBar();
+}
