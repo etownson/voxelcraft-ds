@@ -2523,27 +2523,36 @@ convincing break; two hundred footsteps from the same envelope sound like a
 machine. Four variants per material, three per break, and runtime pitch/level
 jitter are what stop that.
 
-Two active slots are synthesized instead of sampled. The heartbeat was always
+Two active slots are sampled from a synthesized source. The heartbeat was always
 better generated, and the creeper fuse needs a sputtering, cracking burn that
 no CC0 pack in the bank matches. `tools/generate-audio.mjs` writes the fuse to
 the reference bank, and `tools/build-cc0-bank.py` copies that slot into the
-active bank; everything else stays sampled.
+active bank; everything else in the bank is a recording.
+
+Five events have no bank slot at all and are synthesized when the game runs:
+picking an item up, crafting, jumping, and opening and closing a screen. Each is
+one short dry sine, chosen because those five fire far more often than anything
+else and every recording tried for them was too bright or too long to survive
+that much repetition. See the mute-event addendum at the end of this document.
 
 ### What is in the banks
 
-`assets/audio/` is the active CC0 bank: 116 mono 16-bit WAVs, 11 MB in total:
+`assets/audio/` is the active CC0 bank: 108 mono 16-bit WAVs, 7.7 MB in total:
 
 - 28 footsteps (7 materials × 4)
 - 24 breaks (8 materials × 3) and 16 places (8 × 2)
 - 11 mob voices
-- 30 event one-shots
-- 5 ambient beds plus two music loops
+- 24 event one-shots
+- 5 ambient beds, no music loops
 
-`assets/audio-generated/` is the synthesized fallback/reference bank: the same
-116 slots, 9.3 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
+`assets/audio-generated/` is the synthesized fallback/reference bank: 116 slots,
+9.3 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
 runtime; the code synthesizer is the runtime fallback. It is kept so the
 original bank is reproducible and because the heartbeat is still better
-generated than sampled.
+generated than sampled. It keeps the eight slots the active bank dropped — the
+pickup pair, the crafting mix, the jump woosh, the screen open and close pair,
+and two retired music loops — because the synthesizer still has a profile for
+each.
 
 The active bank comes from CC0 packs listed in `CREDITS.md`; the slot-by-slot
 mapping is in `tools/build-cc0-bank.py`. The source files are converted to mono
@@ -2552,8 +2561,8 @@ WAV, trimmed and faded for one-shots, and resampled to 22.05 kHz for loops.
 it cannot overwrite the active CC0 bank.
 
 WAV rather than Ogg was deliberate: `decodeAudioData` handles it everywhere, it
-has no encoder delay to break a loop, and 8.4 MB is well inside the GitHub Pages
-budget. The `AUDIO_ASSETS` manifest in `index.html` is the list of keys and
+has no encoder delay to break a loop, and 7.7 MB is well inside the GitHub Pages
+budget. The `AUDIO_ASSETS` manifest in `src/audio.js` is the list of keys and
 files. `loadAudioAssets()` fetches six at a time, decodes each with
 `decodeAudioData`, and groups the variants under the name callers ask for. The
 ambient beds and music are fetched first, so the world can start breathing
@@ -2630,8 +2639,8 @@ does not repeat a song every evening while four are waiting. Ambient beds keep
 their endless loop; a music slot sets `source.loop = false` so the song ends when
 the file ends. The scheduled tracks are the Suno-generated files staged under
 `assets/music/`, fetched whole rather than through the bank, so they keep their
-own endings. The two Kenney loops they replaced stay in the bank and in
-`CREDITS.md`, but no slot plays them. `audioStatus()` reports the current slot as
+own endings. The two Kenney loops they replaced are out of the bank and out of
+`CREDITS.md`. `audioStatus()` reports the current slot as
 `musicTrack`, the index of the song playing inside it as `musicVariant` (null
 once the window has fallen silent), and `musicPlayed` — true once this window has
 played, false only right after the window opened.
@@ -2647,14 +2656,10 @@ a dying source never clears a living one.
 
 Three sounds were retuned against the recorded bank:
 
-- The jump sample carries its energy around 500–1000 Hz with a hissy top, so it
-  now plays at `pitch: 0.84` through a 850 Hz low-pass. The playback rate drops
-  the woosh about three semitones and the filter comes down with it, so the
-  shifted body at 420–840 Hz keeps its weight while the top end goes: spectral
-  centroid 966 Hz → 738 Hz, energy above 900 Hz 6.0% → 0.8%, and 0.32 → 0.38
-  gain gives back the ~0.5 dB the extra filtering costs. The synthesizer
-  fallback was re-cut to a 1000 → 460 Hz sweep over 0.14 s so `file://` sounds
-  like the sample.
+- The jump was once the Kenney woosh sample, retuned to play at `pitch: 0.84`
+  through an 850 Hz low-pass because its energy sat around 500–1000 Hz with a
+  hissy top. That slot has since been dropped: jumping is synthesized as a
+  300 → 430 Hz sine over 0.12 s at 0.05 gain, dry, with no recording behind it.
 - The creeper is a lit fuse rather than a breath: 1.55 s of high-passed sizzle
   with a randomly stepping gain, 38 later-biased crackles and a low brown bed,
   synthesized in `tools/generate-audio.mjs` and copied into the active bank. The
@@ -2668,9 +2673,15 @@ Three sounds were retuned against the recorded bank:
 
 Passive animals are deliberately background. Each one waits 15–35 s between
 idle calls, a shared 4–8 s gap keeps a herd from firing at once, and the idle
-call is 0.22 gain (0.38 when hurt) at a 20-block range. The recorded animal
+call is 0.22 gain at a 20-block range. The recorded animal
 sounds are much louder than the old synthesizer, so these numbers keep a cow or
 sheep from dominating the mix. Hostile cadence is unchanged.
+
+Pain is scaled per species rather than at one level: `MOB_HURT_GAIN` in
+`src/audio.js` multiplies the 0.85 the hurt call is played at — cow 0.53, chicken
+0.6, pig and sheep 0.7, hostiles 1. The recordings are nowhere near one level
+(`mob_cow_1` is 1.5 s at RMS 0.138, `mob_sheep_2` is RMS 0.204), and a killing
+blow has no sound of its own, so that gain is also the death cry.
 
 ### Settings
 
@@ -2693,7 +2704,7 @@ sheep from dominating the mix. Hostile cadence is unchanged.
 - `.nojekyll` is committed so Jekyll leaves the audio folder alone.
 - Do not use Git LFS for either bank: Pages serves the pointer, not the sample.
   The published site limit is 1 GB, each git file is capped at 100 MiB, and the
-  soft bandwidth limit is 100 GB/month. The active bank is 11 MB and the
+  soft bandwidth limit is 100 GB/month. The active bank is 7.7 MB and the
   generated reference bank is 9.3 MB, both comfortably inside the limits.
 - `file://` cannot fetch local assets. Opening `index.html` directly still runs
   the game, but the synth fallback is what you hear. Serve it with
@@ -2854,3 +2865,64 @@ reference, and the import checker still uses them.
 A change that moves code between files is still expected to keep the game
 runnable at every commit and to leave the digest alone: `tools/snapshot-check.js`
 compares a live world against `tools/snapshot-baseline.json`.
+
+## Muting the repeated events — addendum
+
+Five events were retuned against the mix by taking their recordings away
+altogether: picking an item up, crafting, jumping, and opening and closing a
+screen. Each is now one `audioTone` sine with no reverb send, played at the same
+pitch every time, because a sampled attack plus a random variant plus ±3% detune
+is audible harshness when the sound fires thirty times a minute.
+
+| event | contour | length | gain | bus |
+|---|---|---|---|---|
+| jump | 300 → 430 Hz | 0.12 s | 0.05 | sfx |
+| pickup | 540 → 500 Hz | 0.14 s | 0.055 | ui |
+| screen open | 420 → 640 Hz | 0.18 s | 0.065 | ui |
+| screen close | 640 → 420 Hz | 0.18 s | 0.065 | ui |
+| crafting | 680 Hz, held | 0.22 s | 0.06 | ui |
+
+The contours carry the meaning: the screen pair is one tone run forwards and
+backwards, the jump rises where a pickup falls, and crafting is the only one that
+does not glide at all — a held note, longer than the rest, so finishing a recipe
+is not mistaken for another mark. Measured against what they replaced, the pickup
+blip is 19.8 dB below the confirmation chime it displaced, the craft tone 18.7 dB
+below the chime-and-click mix, the screen pair 14 dB below the click-and-rattle
+pair, and the jump 11.7 dB below the woosh.
+
+Landing thuds, block interactions, footsteps, mob voices and the UI click stay
+sampled. Only the five sounds above were quietened, and the landing thud staying
+a heavy spatial sample is what lets the jump stay a light self-sound.
+
+Pain is now scaled per species through `MOB_HURT_GAIN`, described under *Passive
+animals*, because the animals' hurt call — which is also their death cry — was
+playing at the hostile level.
+
+### What came out of the bank
+
+Eight slots with no caller were deleted rather than left to be fetched and
+ignored: `event_pickup_1/2`, `event_craft_1`, `event_jump_1`,
+`event_ui_open_1`, `event_ui_close_1`, and the two retired Kenney music loops.
+The active bank went from 116 files and 11 MB to 108 files and 7.7 MB, and
+`tools/build-cc0-bank.py` lost the recipes for them along with the Kenney Music
+Loops pack, which nothing uses any more. The Interface pack is still credited
+for the UI click, though its confirmation file is now used by nothing.
+`CREDITS.md` no longer credits packs whose files are gone, and records
+the five synthesized events instead.
+
+`tools/check-audio.sh` now checks the two banks against different counts —
+`EXPECTED_ACTIVE` and `EXPECTED_GENERATED` — because the reference bank still
+carries every slot the synthesizer has a profile for, including the ones the
+active bank dropped. A slot removed from `AUDIO_ASSETS` wants its recipe removed
+from the build script in the same change, or the next bank rebuild puts the file
+back and the count check fails.
+
+### Checks run for this change
+
+- `tools/check-syntax.sh` and `tools/check-imports.sh` pass.
+- `tools/check-audio.sh` passes: active 108 files, 7.7 MB; generated 116 files,
+  9.3 MB; every file decodes.
+- `python3 -m py_compile tools/build-cc0-bank.py` parses the pruned builder.
+- The pickup, screen and jump levels were measured by decoding the samples they
+  replaced and rendering the same envelope the `audioTone` path produces; the
+  dB figures above are RMS ratios of those two.

@@ -75,10 +75,12 @@ const AUDIO_ASSETS = {
   event_hurt_player: ['event_hurt_player_1.wav'],
   event_hurt_mob: ['event_hurt_mob_1.wav'],
   event_explosion: ['event_explosion_1.wav'],
-  event_craft: ['event_craft_1.wav'],
   event_eat: audioFileList('event_eat_', 2),
   event_swim: audioFileList('event_swim_', 2),
-  event_pickup: audioFileList('event_pickup_', 2),
+  // Picking up, crafting, jumping and opening or closing a screen have no slots
+  // here at all: each is one tone built by its own `play…Sound`. Every recording
+  // tried for those five was brighter and longer than a sound that fires this
+  // often can be.
   event_door: ['event_door_1.wav'],
   event_chest_open: ['event_chest_open_1.wav'],
   event_chest_close: ['event_chest_close_1.wav'],
@@ -91,10 +93,7 @@ const AUDIO_ASSETS = {
   event_shear: ['event_shear_1.wav'],
   event_splash: ['event_splash_1.wav'],
   event_land: audioFileList('event_land_', 3),
-  event_jump: ['event_jump_1.wav'],
   event_ui_click: ['event_ui_click_1.wav'],
-  event_ui_open: ['event_ui_open_1.wav'],
-  event_ui_close: ['event_ui_close_1.wav'],
   event_heartbeat: ['event_heartbeat_1.wav'],
   event_death: ['event_death_1.wav'],
 
@@ -1052,28 +1051,30 @@ export function playSwimSound(x, y, z) {
 }
 
 export function playJumpSound() {
-  // The jump sample is mostly a 500–1000 Hz woosh with a hissy top end. It also
-  // plays back a little slow, which drops the whole woosh about three semitones,
-  // and the low-pass comes down to 850 Hz with it — the shifted body lands at
-  // 420–840 Hz and keeps that weight, while the whistle that used to sit on top
-  // is gone. Volume gives back what the extra filtering takes off.
-  if (audioSample('event_jump', {
-    spatial: false, volume: 0.38, bus: 'sfx', priority: 0,
-    pitch: 0.84, cutoff: 850
-  })) return true;
-  return audioNoiseHit({
-    type: 'lowpass', freq: 1000, freqEnd: 460, q: 0.7,
-    duration: 0.14, volume: 0.13
-  }, audioListener.x, audioListener.y, audioListener.z, { spatial: false, priority: 0 });
+  // No recording: the woosh in the bank is four tenths of broadband air, which
+  // was the loudest thing in the mix every time the space bar was tapped. One
+  // short sine that climbs from 300 to 430 Hz says "pushed off" and stops, dry,
+  // with no air in it. It sits under the screen open/close pair in pitch and
+  // rises where a pickup falls, so the three blips stay legible apart, and the
+  // landing thud stays sampled and spatial — a light self-sound against a heavy
+  // ground impact is what makes a jump read as a jump.
+  audioTone({
+    type: 'sine', from: 300, to: 430, duration: 0.12,
+    volume: 0.05, bus: 'sfx', priority: 0
+  });
+  return !!audioCtx && !audioMuted;
 }
 
 export function playPickupSound() {
-  if (audioSample('event_pickup', {
-    spatial: false, volume: 0.5, bus: 'ui', priority: 0
-  })) return true;
+  // Picking up is the most repeated sound in the game and the only one most
+  // players never notice until it grates, so it gets no recording: a sample has
+  // an attack and a rasp of its own, and thirty of those a minute is a chatter.
+  // This is one soft sine, a hair under a fifth of a second, falling rather than
+  // rising so it reads as something set down rather than announced, dry so it
+  // does not bloom over the next one, and quiet enough to sit under the ambience.
   audioTone({
-    type: 'triangle', from: 900, to: 1300, duration: 0.09,
-    volume: 0.06, bus: 'ui', priority: 0
+    type: 'sine', from: 540, to: 500, duration: 0.14,
+    volume: 0.055, bus: 'ui', priority: 0
   });
   return !!audioCtx && !audioMuted;
 }
@@ -1090,23 +1091,23 @@ export function playUiClickSound() {
 }
 
 export function playUiOpenSound() {
-  if (audioSample('event_ui_open', {
-    spatial: false, volume: 0.5, bus: 'ui', priority: 0
-  })) return true;
+  // A screen arriving is one tone that climbs; a screen leaving is the same tone
+  // running backwards. Nothing else differs between the two, so the pair reads as
+  // in and out without needing two different timbres, and a sine has no attack to
+  // click on. It sits a shade above the pickup blip because it fires once per
+  // keypress rather than thirty times a minute, and it is longer than that blip
+  // and sweeps wider so the two cannot be mistaken for each other.
   audioTone({
-    type: 'triangle', from: 520, to: 760, duration: 0.2,
-    volume: 0.09, bus: 'ui', priority: 0
+    type: 'sine', from: 420, to: 640, duration: 0.18,
+    volume: 0.065, bus: 'ui', priority: 0
   });
   return !!audioCtx && !audioMuted;
 }
 
 export function playUiCloseSound() {
-  if (audioSample('event_ui_close', {
-    spatial: false, volume: 0.5, bus: 'ui', priority: 0
-  })) return true;
   audioTone({
-    type: 'triangle', from: 760, to: 520, duration: 0.2,
-    volume: 0.09, bus: 'ui', priority: 0
+    type: 'sine', from: 640, to: 420, duration: 0.18,
+    volume: 0.065, bus: 'ui', priority: 0
   });
   return !!audioCtx && !audioMuted;
 }
@@ -1535,13 +1536,27 @@ const ANIMAL_VOICES = {
   chicken: { type: 'sine', from: 960, to: 1280, duration: 0.15, volume: 0.14, cutoff: 1900 }
 };
 
+/**
+ * How loud each species' pain call is, as a share of the 0.85 every hurt call
+ * used to be played at. A killing blow has no sound of its own — `killMob` is
+ * silent and the cry a cow makes when it goes down is this call — so this is
+ * also the death volume.
+ *
+ * The recordings are nowhere near one level: the first cow call is a second and
+ * a half of chest-heavy low mids at RMS 0.138, while a sheep's second call is a
+ * shorter but harsher RMS 0.204. At a shared 0.85 the animals came out at up to
+ * twice the player's own hurt. Hostiles keep the full level, because a hostile's
+ * pain is a threat cue rather than a farm noise.
+ */
+const MOB_HURT_GAIN = { cow: 0.53, pig: 0.7, sheep: 0.7, chicken: 0.6 };
+
 export function playAnimalSound(type, x, y, z, options = {}) {
   const hurt = !!options.hurt;
   // The active animal bank is species-specific, so leave the recorded pitch
   // alone; a hurt sound is still raised.
   if (audioSample('mob_' + type, {
     x, y, z,
-    volume: hurt ? 0.38 : 0.22,
+    volume: hurt ? 0.38 * (MOB_HURT_GAIN[type] ?? 1) : 0.22,
     range: 20,
     priority: 2,
     pitch: hurt ? 1.22 : 1
@@ -1563,7 +1578,7 @@ export function playAnimalSound(type, x, y, z, options = {}) {
     from: voice.from * pitch,
     to: voice.to * pitch * (hurt ? 1.1 : 1),
     duration,
-    volume: voice.volume * spatial.gain * (hurt ? 1.35 : 1),
+    volume: voice.volume * spatial.gain * (hurt ? 1.35 * (MOB_HURT_GAIN[type] ?? 1) : 1),
     filterType: 'lowpass',
     filterFreq: voice.cutoff * (hurt ? 1.3 : 1),
     pan: spatial.pan
@@ -1587,7 +1602,7 @@ export function playMobHurtSound(type, x, y, z) {
   // A creeper's hiss is its fuse, not its pain; use the generic hurt for it.
   const base = type === 'creeper' ? 'event_hurt_mob' : 'mob_' + type;
   if (audioSample(base, {
-    x, y, z, volume: 0.85, range: 20, priority: 2,
+    x, y, z, volume: 0.85 * (MOB_HURT_GAIN[type] ?? 1), range: 20, priority: 2,
     pitch: type === 'creeper' ? 1.25 : 1.15
   })) return true;
 
@@ -1614,37 +1629,17 @@ export function playPlayerHurtSound() {
 }
 
 export function playCraftSound() {
-  if (audioSample('event_craft', {
-    spatial: false, volume: 0.6, bus: 'ui', priority: 1
-  })) return true;
-
-  const ctx = ensureAudio();
-  if (!ctx) return false;
-  if (!audioBeginVoice(0.12, 1)) return false;
-  const now = ctx.currentTime;
-  const source = ctx.createBufferSource();
-  source.buffer = audioNoiseBuffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.value = 2200;
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.1, now + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioConnectOutput(0));
-  source.start(now, Math.random() * 0.5, 0.08);
-  source.stop(now + 0.1);
+  // A completed recipe is one steady note, not the two-layer Kenney mix the bank
+  // used to carry. That mix — a confirmation chime over a click — was 0.4 s with
+  // most of its energy at 2–4.5 kHz, and the `file://` fallback on top of it was
+  // a 2.2 kHz noise tick, which is the harshest thing in the game. One held note
+  // at 680 Hz is the only sound here that does not glide, so a finished craft is
+  // unmistakable next to the pickup, jump and screen blips.
   audioTone({
-    type: 'triangle',
-    from: 760,
-    to: 1080,
-    duration: 0.09,
-    volume: 0.06,
-    pan: 0
+    type: 'sine', from: 680, to: 680, duration: 0.22,
+    volume: 0.06, bus: 'ui', priority: 1
   });
-  return true;
+  return !!audioCtx && !audioMuted;
 }
 
 /** A bite of food: two dry crunches, then a short swallow. */

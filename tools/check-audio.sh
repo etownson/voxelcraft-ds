@@ -5,12 +5,18 @@
 #   assets/audio-generated/ synthesized fallback/reference, made by
 #                           tools/generate-audio.mjs
 #
+# The two banks are not the same length: the active one dropped the pickup pair,
+# the crafting mix, the jump woosh, the screen open/close pair and the retired
+# Kenney music slots, which are synthesized in the game now or not played at all,
+# while the reference bank keeps every slot the synthesizer has a profile for.
+#
 # The game falls back to the procedural synthesizer when the active bank is
 # missing, so this is the check that catches a partial commit before GitHub
 # Pages serves it.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-EXPECTED=116
+EXPECTED_ACTIVE=108
+EXPECTED_GENERATED=116
 
 if ! command -v ffprobe >/dev/null 2>&1; then
   echo "check-audio: ffprobe not found; skipping decode check" >&2
@@ -20,6 +26,7 @@ fi
 check_dir() {
   local audio="$1"
   local label="$2"
+  local expected="$3"
   local count=0
 
   if [ ! -d "$audio" ]; then
@@ -37,8 +44,8 @@ check_dir() {
     count=$((count + 1))
   done
 
-  if [ "$count" -ne "$EXPECTED" ]; then
-    echo "check-audio: $label expected $EXPECTED files, found $count" >&2
+  if [ "$count" -ne "$expected" ]; then
+    echo "check-audio: $label expected $expected files, found $count" >&2
     exit 1
   fi
 
@@ -46,8 +53,8 @@ check_dir() {
   echo "audio ok: $label, $count files, $size"
 }
 
-check_dir "$DIR/assets/audio" "active CC0 bank"
+check_dir "$DIR/assets/audio" "active CC0 bank" "$EXPECTED_ACTIVE"
 
 if [ -d "$DIR/assets/audio-generated" ]; then
-  check_dir "$DIR/assets/audio-generated" "generated fallback bank"
+  check_dir "$DIR/assets/audio-generated" "generated fallback bank" "$EXPECTED_GENERATED"
 fi

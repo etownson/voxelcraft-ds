@@ -11,7 +11,6 @@ This script expects a staging directory containing the source packs:
   staging/kenney/ui_audio/
   staging/kenney/rpg_audio/
   staging/kenney/foley_sounds/
-  staging/kenney/music_loops/
   staging/oga/creature80/
   staging/oga/cc0-sfx-100/
   staging/oga/cc0-sfx-100-v2/
@@ -256,8 +255,6 @@ def build(staging):
     one["event_eat_2"] = (o("creature80", "eat_02.ogg"), 0.7)
     one["event_swim_1"] = (o("cc0-sfx-100-v2", "sfx100v2_footstep_wet_01.ogg"), 0.5)
     one["event_swim_2"] = (o("cc0-sfx-100-v2", "sfx100v2_footstep_wet_02.ogg"), 0.55)
-    one["event_pickup_1"] = (k("interface_sounds", "confirmation_002.ogg"), 0.4)
-    one["event_pickup_2"] = (o("cc0-sfx-100-v2", "sfx100v2_items_01.ogg"), 0.5)
     one["event_door_1"] = (k("rpg_audio", "doorOpen_1.ogg"), 1.0)
     one["event_chest_open_1"] = (k("rpg_audio", "creak2.ogg"), 0.9)
     one["event_chest_close_1"] = (k("rpg_audio", "metalLatch.ogg"), 0.4)
@@ -273,10 +270,11 @@ def build(staging):
     # The creeper fuse is synthesized rather than sampled: a lit fuse needs
     # irregular sputter and crackle, and no CC0 pack in the bank has a match.
     one["mob_creeper_1"] = (os.path.join(GENERATED, "mob_creeper_1.wav"), 1.55)
-    one["event_jump_1"] = (k("foley_sounds", "Woosh", "woosh4.ogg"), 0.4)
+    # Picking up, crafting, jumping and opening or closing a screen are
+    # synthesized in the game itself: each used to be a recording here, and every
+    # candidate was too bright or too long for a sound that fires this often. They
+    # have no slot in this bank.
     one["event_ui_click_1"] = (k("interface_sounds", "click_001.ogg"), 0.2)
-    one["event_ui_open_1"] = (k("interface_sounds", "open_001.ogg"), 0.3)
-    one["event_ui_close_1"] = (k("interface_sounds", "close_001.ogg"), 0.3)
     one["event_death_1"] = (o("creature80", "scream_02.ogg"), 1.2)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -288,11 +286,6 @@ def build(staging):
         mixes["event_explosion_1"] = (
             [(o("cc0-sfx-100", "explosion.ogg"), 1.0, 0.0), (sub, 0.65, 0.0)],
             1.2,
-        )
-        mixes["event_craft_1"] = (
-            [(k("interface_sounds", "confirmation_002.ogg"), 0.8, 0.0),
-             (k("interface_sounds", "click_001.ogg"), 0.55, 0.02)],
-            0.4,
         )
         mixes["event_tool_break_1"] = (
             [(k("foley_sounds", "Swords", "swordStone3.ogg"), 0.9, 0.0),
@@ -318,14 +311,9 @@ def build(staging):
         loops["ambient_underwater_1"] = (s("Underwater-Ambient-Pad.ogg"), 16.67, 0.8)
 
         # ---------- Music ----------
-        # The Kenney loops do not begin where they end, so each one folds its
-        # tail over its head for a click-free repeat. The two gain figures are
-        # loudness-matched: Sad Descent is ~8 dB hotter than Retro Mystic as
-        # delivered, and dusk must not sound louder than morning.
-        loops["music_sad_descent_1"] = (
-            k("music_loops", "Loops", "Sad Descent.ogg"), 24.03, 0.52, 0.75)
-        loops["music_retro_mystic_1"] = (
-            k("music_loops", "Retro", "Retro Mystic.ogg"), 47.98, 1.28, 0.75)
+        # The scheduled songs are whole tracks staged under assets/music/ and
+        # fetched by the game outside this bank, so there is no music slot here.
+        # The two Kenney loops that used to be built are gone: nothing plays them.
 
         # ---------- Build ----------
         for name, (src, seconds) in one.items():
