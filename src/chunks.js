@@ -12,7 +12,7 @@
  */
 
 import * as THREE from 'three';
-import { BLOCKS, isWater } from './blocks.js';
+import { BLOCKS, createBlockEntity, isWater } from './blocks.js';
 import {
   B, CHUNK_AREA, CHUNK_BUDGET_MS, CHUNK_SIZE, CHUNK_VOLUME, DATA_RADIUS, LIGHT_MAX,
   RENDER_DISTANCE, SEA_LEVEL, UNLOAD_RADIUS, WATER_NEIGHBORS, WATER_REMESH_BUDGET,
@@ -41,15 +41,6 @@ let worldDirty = false;
 export function markWorldDirty() { worldDirty = true; }
 export function isWorldDirty() { return worldDirty; }
 export function clearWorldDirty() { worldDirty = false; }
-
-/**
- * A chest or a furnace keeps a state object beside its block id, and what lives
- * in that object — how many slots, whether something is burning — is the
- * inventory's business, not the chunk's. The inventory hands the recipe down
- * when it loads; until then nothing can have placed a container.
- */
-let blockEntityFactory = null;
-export function setBlockEntityFactory(make) { blockEntityFactory = make; }
 
 /**
  * Who wants to hear that a chunk has just been meshed. The mob layer gives a
@@ -312,7 +303,7 @@ export class World {
     } else {
       if (oldBlock.blockEntity !== newBlock.blockEntity) this.blockEntities.delete(key);
       if (!this.blockEntities.has(key)) {
-        this.blockEntities.set(key, blockEntityFactory(newBlock.blockEntity));
+        this.blockEntities.set(key, createBlockEntity(newBlock.blockEntity));
       }
     }
     if (facing) this.facings.set(key, facing);
@@ -353,7 +344,7 @@ export class World {
     const key = gx + ',' + gy + ',' + gz;
     let entity = this.blockEntities.get(key);
     if (!entity && kind) {
-      entity = blockEntityFactory(kind);
+      entity = createBlockEntity(kind);
       this.blockEntities.set(key, entity);
     }
     return entity ?? null;

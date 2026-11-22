@@ -145,13 +145,12 @@ import {
 } from './src/audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MATERIALS, ARMOR_MAX_DEFENSE, ARMOR_PIECES,
-  ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, ITEMS, consumeDurability, freshStack, isFallingWater,
-  isFlowWater, isWater, isWaterSource, makeStack, maxDurability, stackDurability,
-  stacksMergeable, waterCanOccupy, waterLevel
+  ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, consumeDurability, createBlockEntity,
+  freshStack, isChestBlock, isFallingWater, isFlowWater, isFurnaceBlock, isWater,
+  isWaterSource, makeStack, maxDurability, stackDurability, stacksMergeable, waterCanOccupy,
+  waterLevel
 } from './src/blocks.js';
-import {
-  clearWorldDirty, isWorldDirty, markWorldDirty, meshChunk, setBlockEntityFactory, world
-} from './src/chunks.js';
+import { clearWorldDirty, isWorldDirty, markWorldDirty, meshChunk, world } from './src/chunks.js';
 import { isSolid, ladderHolding, playerCollidesAt, submergedAt } from './src/collision.js';
 import {
   AIR_ACCEL, B, BLOCK_ENTITY_TICK_RANGE, CHUNK_SIZE, COLLISION_EPSILON, DAY_LENGTH_SECONDS,
@@ -2061,28 +2060,6 @@ const FURNACE_INPUT = 0;
 const FURNACE_FUEL = 1;
 const FURNACE_OUTPUT = 2;
 
-function createBlockEntity(kind) {
-  if (kind === 'furnace') {
-    return {
-      kind, slots: [null, null, null],
-      cookTime: 0, burnTime: 0, burnTotal: 0
-    };
-  }
-  if (kind === 'chest') {
-    return { kind, slots: new Array(CHEST_SLOTS).fill(null) };
-  }
-  return { kind, slots: [null, null, null] };
-}
-
-/* The chunk layer makes room for a container without knowing what a container
- * holds, so this is the point where the shape of one goes down to it. */
-setBlockEntityFactory(createBlockEntity);
-
-function isFurnaceBlock(blockId) {
-  const block = BLOCKS[blockId];
-  return !!block && block.blockEntity === 'furnace';
-}
-
 /** True while something smelt-able is waiting and the output has room. */
 function furnaceHasWork(state) {
   const input = state.slots[FURNACE_INPUT];
@@ -2233,14 +2210,6 @@ function spillBlockEntityContents(x, y, z) {
 }
 
 /* ---------- Chests ---------- */
-
-/** Slots in a chest: three rows of nine, the box Minecraft stores things in. */
-const CHEST_SLOTS = 27;
-
-function isChestBlock(blockId) {
-  const block = BLOCKS[blockId];
-  return !!block && block.blockEntity === 'chest';
-}
 
 /**
  * True when a chest state still belongs where it is saved. The same rule as

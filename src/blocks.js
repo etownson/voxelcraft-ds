@@ -476,6 +476,40 @@ export function consumeDurability(stack, amount = 1) {
   return stack.dur <= 0;
 }
 
+/* ---------- Containers ---------- */
+
+/* A container's state object belongs to the block that says it has one: how
+ * many slots it has, whether anything is burning inside it. The chunk layer
+ * has to make room for one the moment such a block is placed, so it reaches
+ * the shape here rather than having it handed down from the inventory's side
+ * of the game. */
+
+/** Slots in a chest: three rows of nine, the box Minecraft stores things in. */
+export const CHEST_SLOTS = 27;
+
+export function createBlockEntity(kind) {
+  if (kind === 'furnace') {
+    return {
+      kind, slots: [null, null, null],
+      cookTime: 0, burnTime: 0, burnTotal: 0
+    };
+  }
+  if (kind === 'chest') {
+    return { kind, slots: new Array(CHEST_SLOTS).fill(null) };
+  }
+  return { kind, slots: [null, null, null] };
+}
+
+export function isFurnaceBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && block.blockEntity === 'furnace';
+}
+
+export function isChestBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && block.blockEntity === 'chest';
+}
+
 const TOOL_TIERS = {
   wood:  { level: 1, speed: 2.0, durability: 60,  damage: 2.5 },
   stone: { level: 2, speed: 4.0, durability: 132, damage: 3.5 },
