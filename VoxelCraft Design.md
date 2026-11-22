@@ -2772,3 +2772,85 @@ sheep from dominating the mix. Hostile cadence is unchanged.
   path, and the test path; keep it working.
 - `tools/check-syntax.sh` and `tools/check-audio.sh` are the two checks in the
   repo; both pass.
+
+## Addendum: the source tree
+
+The game was one `index.html` with a single module script for its whole life. It
+is now that page plus `src/`, one file for each thing the game is made of. There
+is still no build step: the page loads a module script whose only line is
+`import './src/main.js';`, and the browser's own module loader follows the imports
+from there. GitHub Pages serves it exactly as before.
+
+    index.html          the document: canvas, overlays, screen furniture, the
+                        three import map, and one import
+    src/main.js         the composition root (see below)
+    src/config.js       every tuning number and the block ids
+    src/noise.js        hashing and gradient noise
+    src/worldgen.js     terrain, caves, ores, trees, the spawn column
+    src/blocks.js       block and item definitions, stacks, durability, armour
+    src/atlas.js        the texture atlas
+    src/icons.js        item icons and canvases
+    src/mesh.js         chunk meshing
+    src/lighting.js     the light field
+    src/chunks.js       the world: chunks, streaming, meshing, edits
+    src/water.js        flow and the flow budget
+    src/collision.js    the swept box
+    src/player.js       the body: position, look, exhaustion, hunger counters
+    src/health.js       health, food and the clocks that mend and starve
+    src/inventory.js    the pack, the worn row, the held slot
+    src/crafting.js     recipes and the two grids
+    src/cursor.js       the stack on the pointer, and crafting with it
+    src/containers.js   furnaces and chests as block entities
+    src/drops.js        item entities
+    src/farming.js      farmland and crops
+    src/aim.js          the crosshair's block ray and crack
+    src/interaction.js  mining, placing, doors, buckets, hoes, seeds
+    src/combat.js       the crosshair's mob ray, swings and shearing
+    src/mob.js          animals, hostiles, spawning, explosions
+    src/fx.js           particles, embers, ambient sound
+    src/held.js         the held-item view model
+    src/audio.js        the sound bank and its mixer
+    src/sky.js          sun, moon, sky colour, the clock
+    src/render.js       renderer, camera, scene
+    src/hud.js          every element: bars, hotbar, toasts, screens, pad UI
+    src/input.js        keyboard, mouse, pointer lock, the pad, the walk
+    src/save.js         the record, the restore, autosave
+    src/say.js          one way for any layer to tell the player something
+
+### The one rule
+
+Imports point down. `main.js` imports everything; nothing imports `main.js`. A
+module never imports a module that imports it, and nothing outside a module's own
+subject knows its state: the pack is `inventory.js`'s, the crosshair is
+`aim.js`'s, the held stack is `cursor.js`'s, and everything else asks.
+
+When two layers need each other, the page used to be the place they met. Now
+`main.js` is, through a seam: a module declares a small contract object whose
+verbs default to doing nothing, and exports a `set…` for it. `main.js` registers
+the real verbs at bootstrap. The contracts are `setAudioListener`, `setFxView`,
+`setHungerPainter`, `setHealthPainter`, `setDamageFlash`, `setArmorPainter`,
+`setPackPainter`, `setItemPickup`, `setAimBlocked`, `setInteractionView`,
+`setCursorView`, `setSaveArrival`, `setSaveSpawn`, `setBlockEntityView`,
+`setMobWorld`, `setDeathView`, `setRespawnArrival`, `setInputView`,
+`registerSpeaker`, and `heldFrame`. A layer that only needs to *read* something
+small gets a verb instead — `mobTarget()`, `aimAllowed()`, `cursorCarried()`,
+`screen()` — rather than an imported binding it might write.
+
+`main.js` is therefore the only file where two distant subjects are named in the
+same sentence, and the only file that knows the order things happen in: the world
+boots, then the seams are handed out in one block, then time starts.
+
+### Checks
+
+    ./tools/check-syntax.sh    every module parses
+    ./tools/check-imports.sh   no module uses a name it does not import
+    ./tools/check-audio.sh     the bank and the manifest agree
+
+`tools/split-modules.mjs` was the tool that carved sections out of the page one
+at a time; it now reports that the page is a loader and there is nothing left to
+split. `tools/js-scope.mjs` still holds the rules for what counts as a name and a
+reference, and the import checker still uses them.
+
+A change that moves code between files is still expected to keep the game
+runnable at every commit and to leave the digest alone: `tools/snapshot-check.js`
+compares a live world against `tools/snapshot-baseline.json`.
