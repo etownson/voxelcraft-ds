@@ -222,6 +222,23 @@ function unequipSlot(index) {
 /** Stack currently attached to the mouse cursor while a screen is open. */
 let cursorStack = null;
 
+/* A screen takes a stack onto the cursor and puts it back down, and these are
+   the ways it does it. The inventory keeps what the cursor is carrying, because
+   it is the thing that puts a crafted result there and the thing that drops it
+   on the ground when a player quits with one; the screens say what they want
+   rather than assigning to it. */
+
+/** The cursor now carries `stack`, which may be nothing at all. */
+function setCursorStack(stack) { cursorStack = stack; }
+
+/** The cursor is empty. */
+function clearCursorStack() { cursorStack = null; }
+
+/** A cursor that has handed over its last item is not left holding nothing. */
+function dropEmptyCursorStack() {
+  if (cursorStack && cursorStack.count <= 0) cursorStack = null;
+}
+
 const CRAFT2_SIZE = 2;
 const CRAFT3_SIZE = 3;
 const craft2 = new Array(CRAFT2_SIZE * CRAFT2_SIZE).fill(null);
@@ -1058,10 +1075,15 @@ function raycastWater(origin, direction, maxDistance) {
   return raycastCell(origin, direction, maxDistance, isWaterSource, isRaySeeThrough);
 }
 
+/** Nothing is being pointed at: nothing to break, nothing to place against. */
+function clearTarget() {
+  currentTarget = null;
+  targetOutline.visible = false;
+}
+
 function updateTarget() {
   if (activeScreen || player.dead) {
-    currentTarget = null;
-    targetOutline.visible = false;
+    clearTarget();
     return null;
   }
 
@@ -1758,7 +1780,7 @@ function sleepThroughNight() {
   sleepFadeEl.classList.add('active');
   showToast('You fall asleep...');
   setTimeout(() => {
-    dayTime = DAY_START;
+    setDayTime(DAY_START);
     applyDayNight();
     updateDebug();
     sleeping = false;
@@ -2324,6 +2346,13 @@ let pitch = -0.2;
 /** Whether the left mouse button is held: mined with, and swung with. */
 let leftMouseDown = false;
 
+/**
+ * Forgets a held button. Something else has taken the controls away — a death,
+ * a screen — and whatever the mouse is doing when they come back, the game
+ * starts from a button that is up.
+ */
+function releaseMiningButton() { leftMouseDown = false; }
+
 /** Fallback controls for embedded browsers where pointer lock is blocked. */
 let fallbackControls = false;
 let fallbackLooking = false;
@@ -2403,6 +2432,37 @@ function renderSprintState() {
   sprintStateEl.classList.toggle('hidden', !sprintLatched);
 }
 
+/* The controller owns the view. Everything else asks for a look in one of two
+   ways — turn by this much, or point here — so the tilt limit is written once
+   and lives where the camera it protects does. */
+
+/** How far the view may tilt, up or down: just short of straight overhead. */
+const PITCH_LIMIT = 1.55;
+
+/** Turns the view by a delta: a thumb on a stick, a mouse, an arrow key. */
+function turnPlayer(dYaw, dPitch) {
+  yaw += dYaw;
+  pitch = clamp(pitch + dPitch, -PITCH_LIMIT, PITCH_LIMIT);
+}
+
+/** Points the view at absolute angles, as absolute as a save file leaves them. */
+function aimPlayer(nextYaw, nextPitch) {
+  yaw = nextYaw;
+  pitch = clamp(nextPitch, -PITCH_LIMIT, PITCH_LIMIT);
+}
+
+/**
+ * Puts the view back where a save left it. Either angle may be missing, and
+ * then that one stays where the game had already put it.
+ */
+function restorePlayerLook(saved) {
+  if (!saved) return;
+  if (Number.isFinite(saved.yaw)) yaw = saved.yaw;
+  if (Number.isFinite(saved.pitch)) {
+    pitch = clamp(saved.pitch, -PITCH_LIMIT, PITCH_LIMIT);
+  }
+}
+
 function applyLook() {
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
@@ -2419,6 +2479,14 @@ function applyLook() {
  * never needed this: gravity carries the eye over the lip instead.
  */
 let cameraStepOffset = 0;
+
+/**
+ * Gives the stair glide nothing left to spend. A world that arrives under the
+ * player — loaded, teleported — has no previous tread to have risen from, and
+ * gliding down from an eye position invented by a save file is a swoop nobody
+ * walked through.
+ */
+function resetCameraStep() { cameraStepOffset = 0; }
 
 /** The view gives the height back as an ease, not a fixed crawl: it arrives
  *  fast and settles onto the tread, so the eye keeps moving between steps
@@ -2463,16 +2531,10 @@ function updateKeyboardLook(dt) {
   if (!fallbackControls || activeScreen) return;
   const speed = 1.6 * dt;
   let changed = false;
-  if (pressedKeys.has('ArrowLeft')) { yaw += speed; changed = true; }
-  if (pressedKeys.has('ArrowRight')) { yaw -= speed; changed = true; }
-  if (pressedKeys.has('ArrowUp')) {
-    pitch = clamp(pitch + speed, -1.55, 1.55);
-    changed = true;
-  }
-  if (pressedKeys.has('ArrowDown')) {
-    pitch = clamp(pitch - speed, -1.55, 1.55);
-    changed = true;
-  }
+  if (pressedKeys.has('ArrowLeft')) { turnPlayer(speed, 0); changed = true; }
+  if (pressedKeys.has('ArrowRight')) { turnPlayer(-speed, 0); changed = true; }
+  if (pressedKeys.has('ArrowUp')) { turnPlayer(0, speed); changed = true; }
+  if (pressedKeys.has('ArrowDown')) { turnPlayer(0, -speed); changed = true; }
   if (changed) applyLook();
 }
 
@@ -2965,12 +3027,11 @@ function readPlayerInput() {
   const canPlay = isPlayable();
   const overlayUp = !overlayEl.classList.contains('hidden');
   if (activeScreen || overlayUp || !canPlay || player.dead) {
-    padResumeFrame = false;
+    dropPadResume();
     clearSprintLatch();
     return { forward: 0, right: 0, jump: false, sprint: false };
   }
-  if (padResumeFrame) {
-    padResumeFrame = false;
+  if (takePadResume()) {
     return { forward: 0, right: 0, jump: false, sprint: sprintLatched };
   }
 
@@ -3158,8 +3219,7 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('mousemove', (event) => {
   if (document.pointerLockElement === canvas) {
-    yaw -= event.movementX * 0.0022;
-    pitch = clamp(pitch - event.movementY * 0.0022, -1.55, 1.55);
+    turnPlayer(-event.movementX * 0.0022, -event.movementY * 0.0022);
     applyLook();
     return;
   }
@@ -3175,8 +3235,7 @@ document.addEventListener('mousemove', (event) => {
     if (fallbackDragDistance > 10) fallbackDragMoved = true;
     lastFallbackMouseX = event.clientX;
     lastFallbackMouseY = event.clientY;
-    yaw -= dx * 0.0032;
-    pitch = clamp(pitch - dy * 0.0032, -1.55, 1.55);
+    turnPlayer(-dx * 0.0032, -dy * 0.0032);
     applyLook();
   }
 });
@@ -3248,6 +3307,20 @@ const padMenuRepeat = { x: { dir: 0, timer: 0 }, y: { dir: 0, timer: 0 } };
 let padMiningDown = false;
 /** True for the single frame where a pad press dismissed the overlay. */
 let padResumeFrame = false;
+
+/**
+ * Whether this is the frame right after control came back, in which case the
+ * stick is read as centred: a pad that was pushed on the way out of a menu must
+ * not turn anyone the moment they can be turned. Clears it — one frame only.
+ */
+function takePadResume() {
+  if (!padResumeFrame) return false;
+  padResumeFrame = false;
+  return true;
+}
+
+/** Control was taken away again before any frame came round: nothing owed. */
+function dropPadResume() { padResumeFrame = false; }
 
 function gpAxis(index) {
   const value = gamepadState.axes[index] || 0;
@@ -3404,8 +3477,7 @@ function applyGamepadLook(dt) {
   if (!lookX && !lookY) return;
 
   const speed = GP_LOOK_SPEED * gamepadState.sensitivity * dt;
-  yaw -= lookX * speed;
-  pitch = clamp(pitch - lookY * speed, -1.55, 1.55);
+  turnPlayer(-lookX * speed, -lookY * speed);
   applyLook();
 }
 
@@ -3604,6 +3676,18 @@ let heldSwayX = 0;
 let heldSwayY = 0;
 let heldLastYaw = 0;
 let heldLastPitch = 0;
+
+/**
+ * Tells the held item where the view is now pointing. Whenever the view moves
+ * without being turned — a spawn, a load, being thrown by an explosion — this
+ * runs, or the next frame reads the whole jump as one enormous flick of the
+ * mouse and swings the arm to match.
+ */
+function syncHeldAngles() {
+  heldLastYaw = yaw;
+  heldLastPitch = pitch;
+}
+
 let heldMiningSwingTimer = 0;
 
 function clearHeldModel() {
@@ -5134,7 +5218,7 @@ function playerDie(cause) {
   player.sprinting = false;
   playDeathSound();
   clearSprintLatch();
-  leftMouseDown = false;
+  releaseMiningButton();
   hideMiningFeedback();
   targetOutline.visible = false;
   currentMobTarget = null;
@@ -5194,8 +5278,7 @@ function respawnPlayer() {
     Math.floor(spawnColumn.x / CHUNK_SIZE),
     Math.floor(spawnColumn.z / CHUNK_SIZE)
   );
-  heldLastYaw = yaw;
-  heldLastPitch = pitch;
+  syncHeldAngles();
   ensurePlayerChunks();
   world.updateStreaming(player.pos.x, player.pos.z);
   updateTarget();
@@ -6541,12 +6624,11 @@ function openScreen(kind, at = null) {
     ? { x: at.x, y: at.y, z: at.z }
     : null;
   pressedKeys.clear();
-  leftMouseDown = false;
+  releaseMiningButton();
   releasePadMining();
   resetPadCursor();
   hideMiningFeedback();
-  targetOutline.visible = false;
-  currentTarget = null;
+  clearTarget();
   overlayEl.classList.add('hidden');
   screenLayer.classList.remove('hidden');
   document.body.classList.add('screen-open');
@@ -6749,11 +6831,11 @@ function handleScreenSlotClick(container, index, button, shift) {
     if (result && !cursorStack) {
       if (button === 2) {
         const take = Math.ceil(result.count / 2);
-        cursorStack = makeStack(result.id, take, result.dur);
+        setCursorStack(makeStack(result.id, take, result.dur));
         result.count -= take;
         if (result.count <= 0) grid[index] = null;
       } else {
-        cursorStack = result;
+        setCursorStack(result);
         grid[index] = null;
       }
     }
@@ -6784,10 +6866,10 @@ function handleScreenSlotClick(container, index, button, shift) {
           cursorStack.count -= 1;
         }
       }
-      if (cursorStack.count <= 0) cursorStack = null;
+      dropEmptyCursorStack();
     } else if (slot) {
       const take = Math.ceil(slot.count / 2);
-      cursorStack = makeStack(slot.id, take, slot.dur);
+      setCursorStack(makeStack(slot.id, take, slot.dur));
       slot.count -= take;
       if (slot.count <= 0) grid[index] = null;
     }
@@ -6795,21 +6877,21 @@ function handleScreenSlotClick(container, index, button, shift) {
     // Left click while holding a stack: drop, merge, or swap.
     if (!slot) {
       grid[index] = cursorStack;
-      cursorStack = null;
+      clearCursorStack();
     } else if (stacksMergeable(slot, cursorStack)) {
       const def = ITEMS.get(slot.id);
       const moved = Math.min(cursorStack.count, def.stack - slot.count);
       slot.count += moved;
       cursorStack.count -= moved;
-      if (cursorStack.count <= 0) cursorStack = null;
+      dropEmptyCursorStack();
     } else {
       const swapped = slot;
       grid[index] = cursorStack;
-      cursorStack = swapped;
+      setCursorStack(swapped);
     }
   } else if (slot) {
     // Left click with an empty hand: pick up the whole stack.
-    cursorStack = slot;
+    setCursorStack(slot);
     grid[index] = null;
   }
 
@@ -6927,14 +7009,14 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (event.code === 'KeyT' && !event.repeat) {
-    timeScale = timeScale === 0 ? 1 : 0;
-    showToast(timeScale === 0 ? 'Time paused' : 'Time resumed');
+    const running = toggleTimeFrozen();
+    showToast(running ? 'Time resumed' : 'Time paused');
     updateDebug();
     return;
   }
   if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
     const delta = event.code === 'BracketLeft' ? -0.02 : 0.02;
-    dayTime = (dayTime + delta + 1) % 1;
+    nudgeDayTime(delta);
     applyDayNight();
     updateDebug();
   }
@@ -6985,6 +7067,34 @@ function updateDebug() {
 
 let dayTime = DAY_START;
 let timeScale = 1;
+
+/**
+ * Puts the clock at a time of day, as a fraction of one: whatever is asked for
+ * is wrapped into the day it names, so a save that writes 1.75 and a debug key
+ * that overshoots midnight both land somewhere the sky recognises.
+ */
+function setDayTime(time) { dayTime = ((time % 1) + 1) % 1; }
+
+/** Slides the clock a little way at a time, a keypress at a time. */
+function nudgeDayTime(delta) { dayTime = (dayTime + delta + 1) % 1; }
+
+/**
+ * Runs the clock forward by `seconds` of world time. Time being frozen is no
+ * reason not to: somebody asked to see what happens later.
+ */
+function advanceDayTime(seconds) {
+  dayTime = (dayTime + seconds / DAY_LENGTH_SECONDS) % 1;
+}
+
+/** Stops the sun, or starts it again. True when time is running. */
+function toggleTimeFrozen() {
+  timeScale = timeScale === 0 ? 1 : 0;
+  return timeScale !== 0;
+}
+
+/** How fast the clock runs; 0 stands still, and nothing runs backwards. */
+function setTimeScale(scale) { timeScale = Math.max(0, Number(scale) || 0); }
+
 let daylight = 1;
 let sunHeight = 0;
 
@@ -9517,6 +9627,30 @@ let lastSaveError = null;
 let saveDisabled = false;
 let autosaveTimer = AUTOSAVE_SECONDS;
 
+/* What a save is worth telling anyone about: when the world now loaded was
+   written, how big it was, whether it went wrong, and whether anything is still
+   trying. Everything that changes those prospects is down here; the loop and
+   the debug hook say what they have done rather than writing it themselves. */
+
+/** The world that is loaded now was written at `at`, or never was. */
+function rememberSavedWorld(at) { lastSaveAt = at; }
+
+/** A write was asked for, which re-arms the autosave a wipe turned off. */
+function resumeAutosave() { saveDisabled = false; }
+
+/**
+ * There is no save any more. Stops the loop writing the world straight back
+ * over the top of the wipe, and clears every last trace of the one that went:
+ * the pause panel would otherwise still be reporting a world nobody has.
+ */
+function forgetSavedWorld() {
+  saveDisabled = true;
+  clearWorldDirty();
+  lastSaveAt = 0;
+  lastSaveBytes = 0;
+  lastSaveError = null;
+}
+
 function serializeWorldSave() {
   const edits = {};
   for (const [key, map] of world.overridesByChunk) {
@@ -9735,7 +9869,7 @@ function restoreSavedPlayer(save) {
   player.vel.set(0, 0, 0);
   player.onGround = false;
   // Wherever the view was left mid-glide, the world it was gliding over is gone.
-  cameraStepOffset = 0;
+  resetCameraStep();
   // Nothing around a restored position exists yet, so nothing can be trusted
   // until its chunks are made: an older build could write the player into solid
   // ground, and a read that sees only air would keep them buried there.
@@ -9744,8 +9878,7 @@ function restoreSavedPlayer(save) {
     player.pos.y = safeGroundY(Math.floor(player.pos.x), Math.floor(player.pos.z));
     player.onGround = true;
   }
-  if (Number.isFinite(p.yaw)) yaw = p.yaw;
-  if (Number.isFinite(p.pitch)) pitch = clamp(p.pitch, -1.55, 1.55);
+  restorePlayerLook(p);
   player.health = clamp(Number(p.health) || player.maxHealth, 1, player.maxHealth);
   player.hunger = clamp(Number(p.hunger ?? HUNGER_MAX), 0, HUNGER_MAX);
   // Saturation rides along from schema 4. A missing value cannot survive the
@@ -9761,8 +9894,7 @@ function restoreSavedPlayer(save) {
   renderHunger();
   applyLook();
   syncCamera();
-  heldLastYaw = yaw;
-  heldLastPitch = pitch;
+  syncHeldAngles();
   return true;
 }
 
@@ -9920,7 +10052,7 @@ prepareSpawnChunks(
 if (loadedSave && restoreSavedPlayer(loadedSave)) {
   restoreSavedInventory(loadedSave);
   restoreSavedArmour(loadedSave);
-  if (Number.isFinite(loadedSave.time)) dayTime = ((loadedSave.time % 1) + 1) % 1;
+  if (Number.isFinite(loadedSave.time)) setDayTime(loadedSave.time);
   const savedSpawn = loadedSave.spawn;
   if (savedSpawn && Number.isFinite(savedSpawn.x) && Number.isFinite(savedSpawn.z)) {
     spawnColumn.x = Math.trunc(savedSpawn.x);
@@ -9935,7 +10067,7 @@ renderHotbar();
 applyDayNight();
 updateDebug();
 
-lastSaveAt = (loadedSave && loadedSave.savedAt) || 0;
+rememberSavedWorld((loadedSave && loadedSave.savedAt) || 0);
 initSaveUi(Boolean(loadedSave));
 
 // A world written by an older build stays in storage but cannot be read, so
@@ -9973,7 +10105,7 @@ window.__voxelcraft = {
   },
   save() {
     // Asking for a write also re-arms autosave, which wipeSave() turns off.
-    saveDisabled = false;
+    resumeAutosave();
     saveWorld();
     return this.saveInfo();
   },
@@ -10004,11 +10136,7 @@ window.__voxelcraft = {
     } catch (unavailable) {}
     // Same guard the "New world" button uses: pagehide also writes a save, so
     // without this the wiped world comes straight back on the next load.
-    saveDisabled = true;
-    clearWorldDirty();
-    lastSaveAt = 0;
-    lastSaveBytes = 0;
-    lastSaveError = null;
+    forgetSavedWorld();
     refreshSaveStatus();
     return false;
   },
@@ -10184,7 +10312,7 @@ window.__voxelcraft = {
     player.vel.set(0, 0, 0);
     player.onGround = false;
     player.fallPeakY = y;
-    cameraStepOffset = 0;
+    resetCameraStep();
     ensurePlayerChunks();
     syncCamera();
     updateTarget();
@@ -10192,8 +10320,7 @@ window.__voxelcraft = {
     updateDebug();
   },
   look(yawValue, pitchValue) {
-    yaw = yawValue;
-    pitch = clamp(pitchValue, -1.55, 1.55);
+    aimPlayer(yawValue, pitchValue);
     applyLook();
     updateTarget();
   },
@@ -10202,8 +10329,7 @@ window.__voxelcraft = {
     const dx = x - player.pos.x;
     const dy = y - (player.pos.y + EYE_HEIGHT);
     const dz = z - player.pos.z;
-    yaw = Math.atan2(-dx, -dz);
-    pitch = clamp(Math.atan2(dy, Math.hypot(dx, dz)), -1.55, 1.55);
+    aimPlayer(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz)));
     applyLook();
     updateTarget();
     return this.target();
@@ -11076,13 +11202,13 @@ window.__voxelcraft = {
   },
   setDay(value) {
     // Backwards-compatible debug helper: 1 = noon, 0 = midnight.
-    dayTime = value >= 0.5 ? 0.25 : 0.75;
+    setDayTime(value >= 0.5 ? 0.25 : 0.75);
     applyDayNight();
     updateDebug();
     return this.time();
   },
   setTime(value) {
-    dayTime = ((value % 1) + 1) % 1;
+    setDayTime(value);
     applyDayNight();
     updateDebug();
     return this.time();
@@ -11102,12 +11228,12 @@ window.__voxelcraft = {
     };
   },
   setTimeScale(scale) {
-    timeScale = Math.max(0, Number(scale) || 0);
+    setTimeScale(scale);
     updateDebug();
     return timeScale;
   },
   advanceTime(seconds) {
-    dayTime = (dayTime + seconds / DAY_LENGTH_SECONDS) % 1;
+    advanceDayTime(seconds);
     applyDayNight();
     updateDebug();
     return this.time();
