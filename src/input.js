@@ -601,7 +601,10 @@ export function readPlayerInput() {
     right += gpAxis(0);
   }
 
-  const padJump = gamepadState.active && gpButton('a');
+  // The A that dismissed the menu belongs to the menu until the thumb lets
+  // go of it: a held pick must not become a jump on the first playable frame.
+  if (!gpButton('a')) padJumpSpentOnMenu = false;
+  const padJump = gamepadState.active && gpButton('a') && !padJumpSpentOnMenu;
 
   // Sprint arrives through the latch: the Shift, Ctrl and B edges in the input
   // handlers set it, and holding the key down does nothing on its own.
@@ -671,7 +674,12 @@ export function startFromOverlay(padResume = false) {
   if (padResume || fallbackControls || document.pointerLockElement === canvas) {
     overlayEl.classList.add('hidden');
     if (fallbackControls) inputView.hint(true);
-    if (padResume) padResumeFrame = true;
+    if (padResume) {
+      padResumeFrame = true;
+      // The A that chose Start belongs to the menu: held into play it would
+      // otherwise read as a jump, sound and all, on the first playable frame.
+      if (gpButton('a')) padJumpSpentOnMenu = true;
+    }
   } else {
     requestLock();
   }
@@ -903,6 +911,8 @@ export function padMenuDirection(dt, state, negative, positive, axisValue) {
 export let padMiningDown = false;
 /** True for the single frame where a pad press dismissed the overlay. */
 let padResumeFrame = false;
+/** True while the A that dismissed the menu is still held: it must not jump. */
+let padJumpSpentOnMenu = false;
 
 /**
  * Whether this is the frame right after control came back, in which case the
