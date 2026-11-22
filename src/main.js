@@ -103,6 +103,7 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
+import { padMenuTick } from './menu.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
@@ -372,6 +373,7 @@ setInputView({
   hotbarStep: (delta) => selectHotbarSlot(currentSlot() + delta, true),
   togglePack: toggleInventory,
   screenTick: updateGamepadScreen,
+  menuPad: padMenuTick,
   dismissTransmission
 });
 

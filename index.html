@@ -74,7 +74,14 @@
     <h1>MultiVoxelVerse Adventures</h1>
     <p class="subtitle">Version .6</p>
 
-    <section class="controls" aria-label="Controls">
+    <nav class="main-menu" aria-label="Main menu">
+      <button id="menu-controls" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-controls-panel">Controls</button>
+      <button id="menu-settings" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-settings-panel">Settings</button>
+      <button id="menu-journal" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-journal-panel">Journal</button>
+      <button id="menu-start" class="menu-choice start" type="button">Start</button>
+    </nav>
+
+    <section id="menu-controls-panel" class="controls menu-panel hidden" aria-label="Controls">
       <div class="controls-head">
         <span>Action</span>
         <span>Keyboard &amp; mouse</span>
@@ -125,10 +132,10 @@
         <span class="control-keys"><kbd>Esc</kbd></span>
         <span class="control-keys"><kbd>Start</kbd></span>
       </div>
-      <p class="controls-note">The D-pad or left stick moves through open menus.</p>
+      <p class="controls-note">The D-pad, the left stick, and the arrow keys move through this menu; A or Enter picks.</p>
     </section>
 
-    <section class="menu-settings" aria-label="Settings">
+    <section id="menu-settings-panel" class="menu-settings menu-panel hidden" aria-label="Settings">
       <div class="menu-heading">Settings</div>
       <div class="pad-settings">
         <span id="pad-status" class="pad-state">Gamepad: not detected</span>
@@ -164,8 +171,12 @@
       </div>
     </section>
 
-    <button id="start-button" class="cta" type="button">CLICK OR PRESS START</button>
-    <p class="fineprint">Explore forests, deserts, mountains, and caves. Torches hold back the dark, and ore waits below &mdash; build a furnace, arm yourself, and keep your hunger fed.</p>
+    <section id="menu-journal-panel" class="menu-journal menu-panel hidden" aria-label="Journal">
+      <div class="menu-heading">Journal &middot; Received Recipes</div>
+      <div id="journal-menu-body" class="journal-body"></div>
+    </section>
+
+    <p class="fineprint">Explore forests, deserts, mountains, and caves. Torches hold back the dark, and ore waits below &mdash; build a furnace, arm yourself, and keep your hunger fed. Press Start, or click the dark around this panel, to step in.</p>
   </div>
 </div>
 

@@ -404,18 +404,43 @@ kbd {
 #overlay .audio-settings .audio-value {
   text-align: right; color: #7d90a2; font-variant-numeric: tabular-nums;
 }
-#overlay .cta {
-  display: block; margin: 2px auto 0; padding: 11px 22px;
-  font: inherit; font-size: 13px; color: #f7f3e2; letter-spacing: 0.14em;
-  background: rgba(244, 208, 111, 0.1);
-  border: 1px solid rgba(244, 208, 111, 0.42);
+#overlay .main-menu {
+  display: grid; gap: 8px;
+  margin: 4px auto 16px; max-width: 300px;
+}
+#overlay .menu-choice {
+  display: block; width: 100%; padding: 10px 14px;
+  font: inherit; font-size: 12.5px; color: #eaf3fb; letter-spacing: 0.16em;
+  text-transform: uppercase; text-align: center;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
   border-radius: 3px; cursor: pointer;
+}
+#overlay .menu-choice:hover { background: rgba(255,255,255,0.16); }
+#overlay .menu-choice.selected {
+  color: var(--accent);
+  background: rgba(244, 208, 111, 0.1);
+  border-color: rgba(244, 208, 111, 0.55);
+}
+#overlay .menu-choice.start {
+  color: #f7f3e2; font-size: 13px;
+  background: rgba(244, 208, 111, 0.1);
+  border-color: rgba(244, 208, 111, 0.42);
   animation: pulse 2.2s ease-in-out infinite;
 }
-#overlay .cta:hover {
+#overlay .menu-choice.start:hover {
   background: rgba(244, 208, 111, 0.2);
   border-color: rgba(244, 208, 111, 0.72);
+  animation: none;
 }
+#overlay .menu-panel.hidden { display: none; }
+#overlay .menu-journal {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 12px;
+  margin-bottom: 16px;
+}
+#overlay .journal-body { text-align: left; padding: 0 4px; }
+#overlay .journal-column { min-width: 0; max-width: 100%; max-height: 40vh; }
 #overlay .fineprint {
   margin: 14px auto 0; max-width: 500px;
   font-size: 10.5px; line-height: 1.55; color: #7d90a2; letter-spacing: 0.035em;

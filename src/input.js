@@ -58,6 +58,7 @@ const inputView = {
   hotbarStep: () => {},
   togglePack: () => {},
   screenTick: () => {},
+  menuPad: () => {},
   dismissTransmission: () => false
 };
 
@@ -98,6 +99,15 @@ export let sprintLatched = false;
 function controlsOwned() {
   return isPlayable() && !inputView.screenOpen() && !player.dead &&
     overlayEl.classList.contains('hidden');
+}
+
+/**
+ * Whether the menu has the page: the start form and the pause panel are the
+ * same overlay, and while either is up the keys, the mouse and the pad are
+ * talking to the menu, not to the world.
+ */
+export function menuOpen() {
+  return !overlayEl.classList.contains('hidden');
 }
 
 export function setSprintLatch(on) {
@@ -648,18 +658,31 @@ export function requestLock() {
   }
 }
 
-overlayEl.addEventListener('click', (event) => {
-  // The volume slider lives in the pause panel, but a click on it is not a
-  // request to resume the game.
-  if (event.target && event.target.closest && event.target.closest('#audio-settings')) return;
+/**
+ * Hand the game back to the player: the menu's Start choice, a click on the
+ * dark around the panel, or a Start press on the pad. A pad that opened the
+ * overlay never let go of the mouse lock, so it only has to put the panel
+ * down; and when the pad asks, its stick reads centred for a frame so a
+ * press on the way out of the menu does not turn anyone.
+ */
+export function startFromOverlay(padResume = false) {
   if (player.dead) return;
   ensureAudio();
-  if (fallbackControls) {
+  if (padResume || fallbackControls || document.pointerLockElement === canvas) {
     overlayEl.classList.add('hidden');
-    inputView.hint(true);
+    if (fallbackControls) inputView.hint(true);
+    if (padResume) padResumeFrame = true;
   } else {
     requestLock();
   }
+}
+
+overlayEl.addEventListener('click', (event) => {
+  // The panel belongs to the menu now: its buttons and settings do their own
+  // thing. Only the dark around it is a shortcut back into the game.
+  if (event.target && event.target.closest && event.target.closest('.panel')) return;
+  if (player.dead) return;
+  startFromOverlay(false);
 });
 
 document.getElementById('pad-sens-down').addEventListener('click', (event) => {
@@ -689,7 +712,9 @@ canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 document.addEventListener('mousedown', (event) => {
   const canPlay = document.pointerLockElement === canvas ||
     (fallbackControls && !inputView.screenOpen());
-  if (!canPlay || player.dead) return;
+  // A click on the open menu is a menu click: the pick does not swing and a
+  // menu button is never a place-at-your-feet, whichever mode the mouse is in.
+  if (!canPlay || menuOpen() || player.dead) return;
   ensureAudio();
 
   if (event.button === 0) {
@@ -783,6 +808,10 @@ document.addEventListener('mousemove', (event) => {
 const SPRINT_KEYS = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'];
 
 window.addEventListener('keydown', (event) => {
+  // While the menu has the page its keys stay out of the game entirely: no
+  // walking key is remembered, no sprint latches, no jump waits for the
+  // first playable frame. The menu's own handler answers from here on.
+  if (menuOpen()) return;
   pressedKeys.add(event.code);
   if (SPRINT_KEYS.includes(event.code) && !event.repeat && controlsOwned()) {
     // Shift and Ctrl latch sprint: pressed once they start the run, pressed
@@ -843,6 +872,33 @@ export const virtualPad = {
   buttons: new Array(17).fill(false)
 };
 export const padMenuRepeat = { x: { dir: 0, timer: 0 }, y: { dir: 0, timer: 0 } };
+
+/** Held-direction repeat with an initial delay, for both D-pad and stick. */
+export function padMenuDirection(dt, state, negative, positive, axisValue) {
+  let dir = 0;
+  if (negative) dir = -1;
+  else if (positive) dir = 1;
+  else if (axisValue <= -GP_MENU_AXIS_THRESHOLD) dir = -1;
+  else if (axisValue >= GP_MENU_AXIS_THRESHOLD) dir = 1;
+
+  if (!dir) {
+    state.dir = 0;
+    state.timer = 0;
+    return 0;
+  }
+  if (dir !== state.dir) {
+    state.dir = dir;
+    state.timer = GP_MENU_REPEAT_DELAY;
+    return dir;
+  }
+
+  state.timer -= dt;
+  if (state.timer <= 0) {
+    state.timer = GP_MENU_REPEAT_RATE;
+    return dir;
+  }
+  return 0;
+}
 
 export let padMiningDown = false;
 /** True for the single frame where a pad press dismissed the overlay. */
@@ -1084,24 +1140,12 @@ export function updateGamepad(dt) {
   // Trigger release, or losing focus, stops the mining hold.
   if (!gpButton('rt')) releasePadMining();
 
-  // The overlay doubles as the pause/settings screen: D-pad left/right tunes
-  // look sensitivity, any other pad input resumes.
+  // The overlay is the main menu now: while it is up, the pad is walking its
+  // choices. D-pad left/right still tunes look sensitivity, but that row is
+  // in the menu too, so it is the menu's handler that answers.
   if (!inputView.screenOpen() && !overlayEl.classList.contains('hidden')) {
     releasePadMining();
-    const left = gamepadState.pressed[PAD_BUTTON.left];
-    const right = gamepadState.pressed[PAD_BUTTON.right];
-    if (left) setGamepadSensitivity(gamepadState.sensitivity - 0.1);
-    if (right) setGamepadSensitivity(gamepadState.sensitivity + 0.1);
-
-    const otherEdge = gamepadState.pressed.some(
-      (down, index) => down && index !== PAD_BUTTON.left && index !== PAD_BUTTON.right
-    );
-    const stickMoved = Math.abs(gpAxis(0)) + Math.abs(gpAxis(1)) +
-      Math.abs(gpAxis(2)) + Math.abs(gpAxis(3)) > 0;
-    if (otherEdge || stickMoved) {
-      overlayEl.classList.add('hidden');
-      padResumeFrame = true;
-    }
+    inputView.menuPad(dt);
     return;
   }
 

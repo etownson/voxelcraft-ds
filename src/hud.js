@@ -44,8 +44,8 @@ import { essenceCount, grantEssence } from './essence.js';
 import { respawnPlayer } from './health.js';
 import { ITEM_ICONS } from './icons.js';
 import {
-  GP_MENU_AXIS_THRESHOLD, GP_MENU_REPEAT_DELAY, GP_MENU_REPEAT_RATE, PAD_BUTTON, canvas,
-  fallbackControls, gamepadState, gpAxis, overlayEl, padMenuRepeat, pressedKeys,
+  PAD_BUTTON, canvas, fallbackControls, gamepadState, gpAxis, menuOpen, overlayEl,
+  padMenuDirection, padMenuRepeat, pressedKeys,
   releaseMiningButton, releasePadMining, renderSprintState, requestLock
 } from './input.js';
 import { hideMiningFeedback } from './interaction.js';
@@ -686,7 +686,7 @@ function recipeIngredients(recipe) {
   return counts;
 }
 
-function buildJournalColumn() {
+export function buildJournalColumn() {
   const column = document.createElement('div');
   column.className = 'journal-column';
 
@@ -1051,32 +1051,6 @@ export function handlePadScreenTap(name) {
 }
 
 /** Held-direction repeat with an initial delay, for both D-pad and stick. */
-function padMenuDirection(dt, state, negative, positive, axisValue) {
-  let dir = 0;
-  if (negative) dir = -1;
-  else if (positive) dir = 1;
-  else if (axisValue <= -GP_MENU_AXIS_THRESHOLD) dir = -1;
-  else if (axisValue >= GP_MENU_AXIS_THRESHOLD) dir = 1;
-
-  if (!dir) {
-    state.dir = 0;
-    state.timer = 0;
-    return 0;
-  }
-  if (dir !== state.dir) {
-    state.dir = dir;
-    state.timer = GP_MENU_REPEAT_DELAY;
-    return dir;
-  }
-
-  state.timer -= dt;
-  if (state.timer <= 0) {
-    state.timer = GP_MENU_REPEAT_RATE;
-    return dir;
-  }
-  return 0;
-}
-
 export function updateGamepadScreen(dt) {
   if (!activeScreen) return;
   const held = gamepadState.buttons;
@@ -1493,6 +1467,9 @@ window.addEventListener('mousemove', (event) => {
 
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return;
+  // With the menu up, E, G, J and the rest belong to the menu: none of them
+  // reaches the game through the start form or the pause panel.
+  if (menuOpen()) return;
 
   const isInventoryKey = event.code === 'KeyE' ||
     (event.key && event.key.toLowerCase() === 'e');
@@ -1706,12 +1683,13 @@ export function dismissTransmission() {
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'KeyM' || event.repeat) return;
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (menuOpen()) return;
   event.preventDefault();
   showToast(toggleAudioMuted());
 });
 
 window.addEventListener('keydown', (event) => {
-  if (activeScreen) return;
+  if (activeScreen || menuOpen()) return;
   const digit = /^Digit([1-9])$/.exec(event.code) || /^([1-9])$/.exec(event.key || '');
   if (digit) {
     selectHotbarSlot(Number(digit[1]) - 1, true);
@@ -1733,7 +1711,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('wheel', (event) => {
-  if (activeScreen) return;
+  if (activeScreen || menuOpen()) return;
   if (document.pointerLockElement !== canvas && !fallbackControls) return;
   selectHotbarSlot(currentSlot() + (event.deltaY > 0 ? 1 : -1), true);
 }, { passive: true });

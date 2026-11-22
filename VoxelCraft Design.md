@@ -719,11 +719,18 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
-- A brief instructions overlay on first load — click to lock, WASD, mouse, Space,
-  Shift/Ctrl sprint, left break/attack, right place/use, 1–9 and wheel for the hotbar,
-  E for inventory — dismissed by the click that locks the pointer
-- A pause panel carries the volume sliders (Master / Sound effects / Music) and the
-  control list; it is click-to-resume
+- The main menu is the start form and the pause panel in one: four choices —
+  Controls, Settings, Journal, Start — where the first three open one panel at a
+  time under the menu, and choosing an open one again closes it. Controls lists
+  keyboard, mouse, and pad; Settings carries the gamepad status, look sensitivity,
+  the save line with New world, and the volume sliders; Journal repeats the recipes
+  the beacons have transmitted. Start — or a click on the dark around the panel —
+  locks the pointer and lets the walker go; the pad walks the choices with the
+  D-pad or left stick and picks with A, while Start on the pad means resume
+- While the menu has the page, its input belongs to the menu and never reaches the
+  world: no walked keys remembered into the resume, no swinging pick behind the
+  panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`
+  is the gate every global listener checks
 - A `G` debug shelf lists every item — blocks first, then materials, food, tools and
   armour — as a nine-wide grid of icons: left click adds a whole stack, right click
   one, on mouse and pad alike. It is a debug option, not a shop: the shelf never
@@ -804,7 +811,7 @@ per species (`MOB_HURT_GAIN`: cow 0.53, chicken 0.6, pig/sheep 0.7, hostiles 1) 
 the hurt call is also the death cry; a burning mob's hurt calls are gapped to 2.6 s
 even though the burn ticks every 0.65 s.
 
-Settings: three sliders in the pause panel — Master (70%), Sound effects (100%), Music
+Settings: three sliders in the menu's Settings panel — Master (70%), Sound effects (100%), Music
 (70%) — persisted under `voxelcraft:audio:v1`; `M` mutes the master; the context
 suspends when the tab hides. For GitHub Pages: relative fetch paths, a committed
 `.nojekyll`, never Git LFS (Pages serves the pointer, not the sample), the whole bank

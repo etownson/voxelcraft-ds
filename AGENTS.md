@@ -11,8 +11,11 @@ without asking; the zero-build layout is deliberate.
 - `index.html` — the composition root: markup, styles link, and a module script
   that imports everything. Nothing imports it.
 - `src/` — ~30 small single-purpose modules (`worldgen`, `chunks`, `mob`,
-  `combat`, `crafting`, ...). Keep new code in the right module and keep the
-  single-purpose split; `tools/split-modules.mjs` exists to carve more out.
+  `combat`, `crafting`, `menu`, ...). Keep new code in the right module and keep
+  the single-purpose split; `tools/split-modules.mjs` exists to carve more out.
+- The start form and the pause panel are the same `#overlay`, shaped as a menu
+  (`src/menu.js`). While it is open its input must never reach the world: any
+  global key, mouse, or wheel listener gates on `menuOpen()` from `src/input.js`.
 - `tools/` — the project's own checks and generators, in bash and node.
 - The two design docs (`VoxelCraft Design.md`, `MultiVoxelVerse Adventures
   Design.md`) are the source of truth for gameplay decisions.
