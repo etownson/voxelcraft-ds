@@ -196,6 +196,27 @@ import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './src/worldge
 const INVENTORY_SIZE = 36;
 const HOTBAR_SIZE = 9;
 const inventory = new Array(INVENTORY_SIZE).fill(null);
+
+/**
+ * Which hotbar slot is held out. The bar paints this one and everything that
+ * eats, digs, places or wears something asks for it, so it lives with the pack
+ * it indexes rather than with the strip of nine that shows it.
+ */
+let selectedSlot = 0;
+
+/** The slot the player is holding out of the hotbar, nought through eight. */
+function currentSlot() { return selectedSlot; }
+
+/**
+ * Points the held hand at a hotbar slot, wrapping past either end. True when
+ * the slot really changed, which is when the click is owed.
+ */
+function selectSlot(index) {
+  const previous = selectedSlot;
+  selectedSlot = ((index % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+  return selectedSlot !== previous;
+}
+
 /**
  * Worn armour in head, chest, legs, feet order. Kept apart from the inventory
  * so a full pack never strands a helmet in it, and so a death can leave the
@@ -674,14 +695,14 @@ function addItemToInventory(itemId, count, dur) {
 }
 
 function getSelectedStack() {
-  return inventory[selectedSlot] || null;
+  return inventory[currentSlot()] || null;
 }
 
 function consumeSelectedItem(count = 1) {
   const stack = getSelectedStack();
   if (!stack) return false;
   stack.count -= count;
-  if (stack.count <= 0) inventory[selectedSlot] = null;
+  if (stack.count <= 0) inventory[currentSlot()] = null;
   renderHotbar();
   return true;
 }
@@ -1148,7 +1169,7 @@ function wearHeldTool(amount = 1) {
   if (!stack || !consumeDurability(stack, amount)) return false;
 
   const item = ITEMS.get(stack.id);
-  inventory[selectedSlot] = null;
+  inventory[currentSlot()] = null;
   playToolBreakSound();
   showToast(((item && item.name) || 'Tool') + ' broke');
   hideMiningFeedback();
@@ -1459,7 +1480,7 @@ function swapHeldFor(itemId) {
     if (addItemToInventory(itemId, 1) > 0) return false;
     stack.count -= 1;
   } else {
-    inventory[selectedSlot] = freshStack(itemId);
+    inventory[currentSlot()] = freshStack(itemId);
   }
   renderHotbar();
   markWorldDirty();
@@ -3223,10 +3244,10 @@ function handlePadTap(name) {
       setGamepadSensitivity(gamepadState.sensitivity);
       break;
     case 'lb':
-      selectHotbarSlot(selectedSlot - 1, true);
+      selectHotbarSlot(currentSlot() - 1, true);
       break;
     case 'rb':
-      selectHotbarSlot(selectedSlot + 1, true);
+      selectHotbarSlot(currentSlot() + 1, true);
       break;
     case 'lt':
       tryUseSelectedItem();
@@ -3304,10 +3325,10 @@ function updateGamepad(dt) {
     toggleSprintLatch();
   }
   if (gamepadState.pressed[PAD_BUTTON.lb]) {
-    selectHotbarSlot(selectedSlot - 1, true);
+    selectHotbarSlot(currentSlot() - 1, true);
   }
   if (gamepadState.pressed[PAD_BUTTON.rb]) {
-    selectHotbarSlot(selectedSlot + 1, true);
+    selectHotbarSlot(currentSlot() + 1, true);
   }
   if (gamepadState.pressed[PAD_BUTTON.lt]) tryUseSelectedItem();
   if (gamepadState.pressed[PAD_BUTTON.rt]) beginPadMining();
@@ -4026,7 +4047,6 @@ for (let i = 0; i < HOTBAR_SIZE; i++) {
   hotbarCounts.push(count);
 }
 
-let selectedSlot = 0;
 let toastTimer = 0;
 
 /**
@@ -4271,7 +4291,7 @@ function buildStorageColumn(withChest = false) {
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     hotbarGrid.append(createScreenSlot('inventory', i, inventory[i], {
       key: String(i + 1),
-      selected: i === selectedSlot
+      selected: i === currentSlot()
     }));
   }
 
@@ -5163,13 +5183,11 @@ window.addEventListener('keydown', (event) => {
 });
 
 function selectHotbarSlot(index, announce = false) {
-  const previous = selectedSlot;
-  selectedSlot = ((index % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
-  if (selectedSlot !== previous) playUiClickSound();
-  hotbarSlots.forEach((slot, i) => slot.classList.toggle('selected', i === selectedSlot));
+  if (selectSlot(index)) playUiClickSound();
+  hotbarSlots.forEach((slot, i) => slot.classList.toggle('selected', i === currentSlot()));
 
   if (announce) {
-    const stack = inventory[selectedSlot];
+    const stack = inventory[currentSlot()];
     if (stack) {
       const item = ITEMS.get(stack.id);
       showToast(item ? item.name : stack.id);
@@ -5216,7 +5234,7 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('wheel', (event) => {
   if (activeScreen) return;
   if (document.pointerLockElement !== canvas && !fallbackControls) return;
-  selectHotbarSlot(selectedSlot + (event.deltaY > 0 ? 1 : -1), true);
+  selectHotbarSlot(currentSlot() + (event.deltaY > 0 ? 1 : -1), true);
 }, { passive: true });
 
 /* The frame rate the readout prints. The loop hands over every frame's length
@@ -5331,7 +5349,7 @@ function serializeWorldSave() {
       saturation: Number(player.saturation.toFixed(3)),
       exhaustion: Number(player.exhaustion.toFixed(3))
     },
-    slot: selectedSlot,
+    slot: currentSlot(),
     time: dayTime,
     // Where a bed last claimed the player, if anywhere: the respawn point
     // outlives both the session and the bed that set it.
@@ -6106,7 +6124,7 @@ window.__voxelcraft = {
     return countInventoryItem(itemId);
   },
   /** Durability of the stack in an inventory slot, or null if it never wears. */
-  durability(slotIndex = selectedSlot) {
+  durability(slotIndex = currentSlot()) {
     return stackDurability(inventory[Number(slotIndex)] || null);
   },
   /** Worn armour: the four slots plus the defence they are worth. */
@@ -6364,7 +6382,7 @@ window.__voxelcraft = {
   },
   selectSlot(index) {
     selectHotbarSlot(index, true);
-    return selectedSlot;
+    return currentSlot();
   },
   /** Set or flip the sprint latch, the way Shift, Ctrl and B do. */
   setSprint(value) {
@@ -7023,7 +7041,7 @@ window.__voxelcraft = {
           model: heldModelKey
         };
       })(),
-      selectedSlot,
+      selectedSlot: currentSlot(),
       selected: selected ? { id: selected.id, count: selected.count } : null,
       inventory: inventory.map((slot) => slotInfo(slot)),
       armour: armorSlots.map((slot) => slotInfo(slot)),
