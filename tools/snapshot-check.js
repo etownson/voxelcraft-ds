@@ -11,9 +11,11 @@
  * stays readable in a diff. The report names every section that differs and
  * shows both sides, which is what turns a red run into a specific commit.
  */
+// `cache: 'reload'` because a rebaselined run must not be compared against the
+// baseline the browser is still holding from the last run.
 Promise.all([
-  fetch('tools/snapshot-harness.js').then(function (r) { return r.text(); }),
-  fetch('tools/snapshot-baseline.json').then(function (r) { return r.json(); })
+  fetch('tools/snapshot-harness.js', { cache: 'reload' }).then(function (r) { return r.text(); }),
+  fetch('tools/snapshot-baseline.json', { cache: 'reload' }).then(function (r) { return r.json(); })
 ]).then(function (both) {
   var harness = both[0];
   var base = both[1].strict;

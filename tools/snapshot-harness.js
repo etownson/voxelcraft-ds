@@ -8,9 +8,11 @@
  * real elapsed time or on mob AI's Math.random, and is sanity-only.
  *
  * Before each run: `window.__voxelcraft.wipeSave()` then reload, so the page
- * boots a fresh world instead of restoring the previous run's save. Then
- * flushChunks/flushLight inside the harness to drain the streaming queue,
- * because lighting over an unloaded chunk reads 0/0.
+ * boots a fresh world instead of restoring the previous run's save. The mission
+ * sections insist on this: `beacons` and `beaconGate` read a world that has
+ * heard no transmission, and a restored save would light beacons before the
+ * harness ever clicks one. Then flushChunks/flushLight inside the harness to
+ * drain the streaming queue, because lighting over an unloaded chunk reads 0/0.
  *
  * Usage, against a static server on the repo root (python3 -m http.server):
  *
@@ -31,7 +33,10 @@
   function fix3(n) { return n.toFixed(3); }
 
   /* [recipe id, expected result, 9 grid cells] - 17 of the 48 recipes, driven
-     end to end. The rest are covered by the recipe table digest below. */
+     end to end. The rest are covered by the recipe table digest below. Every
+     one of them is locked behind a beacon now, so the list runs only after
+     `beaconGate` has walked the mission forward; `beaconGate` itself proves
+     the lock holds while nothing has been transmitted. */
   var CRAFT = [["planks","planksx4","log,-,-,-,-,-,-,-,-"],["sticks","stickx4","planks,-,-,planks,-,-,-,-,-"],["crafting_table","crafting_tablex1","planks,planks,-,planks,planks,-,-,-,-"],["torches","torchx4","coal,-,-,stick,-,-,-,-,-"],["furnace","furnacex1","cobblestone,cobblestone,cobblestone,cobblestone,-,cobblestone,cobblestone,cobblestone,cobblestone"],["bread","breadx1","wheat,wheat,wheat,-,-,-,-,-,-"],["door","doorx3","planks,planks,-,planks,planks,-,planks,planks,-"],["shears","shearsx1","iron_ingot,-,-,-,iron_ingot,-,-,-,-"],["bed","bedx1","wool,wool,wool,planks,planks,planks,-,-,-"],["chest","chestx1","planks,planks,planks,planks,-,planks,planks,planks,planks"],["oak_stairs","oak_stairsx4","planks,-,-,planks,planks,-,planks,planks,planks"],["cobblestone_stairs","cobblestone_stairsx4","cobblestone,-,-,cobblestone,cobblestone,-,cobblestone,cobblestone,cobblestone"],["ladder","ladderx3","stick,-,stick,stick,stick,stick,stick,-,stick"],["wood_axe","wood_axex1","planks,planks,-,planks,stick,-,-,stick,-"],["iron_pickaxe","iron_pickaxex1","iron_ingot,iron_ingot,iron_ingot,-,stick,-,-,stick,-"],["iron_helmet","iron_helmetx1","iron_ingot,iron_ingot,iron_ingot,iron_ingot,-,iron_ingot,-,-,-"],["diamond_boots","diamond_bootsx1","diamond,-,diamond,diamond,-,diamond,-,-,-"]];
 
   v.clearMobs();
@@ -112,11 +117,105 @@
     };
   });
 
-  // --- recipe table (section 10): every recipe's result, pattern, and shapeless list ---
+  // --- recipe table (section 10): every recipe's result, pattern, shapeless
+  //     list, and the beacon that transmits it. The trailing flag is whether
+  //     that beacon has been lit yet, which at this point in the run is no
+  //     recipe at all: a fresh world has heard no transmission. ---
   ok('recipes', function () {
     return v.recipes().map(function (r) {
-      return [r.id, r.result.id + 'x' + r.result.count, r.shapeless ? r.shapeless.join('+') : (r.pattern || []).join('/')].join('=');
+      return [r.id, r.result.id + 'x' + r.result.count,
+        r.shapeless ? r.shapeless.join('+') : (r.pattern || []).join('/'),
+        (r.unlockedBy == null ? '-' : r.unlockedBy) + (r.received ? 'got' : 'shut')].join('=');
     });
+  });
+
+  // --- the mission: SP0, the five monument columns, and what each wants ---
+  // Read while nothing is lit. The columns are a pure function of WORLD_SEED
+  // and SP0, so this is as fixed as the world generation above, and the price
+  // of each one is the design's one essence per four blocks of travel.
+  ok('beacons', function () {
+    var b = v.beacons();
+    return {
+      sp0: b.sp0.x + ',' + b.sp0.z,
+      activated: b.activated,
+      sites: b.sites.map(function (s) {
+        return s.index + '@' + s.at.join(',') + '/' + s.distance + 'blocks/' + s.cost + 'essence/' + (s.lit ? 'lit' : 'dark');
+      }),
+      next: b.next ? b.next.at.join(',') + '/' + b.next.cost : 'none'
+    };
+  });
+
+  // --- the gate the mission puts on crafting, and the beacon that lifts it ---
+  // A fresh walker knows nothing: planks itself is beyond reach until beacon 1
+  // answers. Then the mission is walked the way it is played — the purse filled
+  // to the price, the crosshair on the machine, a right click — and what that
+  // one click changes is what is recorded here: the count, the essence spent,
+  // and the recipes that arrive with the transmission. Only then are the four
+  // further monuments fast-forwarded, which is what lets the craft list below
+  // reach the iron and diamond rows.
+  ok('beaconGate', function () {
+    var out = [];
+    function attempt(id, cells) {
+      var grid = cells.split(',').map(function (c) { return c === '-' ? null : c; });
+      v.clearInventory();
+      grid.forEach(function (cell) { if (cell) v.give(cell, 4); });
+      v.setCraftingGrid('3x3', grid);
+      var made = v.craft('3x3');
+      out.push(id + ':' + (made ? 'MADE ' + made.id + 'x' + made.count : 'shut'));
+    }
+    attempt('planks', 'log,-,-,-,-,-,-,-,-');
+    attempt('bread', 'wheat,wheat,wheat,-,-,-,-,-,-');
+    attempt('iron_pickaxe', 'iron_ingot,iron_ingot,iron_ingot,-,stick,-,-,stick,-');
+    attempt('diamond_boots', 'diamond,-,diamond,diamond,-,diamond,-,-,-');
+    var journal = function () {
+      return v.recipes().filter(function (r) { return r.received; }).length;
+    };
+    out.push('journal:' + journal());
+
+    // Light beacon 1 for real, the way it is played: purse to the price, the
+    // crosshair on the machine, a right click. Where to stand is a search
+    // rather than a guess, because the column search only promises ground flat
+    // to within two blocks, so a neighbour of the plinth can stand a step
+    // taller than the machine and steal the ray. These offsets are tried in a
+    // fixed order and the loop stops at the click whose target is the beacon
+    // cell itself, which makes the offset that answers a fact about the seed.
+    var site = v.beacons().next;
+    var at = site.at;
+    v.clearInventory();
+    var start = v.essence();
+    v.grantEssence(site.cost);
+    var clicked = null, stood = 'none';
+    var OFFSETS = [[2.5, 1.62], [2.5, 0.62], [2.5, 2.62], [3.5, 1.62], [3.5, 2.62], [1.5, 2.62]];
+    for (var i = 0; i < OFFSETS.length && !clicked; i++) {
+      var d = OFFSETS[i][0], eye = OFFSETS[i][1];
+      var spots = [[at[0] + 0.5, at[2] - d], [at[0] + 0.5, at[2] + d],
+                   [at[0] - d, at[2] + 0.5], [at[0] + d, at[2] + 0.5]];
+      for (var j = 0; j < spots.length && !clicked; j++) {
+        v.teleport(spots[j][0], at[1] + eye, spots[j][1]);
+        v.lookAt(at[0], at[1], at[2]);
+        var c = v.use();
+        stood = d + '/' + eye + '/' + j;
+        if (c.target && c.target.x === at[0] && c.target.y === at[1] && c.target.z === at[2]) clicked = c;
+      }
+    }
+    var after = v.beacons();
+    out.push('stood:' + stood);
+    out.push('target:' + (clicked ? clicked.target.id + '@' + [clicked.target.x, clicked.target.y, clicked.target.z].join(',') + '/' + clicked.target.distance.toFixed(2) : 'never found'));
+    out.push('purse:' + start + '+' + site.cost + '->' + v.essence());
+    out.push('lit:' + after.activated + (after.sites[0].lit ? '' : '/block:' + v.getBlock(at[0], at[1], at[2])));
+    out.push('journal:' + journal());
+
+    // The rest of the mission, fast-forwarded, so the craft list can be run in
+    // full. Four is enough: beacon 5 carries a transmission and no recipes.
+    v.advanceBeacons(4);
+    out.push('forward:' + v.beacons().activated + '/' + journal());
+    v.clearInventory();
+    // The sections after this one work off the walker's own feet — the furnace
+    // row is built at the surface above where the harness starts — so the
+    // mission is walked back home rather than left standing at the monument.
+    v.teleport(3.5, 76.62, 24.5);
+    v.look(-2.4, -0.18);
+    return out;
   });
 
   // --- crafting driven end to end, including 2x2 versus 3x3 gating ---
