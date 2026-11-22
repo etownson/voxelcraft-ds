@@ -1207,6 +1207,15 @@ function toggleJournal() {
   }
 }
 
+/**
+ * The page owns the debug tour jump, because standing at a monument three
+ * hundred blocks away means pulling that ground in under the walker and moving
+ * the camera with it, and neither is the HUD's to do. The HUD only knows the
+ * key exists and asks for the next stop.
+ */
+let beaconJumper = null;
+export function setBeaconJumper(jump) { beaconJumper = jump; }
+
 /* How much one press of the debug essence key hands out. */
 const DEBUG_ESSENCE_GRANT = 5;
 
@@ -1485,6 +1494,8 @@ window.addEventListener('keydown', (event) => {
     (event.key && event.key.toLowerCase() === 'g');
   const isJournalKey = event.code === 'KeyJ' ||
     (event.key && event.key.toLowerCase() === 'j');
+  const isTourKey = event.code === 'KeyT' ||
+    (event.key && event.key.toLowerCase() === 't');
   const isEscape = event.code === 'Escape' || event.key === 'Escape';
 
   if (isInventoryKey) {
@@ -1499,6 +1510,17 @@ window.addEventListener('keydown', (event) => {
   } else if (isJournalKey) {
     event.preventDefault();
     toggleJournal();
+  } else if (isTourKey) {
+    event.preventDefault();
+    // T walks the debug tour one stop forward — SP0, then the five monuments,
+    // then home — and Shift+T walks it back. Only while the walker is standing
+    // in the world with no screen up, so the key cannot fire through the start
+    // overlay, the pause panel or the give shelf.
+    if (beaconJumper && !activeScreen && !player.dead &&
+        (document.pointerLockElement === canvas || fallbackControls ||
+        gamepadState.active)) {
+      beaconJumper(event.shiftKey ? -1 : 1);
+    }
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();

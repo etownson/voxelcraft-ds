@@ -728,6 +728,13 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   armour — as a nine-wide grid of icons: left click adds a whole stack, right click
   one, on mouse and pad alike. It is a debug option, not a shop: the shelf never
   empties, and a full pack says *No room in your pack*
+- `Shift+G` hands out essence, five at a press: the shelf's key shifted, because
+  essence never sits in a slot to be clicked
+- `T` walks a debug tour — SP0, then the five monuments in mission order, then home —
+  and `Shift+T` walks it back. Each stop stands the walker three blocks out from the
+  monument on the side they would have walked up from, facing the machine, and says
+  which beacon it is and what it wants. Like the shelf, it answers only while the
+  walker is in the world with no screen up
 - `M` mutes audio; the debug stack reads sprint state and sound state
 
 ## Particles and feedback
@@ -894,5 +901,7 @@ the player (`stats()`, `teleport`, `look`, `hunger`, `eat`, `armour`, `equip`,
 shadow map, which fails if the settlement rule is broken), mobs (`mobs`, `mobInfo`,
 `spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), time and
 simulation (`setTime`, `setTimeScale`, `tick`, `simulate(seconds, input)`), screens and
-the shelf (`screen`, `openGive`, `giveList`), and audio (`audio`, `setVolume`).
-The `G` give shelf is the human-facing half of the same door.
+the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(stop)`,
+`beaconTour(direction)`, `tourStop()`), and audio (`audio`, `setVolume`).
+The `G` give shelf and the `T` monument tour are the human-facing halves of the same
+door.

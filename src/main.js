@@ -34,9 +34,9 @@ import {
   waterLevel
 } from './blocks.js';
 import {
-  SPAWN_TRANSMISSION, beaconReport, beaconSites, clearBeaconBeams, plantBeaconMonuments,
-  restoreBeaconProgress, setBeaconPainter, setSpawnPoint0, setTransmissionDeliverer,
-  startingEssence
+  SPAWN_TRANSMISSION, beaconReport, beaconSites, beaconsActivatedCount, clearBeaconBeams,
+  plantBeaconMonuments, restoreBeaconProgress, setBeaconPainter, setSpawnPoint0,
+  setTransmissionDeliverer, spawnPoint, startingEssence
 } from './beacons.js';
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
 import { attackMob, clearMobTarget, mobTarget, updateCombat, updateMobTarget } from './combat.js';
@@ -77,7 +77,7 @@ import {
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
   renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
-  selectHotbarSlot, showDamageFlash, showToast, showTransmission, sleepFadeEl, sprintStateEl,
+  selectHotbarSlot, setBeaconJumper, showDamageFlash, showToast, showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, updateCursorVisual, updateDebug,
   updateFurnaceGauges, updateGamepadScreen
 } from './hud.js';
@@ -248,6 +248,9 @@ setEssencePainter(() => {
    readout, and the panel the transmissions arrive in. */
 setBeaconPainter(renderMission);
 setTransmissionDeliverer(showTransmission);
+
+/* And the key that skips the walk: the HUD asks, the page moves the walker. */
+setBeaconJumper(tourDebugStops);
 
 /* The hearts are the same kind of picture, and so is the red wash: the body
    says when each of them changes, and never names an element. */
@@ -461,6 +464,95 @@ if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
   showToast('Older worlds can\u2019t be loaded \u2014 this is a new world');
 }
 
+/* ---------- Moving the walker outright ---------- */
+
+/**
+ * Puts the walker somewhere else in one step: no walk, no velocity carried over,
+ * and the ground under the new footing pulled in before the next frame reads it.
+ * A fall peak is set at the arrival height so a jump that lands a block low is
+ * never read as a drop.
+ */
+function moveWalker(x, y, z) {
+  player.pos.set(x, y, z);
+  player.vel.set(0, 0, 0);
+  player.onGround = false;
+  player.fallPeakY = y;
+  resetCameraStep();
+  ensurePlayerChunks();
+  syncCamera();
+  updateTarget();
+  updateMobTarget();
+  updateDebug();
+}
+
+/* ---------- Debug: the tour of the monuments ---------- */
+
+/**
+ * The stops the debug tour walks, in mission order: SP0, then the five
+ * monuments. Home is a stop of its own because the long way back in from the
+ * far bands is the half of the walk nobody wants to make twice.
+ */
+function debugTourStops() {
+  const home = spawnPoint();
+  const stops = [{ name: 'SP0', x: home.x, z: home.z, site: null }];
+  for (const site of beaconSites()) {
+    stops.push({ name: 'Beacon ' + (site.index + 1), x: site.x, z: site.z, site });
+  }
+  return stops;
+}
+
+let debugTourStop = 0;
+
+/**
+ * Stands the walker three blocks out from a stop, on the side they would have
+ * walked up from, facing the machine. Three clears the plinth's three by three
+ * while staying inside the treeless ground the monument search insisted on, and
+ * the height comes from safeGroundY, so the arrival is level and never inside a
+ * trunk. The ground is generated before the walker is moved: fifteen hundred
+ * blocks out there is no streaming behind them to fall back on.
+ */
+function standAtDebugStop(index) {
+  const stops = debugTourStops();
+  const wanted = clamp(Math.trunc(Number(index) || 0), 0, stops.length - 1);
+  const stop = stops[wanted];
+  debugTourStop = wanted;
+
+  // A monument is approached from the stop before it; SP0 faces beacon 1.
+  const from = stops[wanted > 0 ? wanted - 1 : 1] || stop;
+  const dx = from.x - stop.x;
+  const dz = from.z - stop.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const footX = Math.round(stop.x + (dx / len) * 3);
+  const footZ = Math.round(stop.z + (dz / len) * 3);
+
+  prepareSpawnChunks(Math.floor(footX / CHUNK_SIZE), Math.floor(footZ / CHUNK_SIZE));
+  moveWalker(footX + 0.5, safeGroundY(footX, footZ), footZ + 0.5);
+
+  if (stop.site) {
+    // Aim at the middle of the machine's own cell, which is where a walker
+    // looking up at it would point.
+    const ax = stop.site.x + 0.5 - (footX + 0.5);
+    const ay = stop.site.y + 1.5 - (player.pos.y + EYE_HEIGHT);
+    const az = stop.site.z + 0.5 - (footZ + 0.5);
+    aimPlayer(Math.atan2(-ax, -az), Math.atan2(ay, Math.hypot(ax, az)));
+    applyLook();
+    updateTarget();
+  }
+
+  const lit = stop.site && stop.site.index < beaconsActivatedCount();
+  showToast(stop.site
+    ? stop.name + ' \u00b7 ' + (lit ? 'lit' : 'dark') + ' \u00b7 wants ' + stop.site.cost +
+      ' \u00b7 ' + stop.site.distance + ' blocks from SP0'
+    : 'SP0 \u00b7 home');
+}
+
+/** What the tour key asks for: the next stop, or the one before it. */
+function tourDebugStops(direction = 1) {
+  const total = debugTourStops().length;
+  const step = direction < 0 ? -1 : 1;
+  standAtDebugStop((debugTourStop + step + total) % total);
+}
+
 window.__voxelcraft = {
   version: '0.1.0-milestone-13',
   seed: WORLD_SEED,
@@ -618,6 +710,22 @@ window.__voxelcraft = {
     restoreBeaconProgress(wanted);
     return beaconReport();
   },
+  /**
+   * The debug tour: stands the walker at one stop — 0 is SP0, 1 to 5 are the
+   * five monuments — on the side they would have walked up from, facing the
+   * machine. The same jump the T key makes, without the key.
+   */
+  visitBeacon(stop = 0) {
+    standAtDebugStop(Number(stop) || 0);
+    return { stop: debugTourStop, feet: [player.pos.x, player.pos.y, player.pos.z] };
+  },
+  /** One step along the tour: +1 forward, anything else back. */
+  beaconTour(direction = 1) {
+    tourDebugStops(direction);
+    return { stop: debugTourStop, feet: [player.pos.x, player.pos.y, player.pos.z] };
+  },
+  /** Which tour stop the walker is standing at. */
+  tourStop() { return debugTourStop; },
   heal(amount = 20) {
     healPlayer(Number(amount) || 0);
     return this.health();
@@ -731,18 +839,7 @@ window.__voxelcraft = {
     };
   },
   /** Teleport the player's feet to the given world coordinates. */
-  teleport(x, y, z) {
-    player.pos.set(x, y, z);
-    player.vel.set(0, 0, 0);
-    player.onGround = false;
-    player.fallPeakY = y;
-    resetCameraStep();
-    ensurePlayerChunks();
-    syncCamera();
-    updateTarget();
-    updateMobTarget();
-    updateDebug();
-  },
+  teleport(x, y, z) { moveWalker(x, y, z); },
   look(yawValue, pitchValue) {
     aimPlayer(yawValue, pitchValue);
     applyLook();
