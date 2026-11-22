@@ -8,10 +8,16 @@
  * verb, not an assignment — the tilt limit is written once, here, next to the
  * angles it protects — and `view` lets every other layer read the heading
  * without rebinding a module's own name.
+ *
+ * The record's other half is what it costs to be alive in a world: exhaustion
+ * spent by digging and swimming and jumping, the saturation that cushions it,
+ * the food that runs out underneath. All three are fields here, so spending
+ * them is here too, and the food bar is handed in as a painter rather than
+ * reached for.
  */
 
 import * as THREE from 'three';
-import { EYE_HEIGHT, clamp } from './config.js';
+import { EYE_HEIGHT, EXHAUSTION, EXHAUSTION_THRESHOLD, clamp } from './config.js';
 import { camera } from './render.js';
 
 export const player = {
@@ -97,4 +103,51 @@ const aimPoint = new THREE.Vector3();
  */
 export function aimOrigin() {
   return aimPoint.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
+}
+
+/* The food bar belongs to whoever is showing it, and this is the only way the
+   body can tell it to redraw. The page hands one over at bootstrap; until then
+   spending exhaustion moves the counters and nobody hears. */
+let paintHunger = () => {};
+
+export function setHungerPainter(paint) { paintHunger = paint; }
+
+/**
+ * Spends exhaustion the way Minecraft does: every full 4.0 points takes one point
+ * of saturation if there is any left, and only then one point of food. That order
+ * is what makes food worth eating before the bar drops rather than after.
+ */
+export function addExhaustion(amount) {
+  if (player.dead || !Number.isFinite(amount) || amount <= 0) return;
+  player.exhaustion += amount;
+  let spent = false;
+  while (player.exhaustion >= EXHAUSTION_THRESHOLD) {
+    player.exhaustion -= EXHAUSTION_THRESHOLD;
+    if (player.saturation > 0) {
+      player.saturation = Math.max(0, player.saturation - 1);
+    } else if (player.hunger > 0) {
+      player.hunger -= 1;
+    } else {
+      // Nothing left to pay with, so the debt stops here instead of stacking up
+      // behind an empty stomach and spending food the instant something is eaten.
+      player.exhaustion = 0;
+      break;
+    }
+    spent = true;
+  }
+  // Saturation leaving the picture is worth showing: Minecraft jitters the bar.
+  if (spent) paintHunger();
+}
+
+/** Tracks how far the player has travelled and charges food for it. */
+export function exhaustForMovement(distance, jumping) {
+  if (distance > 0) {
+    // Walking is free, exactly like Minecraft: exploring costs nothing and a meal
+    // buys work rather than footsteps. Water is dearer than land on purpose, and
+    // this game has no sprint-swimming, so a swim always pays the swim rate.
+    if (player.inWater) addExhaustion(distance * EXHAUSTION.swim);
+    else if (player.sprinting) addExhaustion(distance * EXHAUSTION.sprint);
+  }
+  // A jump spent its energy even when the player was shoved up against a wall.
+  if (jumping) addExhaustion(player.sprinting ? EXHAUSTION.sprintJump : EXHAUSTION.jump);
 }
