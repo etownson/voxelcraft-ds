@@ -463,6 +463,19 @@ function setCrackStage(stage) {
   uv.needsUpdate = true;
 }
 
+/** Puts the crack overlay on a cell at one of its ten stages. */
+function showCrack(x, y, z, stage) {
+  crackMesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+  crackMesh.visible = true;
+  setCrackStage(stage);
+}
+
+/** Takes the crack overlay off the world. */
+function hideCrack() {
+  crackMesh.visible = false;
+  crackStage = -1;
+}
+
 /** The cells an ordinary right click can land on. Water is transparent to it. */
 const isRayTargetable = (id) => id !== B.AIR && !isWater(id);
 /** What a ray may keep walking through on its way to what it is looking for. */
@@ -549,8 +562,26 @@ function clearTarget() {
   targetOutline.visible = false;
 }
 
+/** Stops drawing the outline without forgetting what was pointed at: whoever
+ *  has taken the controls away does not care what was aimed at a moment ago,
+ *  and the next frame works it out again by itself. */
+function hideTargetOutline() {
+  targetOutline.visible = false;
+}
+
+/** Which of the ten crack stages is drawn, or -1 when nothing is breaking. */
+function shownCrackStage() { return crackStage; }
+
+/** Whether the crosshair is the player's to aim with. A screen in the way or a
+ *  death is above this layer's business, so the answer is handed in and asked
+ *  once a frame. */
+let aimBlocked = () => false;
+
+/** Handed once, at bootstrap, who says the aim is not in use. */
+function setAimBlocked(test) { aimBlocked = test; }
+
 function updateTarget() {
-  if (activeScreen || player.dead) {
+  if (aimBlocked()) {
     clearTarget();
     return null;
   }
@@ -623,8 +654,7 @@ function hideMiningFeedback() {
   miningState.progress = 0;
   miningHitKey = '';
   miningHitTimer = 0;
-  crackMesh.visible = false;
-  crackStage = -1;
+  hideCrack();
 }
 
 /** Points the swing loop at a block, restarting progress when it changes. */
@@ -752,8 +782,7 @@ function updateMining(dt, held) {
   if (!block.breakable || !isFinite(block.hardness)) {
     // Unbreakable blocks never crack, but swinging at them still thuds.
     startMiningOn(target);
-    crackMesh.visible = false;
-    crackStage = -1;
+    hideCrack();
     updateMiningHitSound(dt, target);
     return;
   }
@@ -764,8 +793,7 @@ function updateMining(dt, held) {
     // the gap is over.
     miningState.active = false;
     miningState.progress = 0;
-    crackMesh.visible = false;
-    crackStage = -1;
+    hideCrack();
     updateMiningHitSound(dt, target);
     return;
   }
@@ -776,9 +804,7 @@ function updateMining(dt, held) {
   const progress = clamp(miningState.progress / miningState.duration, 0, 1);
   const stage = Math.min(9, Math.floor(progress * 10));
 
-  crackMesh.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
-  crackMesh.visible = true;
-  setCrackStage(stage);
+  showCrack(target.x, target.y, target.z, stage);
   updateMiningHitSound(dt, target);
 
   if (miningState.progress >= miningState.duration) {
@@ -1957,7 +1983,7 @@ document.addEventListener('pointerlockchange', () => {
     fallbackLooking = false;
     fallbackRightDrag = false;
     hideMiningFeedback();
-    targetOutline.visible = false;
+    hideTargetOutline();
     clearSprintLatch();
   }
 });
@@ -2483,7 +2509,7 @@ function playerDie(cause) {
   clearSprintLatch();
   releaseMiningButton();
   hideMiningFeedback();
-  targetOutline.visible = false;
+  hideTargetOutline();
   currentMobTarget = null;
   if (activeScreen) closeScreen();
   damageFlashTimer = 0;
@@ -4446,6 +4472,9 @@ setBlockEntityView({
 /* Drops go into the pack, and the pack says how much did not fit. */
 setItemPickup((itemId, count, dur) => addItemToInventory(itemId, count, dur));
 
+/* And the crosshair stops pointing whenever something else has the controls. */
+setAimBlocked(() => !!activeScreen || player.dead);
+
 /* The held item's frame: the view model reads the game only through this. */
 function heldFrame() {
   return {
@@ -5790,7 +5819,7 @@ window.__voxelcraft = {
         active: miningState.active,
         progress: miningState.progress,
         duration: miningState.duration,
-        stage: crackStage
+        stage: shownCrackStage()
       }
     };
   }
