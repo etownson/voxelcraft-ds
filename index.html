@@ -3430,6 +3430,25 @@ function updateGamepad(dt) {
    ============================================================ */
 
 /**
+ * The world the mob layer is allowed to know about: the walker it hunts,
+ * frightens and knocks around, and the three ways it leaves a mark on
+ * everything else — hurt someone, drop something, spill what a broken
+ * container held. The page hands those over where the walker exists, and
+ * nothing in the section reaches past these four names.
+ */
+let mobWalker = null;
+let hurtWalker = null;
+let mobDrop = null;
+let spillContents = null;
+function setMobWorld(host) {
+  mobWalker = host.walker;
+  hurtWalker = host.hurt;
+  mobDrop = host.drop;
+  spillContents = host.spill;
+}
+
+
+/**
  * The two groups share one performance budget but each has a cap of its own, and
  * the two caps are sized so they can never add up to more than the total.
  * They used to overlap — 20 animals plus 13 hostiles against a total of 30 —
@@ -3953,7 +3972,7 @@ function dropMobLoot(mob) {
     const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
     // A hide roll can come up empty, which is how Minecraft spreads out loot.
     if (count <= 0) continue;
-    spawnItemDrop(
+    mobDrop(
       drop.id, count,
       mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z
     );
@@ -4136,7 +4155,7 @@ function explodeCreeper(mob) {
         if (!block.breakable || block.liquid) continue;
         // A furnace or chest caught in the blast empties its contents first,
         // so what was kept inside is not simply deleted.
-        if (block.blockEntity) spillBlockEntityContents(x, y, z);
+        if (block.blockEntity) spillContents(x, y, z);
         edits.push({ x, y, z, id: B.AIR });
         for (const drop of block.drops || []) {
           if (block.door) {
@@ -4160,7 +4179,7 @@ function explodeCreeper(mob) {
 
   if (edits.length) world.setBlocksBatch(edits);
   for (const drop of drops) {
-    spawnItemDrop(drop.id, drop.count, drop.x, drop.y, drop.z);
+    mobDrop(drop.id, drop.count, drop.x, drop.y, drop.z);
   }
 
   spawnBurstParticles(cx, cy, cz, 0xff9a3c, 26, 10);
@@ -4169,20 +4188,20 @@ function explodeCreeper(mob) {
   playExplosionSound(cx, cy, cz);
   triggerExplosionPunch(cx, cy, cz);
 
-  const playerCx = player.pos.x;
-  const playerCy = player.pos.y + 0.9;
-  const playerCz = player.pos.z;
+  const playerCx = mobWalker().pos.x;
+  const playerCy = mobWalker().pos.y + 0.9;
+  const playerCz = mobWalker().pos.z;
   const distance = Math.hypot(playerCx - cx, playerCy - cy, playerCz - cz);
   if (distance < 6) {
     const damage = Math.round(14 * (1 - distance / 6));
     const knock = 8 * (1 - distance / 6);
     if (distance > 0.01) {
-      player.vel.x += ((playerCx - cx) / distance) * knock;
-      player.vel.z += ((playerCz - cz) / distance) * knock;
-      player.vel.y += 4.5 * (1 - distance / 6);
-      player.onGround = false;
+      mobWalker().vel.x += ((playerCx - cx) / distance) * knock;
+      mobWalker().vel.z += ((playerCz - cz) / distance) * knock;
+      mobWalker().vel.y += 4.5 * (1 - distance / 6);
+      mobWalker().onGround = false;
     }
-    damagePlayer(damage, 'creeper');
+    hurtWalker(damage, 'creeper');
   }
 
   mob.dead = true;
@@ -4216,11 +4235,11 @@ function updateMobBurning(mob, dt) {
 
 function updateMobAI(mob, dt) {
   const def = mob.def;
-  const dx = player.pos.x - mob.pos.x;
-  const dz = player.pos.z - mob.pos.z;
-  const dy = player.pos.y - mob.pos.y;
+  const dx = mobWalker().pos.x - mob.pos.x;
+  const dz = mobWalker().pos.z - mob.pos.z;
+  const dy = mobWalker().pos.y - mob.pos.y;
   const distance = Math.hypot(dx, dz);
-  const playerAlive = !player.dead;
+  const playerAlive = !mobWalker().dead;
 
   mob.stateTimer -= dt;
   if (mob.fleeTimer > 0) mob.fleeTimer -= dt;
@@ -4277,7 +4296,7 @@ function updateMobAI(mob, dt) {
         moveZ = dz;
         if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0) {
           mob.attackCooldown = def.attackInterval;
-          damagePlayer(def.damage, 'zombie');
+          hurtWalker(def.damage, 'zombie');
         }
       }
     } else {
@@ -4392,9 +4411,9 @@ function updateMobs(dt) {
     const mob = mobs[i];
     if (!mob) continue;
 
-    const dx = mob.pos.x - player.pos.x;
-    const dz = mob.pos.z - player.pos.z;
-    const dy = mob.pos.y - player.pos.y;
+    const dx = mob.pos.x - mobWalker().pos.x;
+    const dz = mob.pos.z - mobWalker().pos.z;
+    const dy = mob.pos.y - mobWalker().pos.y;
     // Three dimensions: a mob in a cave under the player shares their x and z,
     // and counting it as "right here" is what let invisible zombies hold mob
     // slots for a whole session.
@@ -4499,8 +4518,8 @@ function spawnHostileAtRandomColumn() {
   const angle = Math.random() * Math.PI * 2;
   const radius = MOB_SPAWN_MIN_RADIUS +
     Math.random() * (MOB_SPAWN_MAX_RADIUS - MOB_SPAWN_MIN_RADIUS);
-  const x = Math.floor(player.pos.x + Math.cos(angle) * radius);
-  const z = Math.floor(player.pos.z + Math.sin(angle) * radius);
+  const x = Math.floor(mobWalker().pos.x + Math.cos(angle) * radius);
+  const z = Math.floor(mobWalker().pos.z + Math.sin(angle) * radius);
 
   if (!world.getChunk(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE))) {
     hostileSpawnTally.no_chunk++;
@@ -4567,7 +4586,7 @@ function rollChunkHerd(chunk) {
 
   const centerX = chunk.cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const centerZ = chunk.cz * CHUNK_SIZE + CHUNK_SIZE / 2;
-  if (Math.hypot(centerX - player.pos.x, centerZ - player.pos.z) > PASSIVE_SPAWN_RADIUS) {
+  if (Math.hypot(centerX - mobWalker().pos.x, centerZ - mobWalker().pos.z) > PASSIVE_SPAWN_RADIUS) {
     return false;
   }
 
@@ -4599,7 +4618,7 @@ function rollChunkHerd(chunk) {
     if (chunk.getBlock(lx, y, lz) !== B.GRASS) continue;
     if (chunk.getBlock(lx, y + 1, lz) !== B.AIR) continue;
     if (chunk.getBlock(lx, y + 2, lz) !== B.AIR) continue;
-    if (Math.hypot(wx + 0.5 - player.pos.x, wz + 0.5 - player.pos.z) < 6) continue;
+    if (Math.hypot(wx + 0.5 - mobWalker().pos.x, wz + 0.5 - mobWalker().pos.z) < 6) continue;
 
     spot = { x: wx + 0.5, y: y + 1, z: wz + 0.5 };
     break;
@@ -4649,8 +4668,8 @@ function trySpawnPassive() {
   // Grazing animals should not arrive on a dark landscape.
   if (daylight < 0.35) return null;
 
-  const pcx = Math.floor(player.pos.x / CHUNK_SIZE);
-  const pcz = Math.floor(player.pos.z / CHUNK_SIZE);
+  const pcx = Math.floor(mobWalker().pos.x / CHUNK_SIZE);
+  const pcz = Math.floor(mobWalker().pos.z / CHUNK_SIZE);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const cx = pcx + Math.floor(Math.random() * 9) - 4;
@@ -7096,6 +7115,18 @@ setFxView({
   yaw: () => yaw,
   paused: () => !!activeScreen || !overlayEl.classList.contains('hidden') || player.dead,
   restore: () => syncCamera()
+});
+
+/* The same handover for the mob layer, whose four answers all live above
+ * it: the walker it hunts, and the hurt, drop and spill it causes. The
+ * walker is this very record, not a copy of it — an explosion that knocks
+ * someone back moves the body the controller owns. */
+setMobWorld({
+  walker: () => player,
+  hurt: (amount, cause) => damagePlayer(amount, cause),
+  drop: (itemId, count, x, y, z, scatter, dur) =>
+    spawnItemDrop(itemId, count, x, y, z, scatter, dur),
+  spill: (x, y, z) => spillBlockEntityContents(x, y, z)
 });
 
 /* The held item's frame: the view model reads the game only through this. */
