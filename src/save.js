@@ -30,6 +30,7 @@ import {
   CHUNK_SIZE, EXHAUSTION_THRESHOLD, HUNGER_MAX, SATURATION_ON_RESPAWN, WORLD_HEIGHT,
   WORLD_SEED, clamp
 } from './config.js';
+import { essenceCount, setEssence } from './essence.js';
 import { syncHeldAngles } from './held.js';
 import { INVENTORY_SIZE, armorSlots, currentSlot, inventory, paintArmorBar } from './inventory.js';
 import { applyLook, paintHealth, paintHunger, player, restorePlayerLook, view } from './player.js';
@@ -47,10 +48,13 @@ import { dayTime } from './sky.js';
  * saturation next to food: it is the counter exhaustion spends first, it has no
  * honest default for a stomach already half empty, and a whole world of food
  * values changes underneath it, so schema 3 saves are no longer readable.
+ * Schema 5 adds the essence the walker carries: a running total that belongs
+ * to nobody else's record, so a schema 4 world has none and is no longer
+ * readable.
  */
-export const SAVE_KEY = 'voxelcraft:world:v4';
-export const LEGACY_SAVE_KEYS = ['voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3'];
-export const SAVE_SCHEMA = 4;
+export const SAVE_KEY = 'voxelcraft:world:v5';
+export const LEGACY_SAVE_KEYS = ['voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3', 'voxelcraft:world:v4'];
+export const SAVE_SCHEMA = 5;
 const AUTOSAVE_SECONDS = 25;
 
 let lastSaveAt = 0;
@@ -124,6 +128,9 @@ function serializeWorldSave() {
     },
     slot: currentSlot(),
     time: dayTime,
+    // What the walker carries in no slot at all: the essence total, kept by
+    // the essence layer and ridden here as a bare number.
+    essence: essenceCount(),
     // Where a bed last claimed the player, if anywhere: the respawn point
     // outlives both the session and the bed that set it.
     spawn: { x: saveSpawn.x, z: saveSpawn.z },
@@ -337,6 +344,11 @@ export function restoreSavedInventory(save) {
     const restored = stackFromRecord(save.inventory[i]);
     if (restored) inventory[i] = restored;
   }
+}
+
+/** Puts the carried essence back. A missing number is a fresh walker. */
+export function restoreSavedEssence(save) {
+  setEssence(Math.max(0, Math.trunc(Number(save.essence) || 0)));
 }
 
 export function formatSavedAt(timestamp) {

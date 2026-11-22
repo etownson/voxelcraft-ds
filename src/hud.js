@@ -37,6 +37,7 @@ import {
   clearCursorStack, craftCurrent, cursorCarried, dropEmptyCursorStack, returnCursorStack,
   setCursorStack
 } from './cursor.js';
+import { essenceCount } from './essence.js';
 import { respawnPlayer } from './health.js';
 import { ITEM_ICONS } from './icons.js';
 import {
@@ -64,6 +65,8 @@ const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
 const armorEl = document.getElementById('armor');
 export const hungerBarEl = document.getElementById('hunger');
+const essenceEl = document.getElementById('essence');
+const essenceCountEl = document.getElementById('essence-count');
 const toastEl = document.getElementById('item-toast');
 const screenLayer = document.getElementById('screen-layer');
 const screenTitle = document.getElementById('screen-title');
@@ -122,6 +125,17 @@ export function renderHealth() {
     heart.classList.toggle('dark', i >= full + (half ? 1 : 0));
     heart.classList.toggle('half', half && i === full);
   }
+}
+
+/**
+ * The carried essence, bubble and number: hidden entirely at zero, the way
+ * the shield row hides when nothing is worn, so the HUD only speaks of
+ * essence once the walker has any.
+ */
+export function renderEssence() {
+  const total = essenceCount();
+  essenceEl.classList.toggle('hidden', total <= 0);
+  essenceCountEl.textContent = String(total);
 }
 
 /**
@@ -194,6 +208,7 @@ for (let i = 0; i < HUNGER_MAX / 2; i++) {
   hungerBarEl.appendChild(haunch);
 }
 renderHunger();
+renderEssence();
 renderSprintState();
 
 const hotbarSlots = [];

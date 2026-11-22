@@ -28,19 +28,21 @@ import { sampleColumn } from './worldgen.js';
 
 /**
  * The world the mob layer is allowed to know about: the walker it hunts,
- * frightens and knocks around, and the three ways it leaves a mark on
- * everything else — hurt someone, drop something, spill what a broken
- * container held. The page hands those over where the walker exists, and
- * nothing in the section reaches past these four names.
+ * frightens and knocks around, and the ways it leaves a mark on everything
+ * else — hurt someone, drop something, spill what a broken container held,
+ * and pay essence for a killed enemy. The page hands those over where the
+ * walker exists, and nothing in the section reaches past these names.
  */
 let mobWalker = null;
 let hurtWalker = null;
 let mobDrop = null;
+let dropEssence = null;
 let spillContents = null;
 export function setMobWorld(host) {
   mobWalker = host.walker;
   hurtWalker = host.hurt;
   mobDrop = host.drop;
+  dropEssence = host.dropEssence;
   spillContents = host.spill;
 }
 
@@ -175,11 +177,13 @@ const MOB_DEFS = {
   zombie: {
     hostile: true, health: 20, speed: 1.85, width: 0.62, height: 1.94,
     detection: 26, damage: 3, reach: 1.12, attackInterval: 1.0,
+    essence: { min: 3, max: 5 },
     drops: []
   },
   creeper: {
     hostile: true, health: 20, speed: 1.65, width: 0.62, height: 1.66,
-    detection: 24, drops: []
+    detection: 24, essence: { min: 3, max: 5 },
+    drops: []
   }
 };
 
@@ -590,6 +594,18 @@ function dropMobLoot(mob) {
   }
 }
 
+function dropMobEssence(mob) {
+  // Essence is what enemies pay, and only enemies: a herd is food, not fuel.
+  // The yield sits on the definition today; the design's scaling of that yield
+  // with a mob's distance from spawn point 0 arrives with the difficulty pass.
+  const yieldToTake = mob.def.essence;
+  if (!mob.def.hostile || !dropEssence || !yieldToTake) return;
+  const amount = yieldToTake.min +
+    Math.floor(Math.random() * (yieldToTake.max - yieldToTake.min + 1));
+  if (amount <= 0) return;
+  dropEssence(amount, mob.pos.x, mob.pos.y + mob.def.height * 0.4, mob.pos.z);
+}
+
 function killMob(mob) {
   if (!mob || mob.dead) return;
   mob.dead = true;
@@ -598,6 +614,7 @@ function killMob(mob) {
     0xb04a4a, 14, 4.4
   );
   dropMobLoot(mob);
+  dropMobEssence(mob);
 }
 
 export function damageMob(mob, amount, knockX = 0, knockZ = 0, options = {}) {

@@ -49,6 +49,10 @@ import {
 } from './crafting.js';
 import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } from './cursor.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
+import {
+  essenceCount, essenceEntities, grantEssence as addEssence, setEssencePainter,
+  spawnEssenceBurst, updateEssenceBubbles
+} from './essence.js';
 import { isFarmlandWet, updateCrops } from './farming.js';
 import {
   emberCount, explosionEffects, setFxView, torchEmbers, updateAudio, updateBreakParticles,
@@ -65,7 +69,8 @@ import {
 import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
-  openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderHealth,
+  openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
+  renderHealth,
   renderHotbar, renderHunger, renderScreen, sampleFrameRate, selectHotbarSlot, showDamageFlash,
   showToast, sleepFadeEl, sprintStateEl, toggleInventory, updateCursorVisual, updateDebug,
   updateFurnaceGauges, updateGamepadScreen
@@ -99,7 +104,8 @@ import { camera, renderer, scene, skyDome } from './render.js';
 import {
   LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
   forgetSavedWorld, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
-  readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedInventory,
+  readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedEssence,
+  restoreSavedInventory,
   restoreSavedPlayer, resumeAutosave, saveReport, saveWorld, setSaveArrival, setSaveSpawn,
   stopAutosave, updateSaveLoop
 } from './save.js';
@@ -188,6 +194,7 @@ setMobWorld({
   hurt: (amount, cause) => damagePlayer(amount, cause),
   drop: (itemId, count, x, y, z, scatter, dur) =>
     spawnItemDrop(itemId, count, x, y, z, scatter, dur),
+  dropEssence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
   spill: (x, y, z) => spillBlockEntityContents(x, y, z)
 });
 
@@ -220,6 +227,10 @@ setAimBlocked(() => !!activeScreen || player.dead);
 registerSpeaker(showToast);
 
 setHungerPainter(renderHunger);
+
+/* The carried essence gets its picture the same way: the essence layer says
+   when the total moves, and never names the row it draws. */
+setEssencePainter(renderEssence);
 
 /* The hearts are the same kind of picture, and so is the red wash: the body
    says when each of them changes, and never names an element. */
@@ -381,6 +392,7 @@ prepareSpawnChunks(
 if (loadedSave && restoreSavedPlayer(loadedSave)) {
   restoreSavedInventory(loadedSave);
   restoreSavedArmour(loadedSave);
+  restoreSavedEssence(loadedSave);
   if (Number.isFinite(loadedSave.time)) setDayTime(loadedSave.time);
   const savedSpawn = loadedSave.spawn;
   if (savedSpawn && Number.isFinite(savedSpawn.x) && Number.isFinite(savedSpawn.z)) {
@@ -418,6 +430,7 @@ window.__voxelcraft = {
   spawnColumn,
   inventory,
   itemEntities,
+  essenceEntities,
   targetOutline,
   crackMesh,
   heldRoot,
@@ -529,6 +542,14 @@ window.__voxelcraft = {
   /** Eats one bite of whatever food is held, as a right click would. */
   eat() {
     return tryEatSelectedItem();
+  },
+  /** The essence the walker carries: the fuel a kill pays and a beacon wants. */
+  essence() {
+    return essenceCount();
+  },
+  /** Debug grant: puts essence straight in hand, the give shelf's way with items. */
+  grantEssence(amount = 5) {
+    return addEssence(Number(amount) || 0);
   },
   heal(amount = 20) {
     healPlayer(Number(amount) || 0);
@@ -1119,6 +1140,7 @@ window.__voxelcraft = {
       updateMobTarget();
       updateMining(dt, !mobTarget());
       updateItemEntities(dt);
+      updateEssenceBubbles(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
     }
@@ -1490,6 +1512,7 @@ window.__voxelcraft = {
       updateHunger(dt);
       updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
+      updateEssenceBubbles(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
       updateAudio(dt, player);
@@ -1524,6 +1547,7 @@ window.__voxelcraft = {
       updateHunger(dt);
       updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
+      updateEssenceBubbles(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
       updateAudio(dt, player);
@@ -1680,6 +1704,12 @@ window.__voxelcraft = {
       furnaces: world.blockEntities.size,
       crops: world.crops.size,
       save: this.saveInfo(),
+      essence: essenceCount(),
+      essenceDrops: essenceEntities.map((entity) => ({
+        amount: entity.amount,
+        age: Number(entity.age.toFixed(2)),
+        pos: [entity.pos.x, entity.pos.y, entity.pos.z]
+      })),
       itemDrops: itemEntities.map((entity) => ({
         id: entity.itemId,
         count: entity.count,
@@ -1743,6 +1773,7 @@ function animate(now) {
     updateHealth(dt);
     updateHunger(dt);
     updateItemEntities(dt);
+    updateEssenceBubbles(dt);
     updateBreakParticles(dt);
     updateTorchEmbers(dt);
     updateDayNight(dt);

@@ -1093,6 +1093,18 @@ export function playPickupSound() {
   return !!audioCtx && !audioMuted;
 }
 
+export function playEssenceSound() {
+  // The essence pickup is the item pickup seen from the other side: where
+  // picking up a block falls, so it reads as something set down, collecting
+  // essence rises, so it reads as something taken in. Two sines a fifth
+  // apart, quick and dry, quiet enough to survive a whole night of combat.
+  audioTone({
+    type: 'sine', from: 620, to: 930, duration: 0.18,
+    volume: 0.05, bus: 'ui', priority: 0
+  });
+  return !!audioCtx && !audioMuted;
+}
+
 export function playUiClickSound() {
   if (audioSample('event_ui_click', {
     spatial: false, volume: 0.5, bus: 'ui', priority: 0
@@ -1951,6 +1963,8 @@ export function playSound(name, options = {}) {
       return playJumpSound();
     case 'pickup':
       return playPickupSound();
+    case 'essence':
+      return playEssenceSound();
     case 'ui':
     case 'uiclick':
       return playUiClickSound();
