@@ -241,10 +241,27 @@ function dropEmptyCursorStack() {
   if (cursorStack && cursorStack.count <= 0) cursorStack = null;
 }
 
+/** The stack the cursor is carrying, or nothing at all. */
+function cursorCarried() { return cursorStack; }
+
+/* A screen is what puts a picture of the carried stack on the pointer, what hears
+   why a craft was refused, and — since the 2x2 grid belongs to the pack and the
+   3x3 to the crafting table — which grid is in play at all. None of that is the
+   cursor's business, so the page hands all three over at bootstrap. Until it
+   does, a cursor carries a stack nothing pictures, refusals go unheard, and there
+   is no grid to craft from. */
+const cursorView = {
+  screen: () => null,
+  toast: () => {},
+  paintCursor: () => {}
+};
+
+function setCursorView(coming) { Object.assign(cursorView, coming); }
 
 function craftingContext() {
-  if (activeScreen === 'crafting') return { grid: craft3, size: CRAFT3_SIZE };
-  if (activeScreen === 'inventory') return { grid: craft2, size: CRAFT2_SIZE };
+  const screen = cursorView.screen();
+  if (screen === 'crafting') return { grid: craft3, size: CRAFT3_SIZE };
+  if (screen === 'inventory') return { grid: craft2, size: CRAFT2_SIZE };
   return null;
 }
 
@@ -270,17 +287,17 @@ function craftCurrent(intoInventory = false) {
 
   if (intoInventory) {
     if (!inventoryHasRoom(result.id, result.count)) {
-      showToast('Inventory full');
+      cursorView.toast('Inventory full');
       return false;
     }
     addItemToInventory(produced.id, produced.count, produced.dur);
   } else if (cursorStack) {
     if (cursorStack.id !== produced.id || !stacksMergeable(cursorStack, produced)) {
-      showToast('Clear the cursor to craft');
+      cursorView.toast('Clear the cursor to craft');
       return false;
     }
     if (cursorStack.count + produced.count > def.stack) {
-      showToast('Not enough room on cursor');
+      cursorView.toast('Not enough room on cursor');
       return false;
     }
     cursorStack.count += produced.count;
@@ -291,7 +308,7 @@ function craftCurrent(intoInventory = false) {
   consumeCraftIngredients(context.grid);
   playCraftSound();
   paintPack();
-  updateCursorVisual();
+  cursorView.paintCursor();
   return true;
 }
 
@@ -307,7 +324,7 @@ function returnCursorStack() {
     );
   }
   cursorStack = null;
-  updateCursorVisual();
+  cursorView.paintCursor();
 }
 
 function mergeStackInto(source, targetArray, start, end) {
@@ -3104,11 +3121,15 @@ function handleScreenSlotClick(container, index, button, shift) {
     return;
   }
 
+  // The stack the cursor carries as this click begins. The branches below put it
+  // down, split it, or trade it for the slot, and each reads it first.
+  const held = cursorCarried();
+
   // A furnace result slot only ever gives items out; pushing one back in would
   // let a player smelt the same ingot forever.
   if (container === 'furnace' && index === FURNACE_OUTPUT) {
     const result = grid[index];
-    if (result && !cursorStack) {
+    if (result && !held) {
       if (button === 2) {
         const take = Math.ceil(result.count / 2);
         setCursorStack(makeStack(result.id, take, result.dur));
@@ -3127,7 +3148,7 @@ function handleScreenSlotClick(container, index, button, shift) {
 
   // An armour slot only takes the matching kind of armour. Dropping a pickaxe
   // on the chestplate slot should do nothing rather than hide it.
-  if (container === 'armor' && cursorStack && equipSlotFor(cursorStack) !== index) {
+  if (container === 'armor' && held && equipSlotFor(held) !== index) {
     return;
   }
 
@@ -3135,15 +3156,15 @@ function handleScreenSlotClick(container, index, button, shift) {
 
   if (button === 2) {
     // Right click: split a stack, or place a single item.
-    if (cursorStack) {
+    if (held) {
       if (!slot) {
-        grid[index] = makeStack(cursorStack.id, 1, cursorStack.dur);
-        cursorStack.count -= 1;
-      } else if (stacksMergeable(slot, cursorStack)) {
+        grid[index] = makeStack(held.id, 1, held.dur);
+        held.count -= 1;
+      } else if (stacksMergeable(slot, held)) {
         const def = ITEMS.get(slot.id);
         if (slot.count < def.stack) {
           slot.count += 1;
-          cursorStack.count -= 1;
+          held.count -= 1;
         }
       }
       dropEmptyCursorStack();
@@ -3153,20 +3174,20 @@ function handleScreenSlotClick(container, index, button, shift) {
       slot.count -= take;
       if (slot.count <= 0) grid[index] = null;
     }
-  } else if (cursorStack) {
+  } else if (held) {
     // Left click while holding a stack: drop, merge, or swap.
     if (!slot) {
-      grid[index] = cursorStack;
+      grid[index] = held;
       clearCursorStack();
-    } else if (stacksMergeable(slot, cursorStack)) {
+    } else if (stacksMergeable(slot, held)) {
       const def = ITEMS.get(slot.id);
-      const moved = Math.min(cursorStack.count, def.stack - slot.count);
+      const moved = Math.min(held.count, def.stack - slot.count);
       slot.count += moved;
-      cursorStack.count -= moved;
+      held.count -= moved;
       dropEmptyCursorStack();
     } else {
       const swapped = slot;
-      grid[index] = cursorStack;
+      grid[index] = held;
       setCursorStack(swapped);
     }
   } else if (slot) {
@@ -3181,15 +3202,16 @@ function handleScreenSlotClick(container, index, button, shift) {
 }
 
 function updateCursorVisual() {
-  if (!cursorStack) {
+  const held = cursorCarried();
+  if (!held) {
     cursorStackEl.classList.add('hidden');
     return;
   }
 
   cursorStackEl.classList.remove('hidden');
-  const itemIcon = ITEM_ICONS.get(cursorStack.id);
+  const itemIcon = ITEM_ICONS.get(held.id);
   cursorIconEl.style.backgroundImage = itemIcon ? 'url("' + itemIcon.url + '")' : '';
-  cursorCountEl.textContent = cursorStack.count > 1 ? String(cursorStack.count) : '';
+  cursorCountEl.textContent = held.count > 1 ? String(held.count) : '';
   cursorStackEl.style.left = cursorX + 'px';
   cursorStackEl.style.top = cursorY + 'px';
 }
@@ -3485,6 +3507,13 @@ setSaveArrival({
   groundUnder: safeGroundY,
   resetStep: resetCameraStep,
   placeCamera: syncCamera
+});
+
+/* The cursor's picture, its refusals, and the grid its screen is using. */
+setCursorView({
+  screen: () => activeScreen,
+  toast: showToast,
+  paintCursor: updateCursorVisual
 });
 
 /* The held item's frame: the view model reads the game only through this. */
@@ -4087,7 +4116,7 @@ window.__voxelcraft = {
     return activeScreen;
   },
   cursor() {
-    return slotInfo(cursorStack);
+    return slotInfo(cursorCarried());
   },
   setCraftingGrid(kind, itemIds = []) {
     const grid = kind === '3x3' ? craft3 : craft2;
@@ -4803,7 +4832,7 @@ window.__voxelcraft = {
       armour: armorSlots.map((slot) => slotInfo(slot)),
       crafting: {
         screen: activeScreen,
-        cursor: slotInfo(cursorStack),
+        cursor: slotInfo(cursorCarried()),
         grid2: craft2.map((slot) => slotInfo(slot)),
         grid3: craft3.map((slot) => slotInfo(slot)),
         preview: craftRecipe ? {
