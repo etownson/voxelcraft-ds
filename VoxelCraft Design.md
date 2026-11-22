@@ -2898,6 +2898,29 @@ Pain is now scaled per species through `MOB_HURT_GAIN`, described under *Passive
 animals*, because the animals' hurt call — which is also their death cry — was
 playing at the hostile level.
 
+### The sampled layer came down too
+
+With five of the most frequent sounds reduced to single tones, the remaining
+recordings were carrying the mix on their own, so every sampled one-shot is now
+played 6 dB quieter through `AUDIO_SAMPLE_TRIM` (0.5). It is applied once,
+inside `audioSample`, rather than at the twenty-odd call sites: one multiplier
+keeps the shaping of the bank intact — a footstep still under a block break, a
+block break under an explosion — and only moves the floor they are all measured
+against.
+
+It reaches footsteps, breaks, places, mining ticks, landing thuds, mob and
+animal voices, hurts, eating, chests, doors, buckets, shears, hoes, furnaces,
+splash, swimming, the explosion sample and the UI click. It deliberately does
+not reach the procedural fallbacks, the five ambient beds or the scheduled
+music, so `file://` still plays the synthesizer at its own levels and the world
+keeps breathing at the volume it had.
+
+Two sounds layer synthesis on top of a sample and keep those layers at their old
+gain: the explosion's band-passed crack plus 74 → 30 Hz drop, and the 64 → 46 Hz
+bed under the creeper's fuse. Both now sit higher in their own sound than they
+used to. Trimming those `audioTone` gains by the same 0.5 is the fix if it
+reads wrong.
+
 ### What came out of the bank
 
 Eight slots with no caller were deleted rather than left to be fetched and

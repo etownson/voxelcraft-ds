@@ -20,6 +20,20 @@ const AUDIO_DEFAULT_MUSIC_VOLUME = 0.7;
 const AUDIO_MAX_VOICES = 40;
 const AUDIO_NOISE_SECONDS = 2;
 const AUDIO_ASSET_ROOT = 'assets/audio/';
+/**
+ * Every sampled one-shot is played through this trim, in one place, rather than
+ * by editing twenty-odd call sites. The bank is a pile of independent CC0
+ * recordings trimmed and normalised to roughly themselves, so it arrives louder
+ * than the handful of synthesized blips the game now makes for its most frequent
+ * events; pulling the whole sampled layer down together keeps the relative
+ * shaping of the mix — a footstep still sits under a block break, an explosion
+ * still dominates — while lowering the floor everything is measured against.
+ *
+ * It is deliberately only `audioSample`. The procedural fallbacks, the ambient
+ * beds and the scheduled music are untouched, so on `file://`, where the bank
+ * cannot load, the synthesizer plays at its own levels as before.
+ */
+const AUDIO_SAMPLE_TRIM = 0.5;
 const AUDIO_SETTINGS_KEY = 'voxelcraft:audio:v1';
 
 /** Build a list of `prefix1.wav`, `prefix2.wav`, ... */
@@ -684,7 +698,7 @@ function audioSample(name, options = {}) {
     ? 1
     : audioOcclusion(options.x, options.y, options.z);
   const volume = clamp(
-    audioNumber(options.volume, 1) * spatial.gain * occluded,
+    audioNumber(options.volume, 1) * spatial.gain * occluded * AUDIO_SAMPLE_TRIM,
     0,
     1.5
   );
