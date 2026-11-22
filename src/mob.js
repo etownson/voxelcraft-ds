@@ -17,7 +17,7 @@ import { BLOCKS, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
 import { cellCollidesAt, isSolid, submergedAt } from './collision.js';
 import {
-  B, CHUNK_SIZE, COLLISION_EPSILON, GRAVITY, MAX_MOVE_STEP, TERMINAL_VELOCITY, chunkKey, clamp
+  B, CHUNK_SIZE, COLLISION_EPSILON, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP, TERMINAL_VELOCITY, chunkKey, clamp
 } from './config.js';
 import { spawnBurstParticles, triggerExplosionPunch } from './fx.js';
 import { createCanvas } from './icons.js';
@@ -746,6 +746,39 @@ function pickWanderTarget(mob) {
   );
 }
 
+/**
+ * A short sight probe from the top of a creeper's head to the player's eyes.
+ * Ignition used to be a horizontal ring plus a feet-to-feet window, and both
+ * halves read wrong: it fired through walls the creeper had never seen past,
+ * and it never fired at all once the feet sat more than two blocks apart, so
+ * a creeper pressed against the foot of a ledge you stood on just stood there
+ * and waved. Now it lights when its real three-dimensional reach is clear,
+ * and the reach is what it measures. Leaves and water do not break the line;
+ * a closed door or a wall does, so shelter now means what it looks like.
+ */
+function creeperSeesPlayer(mob) {
+  const fromX = mob.pos.x;
+  const fromY = mob.pos.y + mob.def.height * 0.8;
+  const fromZ = mob.pos.z;
+  const toX = mobWalker().pos.x;
+  const toY = mobWalker().pos.y + EYE_HEIGHT;
+  const toZ = mobWalker().pos.z;
+  const length = Math.hypot(toX - fromX, toY - fromY, toZ - fromZ);
+  const steps = Math.max(2, Math.ceil(length / 0.35));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const id = world.getBlock(
+      Math.floor(fromX + (toX - fromX) * t),
+      Math.floor(fromY + (toY - fromY) * t),
+      Math.floor(fromZ + (toZ - fromZ) * t)
+    );
+    if (id === B.AIR || isWater(id) || id === B.LEAVES) continue;
+    const block = BLOCKS[id];
+    if (block && block.solid) return false;
+  }
+  return true;
+}
+
 function explodeCreeper(mob) {
   const cx = mob.pos.x;
   const cy = mob.pos.y + 0.75;
@@ -906,7 +939,8 @@ function updateMobAI(mob, dt) {
       }
     } else if (playerAlive && distance < def.detection && Math.abs(dy) < 12) {
       if (mob.type === 'creeper') {
-        if (distance < 2.35 && Math.abs(dy) < 2.4) {
+        const reach = Math.hypot(dx, dy, dz);
+        if (reach < 2.5 && creeperSeesPlayer(mob)) {
           mob.fuse = 1.55;
           mob.state = 'fuse';
           playCreeperHiss(mob.pos.x, mob.pos.y + 0.9, mob.pos.z);

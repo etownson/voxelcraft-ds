@@ -299,7 +299,7 @@ Hostile mobs:
 - Night arrives in batches: a spawn pass after dark may place up to three hostiles, so dusk turns dangerous within seconds instead of one zombie at a time, while daytime cave spawning keeps to its trickle
 - Creepers spawn rarely under the same conditions
 - Zombies path toward the player when within detection range (simple direct-walk steering with one-block step-up is acceptable; full pathfinding not required), and deal contact damage on touch with a cooldown
-- Creepers approach the player, then hiss, flash, and explode after a short fuse, damaging the player and destroying nearby non-bedrock blocks (destroyed blocks drop as items)
+- Creepers approach the player, then hiss, flash, and explode after a short fuse, damaging the player and destroying nearby non-bedrock blocks (destroyed blocks drop as items). The fuse lights when the player is within about 2.5 blocks in three dimensions and in clear sight; leaves and water do not break the sight line, walls and closed doors do
 - Hostile mobs take damage from player attacks (left click while looking at a mob within reach), with knockback
 - Hostile mobs burn/despawn at dawn (mobs sheltered underground in darkness are exempt), but an idle hostile more than 32 blocks off in three dimensions keeps rolling until it gives up and vanishes, so a cave under the player's base cannot hold the entire hostile budget
 - Mobs must not spawn inside blocks or in water, and despawn when the player is 96 blocks away measured in three dimensions, not just horizontally
