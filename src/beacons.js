@@ -55,9 +55,11 @@ export const SPAWN_TRANSMISSION = [
 /**
  * What each activation carries over the air, one block per beacon, in the
  * order the design writes the transmissions down. The story arrives spotty;
- * the essentials do not.
+ * the essentials do not. `transmissions.js` keeps the same words whole for the
+ * journal's second page, which is why these are the mission's own record and
+ * not the panel's.
  */
-const TRANSMISSIONS = [
+export const TRANSMISSIONS = [
   [
     'You lit it. The grid stirs. I have recipes queued — they are in your journal now.',
     'I am sorry. You are flesh in that world: it will want feeding, and it can be hurt.',

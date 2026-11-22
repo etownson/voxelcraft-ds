@@ -258,6 +258,40 @@ html, body {
 .journal-need { color: #9fb4c7; font-size: 12px; }
 .journal-none { color: #9fb4c7; font-size: 13px; padding: 8px; }
 
+/* The journal turns pages when the transmissions are kept: the tabs sit over
+   the column, and whichever page is chosen reads underneath them. */
+.journal-pages { display: flex; flex-direction: column; gap: 8px; }
+.journal-tabs { display: flex; gap: 6px; }
+.journal-tab {
+  font: inherit; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 5px 11px; color: #9fb4c7; cursor: pointer;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(150, 170, 190, 0.18); border-bottom-width: 2px;
+  border-radius: 3px;
+}
+.journal-tab:hover { background: rgba(255,255,255,0.14); }
+.journal-tab.selected {
+  color: var(--accent); background: rgba(244, 208, 111, 0.1);
+  border-color: rgba(244, 208, 111, 0.5);
+}
+
+/* The kept transmissions: the whole message, headed by the beacon that carried
+   it, oldest first. The transmitter's own blue on the heading says whose words
+   these are, and there is no caret and no pause: read, not performed. */
+.transmission-column { gap: 10px; }
+.transcript-entry {
+  padding: 8px 10px; border-radius: 3px;
+  background: rgba(14, 20, 28, 0.72);
+  border: 1px solid rgba(150, 170, 190, 0.14);
+  border-left: 2px solid rgba(127, 227, 239, 0.45);
+}
+.transcript-heading {
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #7fe3ef; margin-bottom: 5px;
+}
+.transcript-line { margin: 0; color: #cfeef5; font-size: 12.5px; line-height: 1.5; }
+.transcript-line + .transcript-line { margin-top: 5px; }
+
 #control-hint {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
   padding: 5px 11px; border-radius: 3px;
@@ -373,6 +407,19 @@ kbd {
   flex: 0 0 auto; white-space: nowrap;
 }
 #overlay .setting-note { color: #7d90a2; }
+#overlay .transmission-settings {
+  display: grid; gap: 2px;
+  padding: 4px 8px; text-align: left;
+  font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
+}
+#overlay .transmission-settings .setting-check {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+}
+#overlay .transmission-settings input[type="checkbox"] {
+  width: 14px; height: 14px; margin: 0; cursor: pointer;
+  accent-color: var(--accent);
+}
+#overlay .transmission-settings .setting-note { font-size: 10.5px; }
 #overlay .pad-settings button {
   font: inherit; font-size: 13px; line-height: 1; width: 24px; height: 22px;
   padding: 0; color: #eaf3fb; background: rgba(255,255,255,0.07);

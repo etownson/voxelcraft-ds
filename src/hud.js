@@ -2,8 +2,9 @@
  * Everything the player reads, and everything the player clicks: the hotbar and
  * its durability bars, the toast, the sprint line and the pad's row, the hearts
  * and the shield row and the food bar, the death screen, and the screens
- * themselves — inventory, crafting, furnace, chest and the give shelf — with the
- * cursor that carries a stack between them and the pad's own way through a grid.
+ * themselves — inventory, crafting, furnace, chest, the journal and the give
+ * shelf — with the cursor that carries a stack between them and the pad's own
+ * way through a grid.
  *
  * This is the only file that holds an element. Everything else asks: the body
  * paints through `paintHealth` and `paintHunger`, the armour through
@@ -60,6 +61,7 @@ import {
   applyDayNight, formatClock, isNight, nudgeDayTime, timeScale, toggleTimeFrozen
 } from './sky.js';
 import { nextBeacon } from './beacons.js';
+import { buildTransmissionColumn, transmissionJournalOn } from './transmissions.js';
 
 const fpsEl = document.getElementById('fps');
 const clockEl = document.getElementById('clock');
@@ -667,9 +669,54 @@ function buildFurnaceColumn() {
 
 /* The journal: every recipe a beacon has transmitted, in the order the table
    holds them. It shows what a recipe makes and what it eats; the recipes are
-   learned whole, so there is nothing here to unlock a second time. */
+   learned whole, so there is nothing here to unlock a second time.
+
+   Beside it sits the second page — the transmissions themselves, whole and in
+   the order they were heard — for a walker who missed a line while the line was
+   bad. It is a Settings switch, off until it is asked for, so most journals have
+   one page and the story stays something the player overheard. */
 const JOURNAL_SCREEN_HINT =
   'Recipes arrive whole from the beacons \u00b7 J or B close';
+const JOURNAL_PAGES_HINT =
+  'Recipes arrive whole from the beacons \u00b7 \u2190 \u2192 turns the page \u00b7 J or B close';
+
+/** The pages, in the order they are bound: recipes, then the mission's words. */
+const JOURNAL_PAGES = [
+  ['recipes', 'Received Recipes'],
+  ['transmissions', 'Transmissions']
+];
+/** The page the journal last showed. */
+let journalPage = 'recipes';
+
+/** The pages this journal has: one, until the transmission journal is on. */
+function journalPages() {
+  return transmissionJournalOn() ? JOURNAL_PAGES : JOURNAL_PAGES.slice(0, 1);
+}
+
+/** The page that is up, which falls back to recipes if the setting went off. */
+function currentJournalPage() {
+  return journalPages().some(([id]) => id === journalPage) ? journalPage : 'recipes';
+}
+
+/** The panel's name for the page it is showing, for a title or a heading. */
+export function journalTitle() {
+  const shown = journalPages().find(([id]) => id === currentJournalPage());
+  return 'Journal \u00b7 ' + shown[1];
+}
+
+/** Turns to a page by name, if this journal has it. */
+function setJournalPage(id) {
+  if (!journalPages().some(([page]) => page === id)) return;
+  journalPage = id;
+}
+
+/** Turns one page left or right, walking the pages around in a ring. */
+function stepJournalPage(step) {
+  const pages = journalPages();
+  if (pages.length < 2) return;
+  const at = pages.findIndex(([id]) => id === currentJournalPage());
+  setJournalPage(pages[(at + step + pages.length) % pages.length][0]);
+}
 
 function recipeIngredients(recipe) {
   const counts = new Map();
@@ -687,7 +734,7 @@ function recipeIngredients(recipe) {
   return counts;
 }
 
-export function buildJournalColumn() {
+function buildJournalColumn() {
   const column = document.createElement('div');
   column.className = 'journal-column';
 
@@ -738,6 +785,55 @@ export function buildJournalColumn() {
   return column;
 }
 
+/**
+ * Puts the page tabs and the page itself into a journal that is already on the
+ * page. `turned` answers after a tab is clicked, so whoever holds the words
+ * over the top of the journal — the screen's title, the menu panel's heading —
+ * can put the new page's name there too.
+ */
+function fillJournal(wrap, turned = null) {
+  wrap.innerHTML = '';
+
+  const pages = journalPages();
+  if (pages.length > 1) {
+    const tabs = document.createElement('div');
+    tabs.className = 'journal-tabs';
+    for (const [id, label] of pages) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'journal-tab';
+      tab.textContent = label;
+      tab.classList.toggle('selected', id === currentJournalPage());
+      tab.addEventListener('click', () => {
+        setJournalPage(id);
+        fillJournal(wrap, turned);
+        if (turned) turned();
+      });
+      tabs.append(tab);
+    }
+    wrap.append(tabs);
+  }
+
+  wrap.append(currentJournalPage() === 'transmissions'
+    ? buildTransmissionColumn()
+    : buildJournalColumn());
+}
+
+/**
+ * The journal as the walker reads it: tabs when there are two pages to choose
+ * between, and under them the page. The screen and the menu panel both paint
+ * through this, so the menu's copy and the in-game copy are the same book.
+ */
+export function buildJournalBody(turned = null) {
+  const wrap = document.createElement('div');
+  wrap.className = 'journal-pages';
+  fillJournal(wrap, turned);
+  return wrap;
+}
+
+/** The in-game journal's own answer to a tab click: retitle the panel. */
+function paintJournalTitle() { screenTitle.textContent = journalTitle(); }
+
 export function renderScreen() {
   if (!activeScreen) return;
 
@@ -758,10 +854,12 @@ export function renderScreen() {
   // The journal shares the panel and also nothing else: no pack, no grid,
   // no cursor — recipes are learned whole and cannot be carried.
   if (activeScreen === 'journal') {
-    screenTitle.textContent = 'Journal \u00b7 Received Recipes';
-    screenHint.textContent = JOURNAL_SCREEN_HINT;
+    screenHint.textContent = journalPages().length > 1
+      ? JOURNAL_PAGES_HINT
+      : JOURNAL_SCREEN_HINT;
     screenBody.innerHTML = '';
-    screenBody.append(buildJournalColumn());
+    screenBody.append(buildJournalBody(paintJournalTitle));
+    paintJournalTitle();
     return;
   }
 
@@ -1038,12 +1136,15 @@ function padActivateSlot(mode) {
 }
 
 export function handlePadScreenTap(name) {
-  if (!padSections().length) return;
-
+  // The close keys answer wherever a screen is up, even the two that have no
+  // grid to walk: the journal and the give shelf are lists of words and icons,
+  // and a pad still has to be able to put them down.
   if (name === 'b' || name === 'start' || name === 'back') {
-    closeScreen();
+    if (activeScreen) closeScreen();
     return;
   }
+  if (!padSections().length) return;
+
   if (name === 'lb') { movePadSection(-1); return; }
   if (name === 'rb') { movePadSection(1); return; }
   if (name === 'a') { padActivateSlot('primary'); return; }
@@ -1069,6 +1170,16 @@ export function updateGamepadScreen(dt) {
     dt, padMenuRepeat.y,
     held[PAD_BUTTON.up], held[PAD_BUTTON.down], gpAxis(1)
   );
+
+  // The journal has no cursor to walk, so on the pad the D-pad sideways is the
+  // page turner instead — the same two pages the mouse clicks between.
+  if (activeScreen === 'journal') {
+    if (dx) {
+      stepJournalPage(dx);
+      renderScreen();
+    }
+    return;
+  }
 
   if (dx) movePadCursor(dx, 0);
   if (dy) movePadCursor(0, dy);
@@ -1178,7 +1289,8 @@ function toggleGiveScreen() {
   }
 }
 
-/** J opens the journal of received recipes, or closes whatever screen is up. */
+/** J opens the journal — recipes, and transmissions when they are kept — or
+ *  closes whatever screen is up. */
 function toggleJournal() {
   if (activeScreen) {
     closeScreen();
@@ -1499,6 +1611,15 @@ window.addEventListener('keydown', (event) => {
   } else if (isJournalKey) {
     event.preventDefault();
     toggleJournal();
+  } else if (activeScreen === 'journal' &&
+      (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
+    // The journal is the only screen with pages, so while it is up the arrows
+    // turn them rather than looking around. The key is dropped from the held
+    // set the moment it is spent, so the walker never turns on the way out.
+    event.preventDefault();
+    pressedKeys.delete(event.code);
+    stepJournalPage(event.code === 'ArrowRight' ? 1 : -1);
+    renderScreen();
   } else if (isTourKey) {
     event.preventDefault();
     // T walks the debug tour one stop forward — SP0, then the five monuments,

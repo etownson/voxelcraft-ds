@@ -3,8 +3,9 @@
  * Controls, Settings, Journal, Start. The first three open one panel at a time
  * under the menu, and choosing an open one again closes it; Start hands control
  * back, the same as a click on the dark around the panel. The journal panel
- * borrows the recipe column the in-game journal paints, rebuilt on every open
- * so a fresh transmission shows up the next time the menu comes round.
+ * borrows the pages the in-game journal paints — recipes, and the transmissions
+ * when they are kept — rebuilt on every open so a fresh transmission shows up
+ * the next time the menu comes round.
  *
  * The pad walks the choices with the D-pad or the left stick and picks with A,
  * which is the menu the controls list promises. Start on the pad has always
@@ -12,7 +13,7 @@
  */
 
 import { playMenuClickSound } from './audio.js';
-import { buildJournalColumn } from './hud.js';
+import { buildJournalBody, journalTitle } from './hud.js';
 import {
   PAD_BUTTON, gamepadState, gpAxis, overlayEl, padMenuDirection, padMenuRepeat,
   pressedKeys, setGamepadSensitivity, startFromOverlay
@@ -28,6 +29,12 @@ for (const name of CHOICES) {
   panels[name] = document.getElementById('menu-' + name + '-panel');
 }
 const journalBody = document.getElementById('journal-menu-body');
+const journalHeading = document.getElementById('journal-menu-heading');
+
+/** The panel's heading keeps the page's name, the same words the tabs carry. */
+function paintJournalHeading() {
+  journalHeading.textContent = journalTitle();
+}
 
 /** The choice the pad or the arrow keys are pointing at. */
 let selection = 'start';
@@ -53,11 +60,12 @@ function openPanel(name) {
     panels[key].classList.toggle('hidden', !open);
     buttons[key].setAttribute('aria-expanded', open ? 'true' : 'false');
   }
-  // Rebuilt every time, because the beacons may have sent more recipes while
-  // the panel was closed.
+  // Rebuilt every time, because the beacons may have sent more recipes — and
+  // more of the story — while the panel was closed.
   if (name === 'journal') {
     journalBody.innerHTML = '';
-    journalBody.append(buildJournalColumn());
+    journalBody.append(buildJournalBody(paintJournalHeading));
+    paintJournalHeading();
   }
 }
 

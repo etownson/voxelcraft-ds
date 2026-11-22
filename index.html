@@ -153,6 +153,13 @@
           <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
         </span>
       </div>
+      <div class="transmission-settings">
+        <label class="setting-check" for="transmission-journal">
+          <input id="transmission-journal" type="checkbox">
+          <span>Transmission journal</span>
+        </label>
+        <span class="setting-note">Keeps every transmission the beacons send, to read whole in the journal</span>
+      </div>
       <div class="audio-settings" id="audio-settings">
         <div class="audio-row">
           <span class="audio-label">Master</span>
@@ -173,7 +180,7 @@
     </section>
 
     <section id="menu-journal-panel" class="menu-journal menu-panel hidden" aria-label="Journal">
-      <div class="menu-heading">Journal &middot; Received Recipes</div>
+      <div id="journal-menu-heading" class="menu-heading">Journal &middot; Received Recipes</div>
       <div id="journal-menu-body" class="journal-body"></div>
     </section>
 
