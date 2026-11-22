@@ -207,6 +207,42 @@ export const B = Object.freeze({
   LADDER: 52
 });
 
+/* ---------- Hunger ---------- */
+
+/**
+ * Food on Minecraft's 0-20 scale, plus Minecraft's hidden saturation counter.
+ * Saturation sits on top of food, never above it, and is what exhaustion spends
+ * first, so a good meal carries a busy day. Healing needs a nearly full stomach,
+ * and an empty one kills: this game is Minecraft's Hard difficulty on purpose.
+ */
+export const HUNGER_MAX = 20;
+export const HUNGER_REGEN_MIN = 18;
+/** Saturation a new world or a respawned player starts with. Minecraft's own value. */
+export const SATURATION_ON_RESPAWN = 5;
+/** Seconds between starvation hits once the stomach is empty. */
+export const STARVE_INTERVAL = 4;
+/** Seconds between the points of health a full stomach mends. */
+export const REGEN_INTERVAL = 4;
+/** A completely full bar burns this much saturation for a point of health... */
+export const SATURATION_BOOST_COST = 1.5;
+/** ...and does it this often, which is eight times faster than the slow heal. */
+export const SATURATION_BOOST_INTERVAL = 0.5;
+
+/**
+ * What each activity costs, in exhaustion points: Minecraft Java 1.21's values,
+ * kept exactly as they are there. They look enormous next to a 20-point bar until
+ * you remember the counter has to reach 4.0 before it spends anything, and that
+ * saturation takes those hits first. Walking is missing because Minecraft charges
+ * nothing for it: exploring is free and a meal buys work, not footsteps.
+ */
+export const EXHAUSTION = {
+  sprint: 0.1, swim: 0.01,
+  jump: 0.05, sprintJump: 0.2,
+  mine: 0.005, attack: 0.1, hurt: 0.1, regen: 6.0
+};
+/** Exhaustion is spent in whole points of saturation or food, four at a time. */
+export const EXHAUSTION_THRESHOLD = 4;
+
 export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const smoothstep = (edge0, edge1, x) => {

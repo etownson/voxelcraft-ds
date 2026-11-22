@@ -155,8 +155,10 @@ import {
 import { isSolid, ladderHolding, playerCollidesAt, submergedAt } from './src/collision.js';
 import {
   AIR_ACCEL, B, BLOCK_ENTITY_TICK_RANGE, CHUNK_SIZE, COLLISION_EPSILON, DAY_LENGTH_SECONDS,
-  DAY_START, EYE_HEIGHT, FOCUS_REACH, GRAVITY, GROUND_ACCEL, JUMP_SPEED, LADDER_CLIMB_SPEED,
-  MAX_MOVE_STEP, PLAYER_HALF_WIDTH, PLAYER_HEIGHT, PLAYER_STEP_HEIGHT, SEA_LEVEL, SPRINT_SPEED,
+  DAY_START, EXHAUSTION, EXHAUSTION_THRESHOLD, EYE_HEIGHT, FOCUS_REACH, GRAVITY, GROUND_ACCEL,
+  HUNGER_MAX, HUNGER_REGEN_MIN, JUMP_SPEED, LADDER_CLIMB_SPEED, MAX_MOVE_STEP,
+  PLAYER_HALF_WIDTH, PLAYER_HEIGHT, PLAYER_STEP_HEIGHT, REGEN_INTERVAL, SATURATION_BOOST_COST,
+  SATURATION_BOOST_INTERVAL, SATURATION_ON_RESPAWN, SEA_LEVEL, SPRINT_SPEED, STARVE_INTERVAL,
   TERMINAL_VELOCITY, WALK_SPEED, WATER_ACCEL, WATER_GRAVITY_SCALE, WATER_MANTLE_HEIGHT,
   WATER_MANTLE_STEP, WATER_MAX_FLOW, WATER_MAX_SWIM_SPEED, WATER_NEIGHBORS,
   WATER_REMESH_IDLE_BUDGET, WATER_SIDES, WATER_SPEED_SCALE, WATER_SWIM_ACCEL,
@@ -3549,42 +3551,6 @@ respawnButton.addEventListener('click', (event) => {
   event.preventDefault();
   respawnPlayer();
 });
-
-/* ---------- Hunger ---------- */
-
-/**
- * Food on Minecraft's 0-20 scale, plus Minecraft's hidden saturation counter.
- * Saturation sits on top of food, never above it, and is what exhaustion spends
- * first, so a good meal carries a busy day. Healing needs a nearly full stomach,
- * and an empty one kills: this game is Minecraft's Hard difficulty on purpose.
- */
-const HUNGER_MAX = 20;
-const HUNGER_REGEN_MIN = 18;
-/** Saturation a new world or a respawned player starts with. Minecraft's own value. */
-const SATURATION_ON_RESPAWN = 5;
-/** Seconds between starvation hits once the stomach is empty. */
-const STARVE_INTERVAL = 4;
-/** Seconds between the points of health a full stomach mends. */
-const REGEN_INTERVAL = 4;
-/** A completely full bar burns this much saturation for a point of health... */
-const SATURATION_BOOST_COST = 1.5;
-/** ...and does it this often, which is eight times faster than the slow heal. */
-const SATURATION_BOOST_INTERVAL = 0.5;
-
-/**
- * What each activity costs, in exhaustion points: Minecraft Java 1.21's values,
- * kept exactly as they are there. They look enormous next to a 20-point bar until
- * you remember the counter has to reach 4.0 before it spends anything, and that
- * saturation takes those hits first. Walking is missing because Minecraft charges
- * nothing for it: exploring is free and a meal buys work, not footsteps.
- */
-const EXHAUSTION = {
-  sprint: 0.1, swim: 0.01,
-  jump: 0.05, sprintJump: 0.2,
-  mine: 0.005, attack: 0.1, hurt: 0.1, regen: 6.0
-};
-/** Exhaustion is spent in whole points of saturation or food, four at a time. */
-const EXHAUSTION_THRESHOLD = 4;
 
 let starveTimer = 0;
 /** Seconds left before another bite can be taken. */
