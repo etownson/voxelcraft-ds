@@ -32,7 +32,7 @@ import {
 } from './config.js';
 import { syncHeldAngles } from './held.js';
 import { INVENTORY_SIZE, armorSlots, currentSlot, inventory, paintArmorBar } from './inventory.js';
-import { applyLook, paintHunger, player, restorePlayerLook, view } from './player.js';
+import { applyLook, paintHealth, paintHunger, player, restorePlayerLook, view } from './player.js';
 import { dayTime } from './sky.js';
 
 /**
@@ -421,6 +421,10 @@ export function restoreSavedPlayer(save) {
   // A counter that has already reached a whole bite cannot be trusted: it would
   // spend a point the instant the world opened, so it starts over instead.
   if (player.exhaustion >= EXHAUSTION_THRESHOLD) player.exhaustion = 0;
+  // Both bars are repainted here rather than left to the world's first frame:
+  // the pictures were drawn when the page was still holding a whole, fed player,
+  // and a save is allowed to hold a wounded one.
+  paintHealth();
   paintHunger();
   applyLook();
   saveArrival.placeCamera();
