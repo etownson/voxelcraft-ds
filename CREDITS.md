@@ -47,10 +47,12 @@ repetition. The files that held them are no longer in the bank.
 `assets/audio/event_heartbeat_1.wav` and `assets/audio/mob_creeper_1.wav` are
 synthesized by `tools/generate-audio.mjs` and are also CC0. The creeper fuse
 has no matching recording in the CC0 packs, and it needs irregular sputter and
-crackle that are easier to synthesize than to cut from a breath. The generated
-fallback/reference bank in `assets/audio-generated/` is produced by that
-script; its creeper slot is the source for the active one, and the rest is not
-part of the active CC0 bank.
+crackle that are easier to synthesize than to cut from a breath. Those two
+slots are the generator’s only part in the build: `tools/build-cc0-bank.py`
+renders the synthesized bank into a throwaway directory with `--out` and takes
+the creeper and heartbeat files from it. The bank itself is no longer
+committed — it was never loaded at runtime — and rerunning the generator
+recreates it on demand.
 
 ## What was changed
 

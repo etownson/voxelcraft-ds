@@ -12,8 +12,7 @@ in any horizontal direction.
 Create an infinite-style Minecraft-like voxel sandbox that runs in a modern browser using:
 
 - One `index.html` page, one `styles.css`, and a `src/` graph of native ES modules
-  for the game, plus the CC0 `assets/audio/` sample bank and the
-  generated `assets/audio-generated/` fallback/reference bank
+  for the game, plus the CC0 `assets/audio/` sample bank
 - Three.js loaded from a CDN
 - Vanilla JavaScript
 - No build tools and no npm required to play. The browser resolves the `src/`
@@ -427,9 +426,10 @@ Use the Web Audio API for every sound. The game now has three layers:
   `tools/build-cc0-bank.py` from Kenney, OpenGameArt, and SpritePilot packs.
   It covers block break/place, footsteps, mob voices, player and mob hurt,
   explosions, UI, water, chests, furnaces, and seven ambient/music loops.
-- The generated fallback/reference bank in `assets/audio-generated/`, produced
-  by `tools/generate-audio.mjs`. It is not loaded at runtime; it keeps the
-  original synthesized bank reproducible and supplies the generated heartbeat.
+- The synthesized reference bank is not committed; `tools/generate-audio.mjs`
+  renders it on demand. `tools/build-cc0-bank.py` only needs two files from
+  it — the creeper fuse and the heartbeat — and renders it into a throwaway
+  directory with `--out` to take them.
 - The original procedural synthesizer, still the runtime fallback. If the
   active bank cannot be fetched (for example when `index.html` is opened from
   `file://`) or a file fails to decode, `audioSample` returns false and
@@ -465,8 +465,6 @@ them:
 - UI
 - Audio bank loading, mixing, and procedural fallback in the same file
 - `assets/audio/*.wav` — active CC0 bank, built by `tools/build-cc0-bank.py`
-- `assets/audio-generated/*.wav` — synthesized fallback/reference, built by
-  `tools/generate-audio.mjs`
 - `CREDITS.md` — source and licence record for the active bank
 
 Use Three.js from a CDN. The code is organized by concern. It began as clearly
@@ -2545,20 +2543,19 @@ that much repetition. See the mute-event addendum at the end of this document.
 - 24 event one-shots
 - 5 ambient beds, no music loops
 
-`assets/audio-generated/` is the synthesized fallback/reference bank: 116 slots,
-9.3 MB, produced by `tools/generate-audio.mjs`. It is not loaded at
-runtime; the code synthesizer is the runtime fallback. It is kept so the
-original bank is reproducible and because the heartbeat is still better
-generated than sampled. It keeps the eight slots the active bank dropped — the
-pickup pair, the crafting mix, the jump woosh, the screen open and close pair,
-and two retired music loops — because the synthesizer still has a profile for
-each.
+The synthesized fallback/reference bank — 116 slots, 9.3 MB — is no longer
+committed. The game never loaded it; the code synthesizer is the runtime
+fallback. It keeps the eight slots the active bank dropped — the pickup pair,
+the crafting mix, the jump woosh, the screen open and close pair, and two
+retired music loops — because the synthesizer still has a profile for each,
+and it stays reproducible by running `tools/generate-audio.mjs`, which writes
+it to `assets/audio-generated/` or to a `--out` directory.
 
 The active bank comes from CC0 packs listed in `CREDITS.md`; the slot-by-slot
 mapping is in `tools/build-cc0-bank.py`. The source files are converted to mono
 WAV, trimmed and faded for one-shots, and resampled to 22.05 kHz for loops.
-`tools/generate-audio.mjs` writes only `assets/audio-generated/` now, so running
-it cannot overwrite the active CC0 bank.
+`tools/generate-audio.mjs` writes only to its own output directory, never to
+`assets/audio/`, so running it cannot overwrite the active CC0 bank.
 
 WAV rather than Ogg was deliberate: `decodeAudioData` handles it everywhere, it
 has no encoder delay to break a loop, and 7.7 MB is well inside the GitHub Pages
@@ -2776,9 +2773,9 @@ open sky.
   `tools/build-cc0-bank.py`, rerun it with the source packs staged, and update
   `CREDITS.md` if the source changes. The mapping is the authority, not a
   hand-edited WAV.
-- The generated bank is the fallback/reference. Edit `tools/generate-audio.mjs`
-  and run it; it writes only to `assets/audio-generated/` and cannot overwrite
-  the active bank.
+- The synthesized reference bank is not committed. Edit `tools/generate-audio.mjs`
+  and run it to render it again; it writes to `assets/audio-generated/` or a
+  `--out` directory and cannot overwrite the active bank.
 - The bank count and the `AUDIO_ASSETS` manifest must move together. If you add
   a variant, add the file and the manifest entry, then rerun
   `tools/check-audio.sh`.
@@ -2789,9 +2786,10 @@ open sky.
   that takes a crossfade argument. The generated bank's loops, including its own
   sad and retro music reference slots, are crossfaded from a render one second
   longer than the loop length.
-- The generated heartbeat in `assets/audio/event_heartbeat_1.wav` comes from
-  `assets/audio-generated/`. If you remove the generated bank, keep a copy of
-  that one file or make the heartbeat a synth fallback again.
+- The generated heartbeat in `assets/audio/event_heartbeat_1.wav` and the
+  creeper fuse in `assets/audio/mob_creeper_1.wav` are rendered on demand:
+  `tools/build-cc0-bank.py` runs `tools/generate-audio.mjs --out <tmp>` and
+  takes those two files from the result.
 - The fallback is not dead weight. It is the `file://` path, the partial-deploy
   path, and the test path; keep it working.
 - `tools/check-syntax.sh` and `tools/check-audio.sh` are the two checks in the

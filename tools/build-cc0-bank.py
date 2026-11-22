@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Build VoxelCraft's active CC0 sound bank from downloaded source packs.
 
-The active bank is `assets/audio/`. The generated fallback bank is kept in
-`assets/audio-generated/` and is produced by `tools/generate-audio.mjs`.
+The active bank is `assets/audio/`. Two slots — the creeper fuse and the
+heartbeat — are synthesized: the script renders the reference bank into a
+throwaway directory with `tools/generate-audio.mjs` and takes those two files
+from it. The generated bank itself is not committed.
 
 This script expects a staging directory containing the source packs:
 
@@ -31,12 +33,10 @@ import argparse
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "assets", "audio")
-GENERATED = os.path.join(ROOT, "assets", "audio-generated")
 SFX_RATE = 44100
 LOOP_RATE = 22050
 
@@ -137,6 +137,15 @@ def convert_mix(sources, dst, max_seconds, volume=1.0):
 def build(staging):
     def s(*parts):
         return os.path.join(staging, *parts)
+
+    # The creeper fuse and the heartbeat are synthesized rather than sampled,
+    # and the generated reference bank is no longer committed. Render it into
+    # a throwaway directory and take those two slots from there.
+    gen = tempfile.mkdtemp(prefix="voxelcraft-audio-generated-")
+    run([
+        "node", os.path.join(ROOT, "tools", "generate-audio.mjs"),
+        "--out", gen,
+    ])
 
     def k(*parts):
         return s("kenney", *parts)
@@ -269,7 +278,7 @@ def build(staging):
     one["event_land_3"] = (o("cc0-sfx-100", "slam_04.ogg"), 0.5)
     # The creeper fuse is synthesized rather than sampled: a lit fuse needs
     # irregular sputter and crackle, and no CC0 pack in the bank has a match.
-    one["mob_creeper_1"] = (os.path.join(GENERATED, "mob_creeper_1.wav"), 1.55)
+    one["mob_creeper_1"] = (os.path.join(gen, "mob_creeper_1.wav"), 1.55)
     # Picking up, crafting, jumping and opening or closing a screen are
     # synthesized in the game itself: each used to be a recording here, and every
     # candidate was too bright or too long for a sound that fires this often. They
@@ -328,11 +337,11 @@ def build(staging):
             convert_mix(sources, os.path.join(OUT, name + ".wav"), seconds)
 
     # The one sound that is still better generated: the heartbeat.
-    heartbeat_src = os.path.join(GENERATED, "event_heartbeat_1.wav")
-    if os.path.exists(heartbeat_src):
-        shutil.copyfile(heartbeat_src, os.path.join(OUT, "event_heartbeat_1.wav"))
-    else:
-        print("warning: generated heartbeat not found at", heartbeat_src, file=sys.stderr)
+    shutil.copyfile(
+        os.path.join(gen, "event_heartbeat_1.wav"),
+        os.path.join(OUT, "event_heartbeat_1.wav"),
+    )
+    shutil.rmtree(gen, ignore_errors=True)
 
     files = sorted(f for f in os.listdir(OUT) if f.endswith(".wav"))
     print(f"wrote {len(files)} files to {os.path.relpath(OUT, ROOT)}")

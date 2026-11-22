@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Generate VoxelCraft's fallback sample bank.
+ * Generate VoxelCraft's synthesized sample bank.
  *
- * The active bank is now the CC0 recordings in `assets/audio/`, built by
- * `tools/build-cc0-bank.py`. This script writes the synthesized bank to
- * `assets/audio-generated/`; it is kept as a reference and as the source of the
- * heartbeat file, and it must never overwrite the active bank.
+ * The active bank is the CC0 recordings in `assets/audio/`, built by
+ * `tools/build-cc0-bank.py`. That script needs only two files from this bank —
+ * the creeper fuse and the heartbeat — and renders it into a throwaway
+ * directory with `--out`; the committed copy of `assets/audio-generated/` was
+ * removed as unused at runtime. Run this without arguments to write the
+ * reference bank back to `assets/audio-generated/`; it must never overwrite
+ * the active bank.
  *
  * Short effects are 44.1 kHz mono 16-bit PCM WAV. Ambient beds are 22.05 kHz
  * so a 16-second loop stays around 700 KB. WAV is deliberate: `decodeAudioData`
@@ -18,7 +21,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_DIR = path.join(ROOT, 'assets', 'audio-generated');
+const outFlag = process.argv.indexOf('--out');
+const OUT_DIR = outFlag !== -1 && process.argv[outFlag + 1]
+  ? path.resolve(process.argv[outFlag + 1])
+  : path.join(ROOT, 'assets', 'audio-generated');
 const SFX_RATE = 44100;
 const LOOP_RATE = 22050;
 

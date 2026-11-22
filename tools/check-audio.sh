@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Verify both sample banks are present and every file decodes.
+# Verify the sample bank is present and every file decodes.
 #
 #   assets/audio/           active CC0 bank, built by tools/build-cc0-bank.py
-#   assets/audio-generated/ synthesized fallback/reference, made by
-#                           tools/generate-audio.mjs
 #
-# The two banks are not the same length: the active one dropped the pickup pair,
-# the crafting mix, the jump woosh, the screen open/close pair and the retired
-# Kenney music slots, which are synthesized in the game now or not played at all,
-# while the reference bank keeps every slot the synthesizer has a profile for.
+# The synthesized reference bank is no longer committed; it is only rendered
+# on demand by tools/generate-audio.mjs for the creeper and heartbeat slots,
+# so it has nothing to check here.
 #
 # The game falls back to the procedural synthesizer when the active bank is
 # missing, so this is the check that catches a partial commit before GitHub
@@ -16,7 +13,6 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_ACTIVE=108
-EXPECTED_GENERATED=116
 
 if ! command -v ffprobe >/dev/null 2>&1; then
   echo "check-audio: ffprobe not found; skipping decode check" >&2
@@ -54,7 +50,3 @@ check_dir() {
 }
 
 check_dir "$DIR/assets/audio" "active CC0 bank" "$EXPECTED_ACTIVE"
-
-if [ -d "$DIR/assets/audio-generated" ]; then
-  check_dir "$DIR/assets/audio-generated" "generated fallback bank" "$EXPECTED_GENERATED"
-fi
