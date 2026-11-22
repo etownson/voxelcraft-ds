@@ -5227,6 +5227,8 @@ let lastSaveBytes = 0;
 let lastSaveError = null;
 let saveDisabled = false;
 let autosaveTimer = AUTOSAVE_SECONDS;
+let saveNotice = null;
+let saveSpawn = null;
 
 /* What a save is worth telling anyone about: when the world now loaded was
    written, how big it was, whether it went wrong, and whether anything is still
@@ -5238,6 +5240,20 @@ function rememberSavedWorld(at) { lastSaveAt = at; }
 
 /** A write was asked for, which re-arms the autosave a wipe turned off. */
 function resumeAutosave() { saveDisabled = false; }
+
+/** A wipe ends the run: the unload hooks must not write the erased world back. */
+function stopAutosave() { saveDisabled = true; }
+
+/** Whoever cares that a write landed or failed. The pause panel's row does. */
+function onSaveWritten(notice) { saveNotice = notice; }
+
+/** Where the world claims its walker belongs. A bed moves it mid-session. */
+function setSaveSpawn(spawn) { saveSpawn = spawn; }
+
+/** Everything the row and the debug hook are allowed to know about a write. */
+function saveReport() {
+  return { at: lastSaveAt, bytes: lastSaveBytes, error: lastSaveError };
+}
 
 /**
  * There is no save any more. Stops the loop writing the world straight back
@@ -5279,7 +5295,7 @@ function serializeWorldSave() {
     time: dayTime,
     // Where a bed last claimed the player, if anywhere: the respawn point
     // outlives both the session and the bed that set it.
-    spawn: { x: spawnColumn.x, z: spawnColumn.z },
+    spawn: { x: saveSpawn.x, z: saveSpawn.z },
     inventory: inventory.map((slot) => stackRecord(slot)),
     armour: armorSlots.map((slot) => stackRecord(slot)),
     entities: serializeBlockEntities(),
@@ -5335,14 +5351,14 @@ function saveWorld() {
     lastSaveBytes = new Blob([json]).size;
     lastSaveError = null;
     clearWorldDirty();
-    refreshSaveStatus();
+    if (saveNotice) saveNotice();
     return true;
   } catch (err) {
     lastSaveError = err && err.name === 'QuotaExceededError'
       ? 'Saved world too large for browser storage'
       : 'Browser storage unavailable';
     console.warn('World save failed:', err);
-    refreshSaveStatus();
+    if (saveNotice) saveNotice();
     return false;
   }
 }
@@ -5587,11 +5603,12 @@ const startButton = document.getElementById('start-button');
 
 function refreshSaveStatus() {
   if (!saveStatusEl) return;
-  if (lastSaveError) {
-    saveStatusEl.textContent = lastSaveError;
+  const written = saveReport();
+  if (written.error) {
+    saveStatusEl.textContent = written.error;
     saveStatusEl.classList.remove('found');
-  } else if (lastSaveAt) {
-    saveStatusEl.textContent = 'World saved ' + formatSavedAt(lastSaveAt);
+  } else if (written.at) {
+    saveStatusEl.textContent = 'World saved ' + formatSavedAt(written.at);
     saveStatusEl.classList.add('found');
   } else if (hasLegacySave()) {
     saveStatusEl.textContent = 'A world from an older version exists and can\u2019t be loaded';
@@ -5607,7 +5624,7 @@ function initSaveUi(hasSavedWorld) {
     event.stopPropagation();
     if (!window.confirm('Erase this world and start a fresh one?')) return;
     // Stop the unload-triggered saves from resurrecting the wiped world.
-    saveDisabled = true;
+    stopAutosave();
     try {
       localStorage.removeItem(SAVE_KEY);
       for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
@@ -5633,6 +5650,7 @@ window.addEventListener('visibilitychange', () => {
     audioCtx.resume().catch(() => {});
   }
 });
+onSaveWritten(() => refreshSaveStatus());
 
 /* ============================================================
    21. MAIN ANIMATION LOOP AND DEBUG HOOKS
@@ -5688,6 +5706,7 @@ if (loadedSave) {
 // Pick a dry spawn column, then prepare a 3x3 patch synchronously so the spawn
 // chunk can mesh with correct borders.
 const spawnColumn = chooseSpawnColumn();
+setSaveSpawn(spawnColumn);
 prepareSpawnChunks(
   Math.floor(spawnColumn.x / CHUNK_SIZE),
   Math.floor(spawnColumn.z / CHUNK_SIZE)
@@ -5754,14 +5773,15 @@ window.__voxelcraft = {
     return this.saveInfo();
   },
   saveInfo() {
+    const written = saveReport();
     return {
       key: SAVE_KEY,
       schema: SAVE_SCHEMA,
-      savedAt: lastSaveAt || null,
-      bytes: lastSaveBytes,
+      savedAt: written.at || null,
+      bytes: written.bytes,
       edits: world.overrides.size,
       dirty: isWorldDirty(),
-      error: lastSaveError
+      error: written.error
     };
   },
   /** The pause panel's save line, re-evaluated. Lets the legacy-world notice be checked. */
