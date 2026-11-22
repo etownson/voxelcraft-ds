@@ -705,8 +705,6 @@ function blockIntersectsPlayer(bx, by, bz) {
 
 /* ---------- Item entities ---------- */
 
-const ITEM_CUBE_SIZE = 0.26;
-const itemCubeGeometryCache = new Map();
 const itemCubeMaterial = new THREE.MeshBasicMaterial({
   map: atlasTexture,
   vertexColors: true
@@ -715,54 +713,6 @@ const itemSpriteMaterials = new Map();
 const itemEntities = [];
 let itemEntitySerial = 0;
 
-function buildItemCubeGeometry(block) {
-  const cached = itemCubeGeometryCache.get(block.id);
-  if (cached) return cached;
-
-  const positions = [];
-  const uvs = [];
-  const colors = [];
-  const indices = [];
-  let vertex = 0;
-
-  for (const face of FACES) {
-    const rect = tileRect(
-      face.kind === 'top' ? block.tileTop :
-      face.kind === 'bottom' ? block.tileBottom :
-      block.tileSide
-    );
-    const faceUvs = [
-      [rect.u0, rect.vBottom],
-      [rect.u1, rect.vBottom],
-      [rect.u1, rect.vTop],
-      [rect.u0, rect.vTop]
-    ];
-
-    for (let i = 0; i < 4; i++) {
-      const cu = FACE_CORNERS[i][0];
-      const cv = FACE_CORNERS[i][1];
-      positions.push(
-        (face.n[0] * 0.5 + face.u[0] * cu * 0.5 + face.v[0] * cv * 0.5) * ITEM_CUBE_SIZE,
-        (face.n[1] * 0.5 + face.u[1] * cu * 0.5 + face.v[1] * cv * 0.5) * ITEM_CUBE_SIZE,
-        (face.n[2] * 0.5 + face.u[2] * cu * 0.5 + face.v[2] * cv * 0.5) * ITEM_CUBE_SIZE
-      );
-      uvs.push(faceUvs[i][0], faceUvs[i][1]);
-      colors.push(face.shade * 0.9, face.shade * 0.9, face.shade * 0.9);
-    }
-
-    indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3);
-    vertex += 4;
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.computeBoundingSphere();
-  itemCubeGeometryCache.set(block.id, geometry);
-  return geometry;
-}
 
 function itemSpriteMaterial(itemId) {
   let material = itemSpriteMaterials.get(itemId);
@@ -3602,6 +3552,58 @@ const heldArmMaterial = new THREE.MeshBasicMaterial({
   color: 0xd7a06f,
   fog: false
 });
+const ITEM_CUBE_SIZE = 0.26;
+const itemCubeGeometryCache = new Map();
+
+function buildItemCubeGeometry(block) {
+  const cached = itemCubeGeometryCache.get(block.id);
+  if (cached) return cached;
+
+  const positions = [];
+  const uvs = [];
+  const colors = [];
+  const indices = [];
+  let vertex = 0;
+
+  for (const face of FACES) {
+    const rect = tileRect(
+      face.kind === 'top' ? block.tileTop :
+      face.kind === 'bottom' ? block.tileBottom :
+      block.tileSide
+    );
+    const faceUvs = [
+      [rect.u0, rect.vBottom],
+      [rect.u1, rect.vBottom],
+      [rect.u1, rect.vTop],
+      [rect.u0, rect.vTop]
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const cu = FACE_CORNERS[i][0];
+      const cv = FACE_CORNERS[i][1];
+      positions.push(
+        (face.n[0] * 0.5 + face.u[0] * cu * 0.5 + face.v[0] * cv * 0.5) * ITEM_CUBE_SIZE,
+        (face.n[1] * 0.5 + face.u[1] * cu * 0.5 + face.v[1] * cv * 0.5) * ITEM_CUBE_SIZE,
+        (face.n[2] * 0.5 + face.u[2] * cu * 0.5 + face.v[2] * cv * 0.5) * ITEM_CUBE_SIZE
+      );
+      uvs.push(faceUvs[i][0], faceUvs[i][1]);
+      colors.push(face.shade * 0.9, face.shade * 0.9, face.shade * 0.9);
+    }
+
+    indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3);
+    vertex += 4;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  itemCubeGeometryCache.set(block.id, geometry);
+  return geometry;
+}
+
 const heldIconMaterialCache = new Map();
 const heldIconGeometry = new THREE.PlaneGeometry(0.46, 0.46);
 const heldArmGeometry = new THREE.BoxGeometry(0.16, 0.16, 0.54);
