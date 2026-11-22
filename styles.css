@@ -592,6 +592,16 @@ body.screen-open #crosshair, body.screen-open #bottom-hud { opacity: 0; }
 }
 #sleep-fade.active { opacity: 1; transition: opacity 0.7s ease-in; }
 
+/* The black a fresh world opens from. The first-spawn scene paints its opacity a
+   step each frame, so there is no transition here to race with. It sits under the
+   start menu (#overlay, z-index 20) and over the HUD, which is the point: the
+   menu is never blacked out, and the arrival starts with the world and the bars
+   both out of sight. */
+#arrival-fade {
+  position: fixed; inset: 0; z-index: 12; pointer-events: none;
+  background: #000; opacity: 0;
+}
+
 #death-screen {
   position: fixed; inset: 0; z-index: 35;
   display: flex; align-items: center; justify-content: center;

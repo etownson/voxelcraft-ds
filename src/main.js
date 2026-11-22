@@ -94,7 +94,7 @@ import {
   MINING_SWING_INTERVAL, hideMiningFeedback, isMining, miningFacts, miningReport,
   plantSeedsOnTarget, setInteractionView, tryPlaceSelectedBlock, updateMining, useHoeOnTarget
 } from './interaction.js';
-import { introActive, skipIntro, startIntro, updateIntro } from './intro.js';
+import { introActive, primeIntroBlack, skipIntro, startIntro, updateIntro } from './intro.js';
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorAbsorbed, armorDefense, armorSlots,
   countInventoryItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
@@ -454,10 +454,10 @@ initSaveUi(Boolean(loadedSave));
 /** The arrival transmission is armed at boot and spent by the frame loop. */
 let arrivalWaiting = false;
 let arrivalAt = 0;
-/** The beat of quiet between the scene landing and the line dialing. */
+/** The beat of quiet between the black clearing and the line dialing. */
 const ARRIVAL_DELAY_MS = 550;
 /** The first-spawn scene is armed the same way and spent the same frame the
- *  overlay lifts; the arrival line waits for it to land. */
+ *  overlay lifts; the arrival line waits for the fade to clear. */
 let introWaiting = false;
 /** True from the moment the arrival line is on the page until the transmitter
  *  finishes it — typed out, or closed — which is when the arrival song plays.
@@ -477,8 +477,11 @@ if (!loadedSave) {
   addEssence(startingEssence());
   arrivalWaiting = true;
   introWaiting = true;
+  // Black behind the menu before anything can be seen, so the fade starts from
+  // black on the very first frame the overlay lifts.
+  primeIntroBlack();
   // Hold the clock's music from the first frame: a fresh world gets no song
-  // behind the menu, none during the scene, and none while the transmitter
+  // behind the menu, none during the fade, and none while the transmitter
   // talks. Its first music is the arrival song, at the end of all that.
   setArrivalHold(true);
 }
@@ -882,7 +885,7 @@ window.__voxelcraft = {
   intro() {
     return introActive();
   },
-  /** Cut the first-spawn scene short: the walker is set down, and the
+  /** Cut the first-spawn fade short: the world is shown at once, and the
    *  transmission and the arrival song still take their turn afterwards. */
   skipIntro() {
     const skipped = skipIntro();
@@ -1986,10 +1989,10 @@ function animate(now) {
 
   updateGamepad(dt);
 
-  /* A world nobody has walked yet opens the way the design opens it: the
-     walker is beamed in. The scene starts on the frame the overlay lifts —
+  /* A world nobody has walked yet opens quiet: the world fades up out of the
+     black the menu sat on. The scene starts on the frame the overlay lifts —
      the same gate the arrival line waits behind, and it holds that line
-     until it lands. */
+     until the black clears. */
   if (introWaiting && overlayEl.classList.contains('hidden') && !player.dead) {
     introWaiting = false;
     startIntro();
@@ -1997,7 +2000,7 @@ function animate(now) {
 
   /* The arrival transmission lands once the walker is really in the world: the
      overlay hides the HUD, the audio context only wakes on the click that
-     lifts it, and the scene says the walk has begun, so the dial tone would
+     lifts it, and the fade says the walk has begun, so the dial tone would
      otherwise be spent unheard. */
   if (arrivalWaiting && overlayEl.classList.contains('hidden') && !introActive()) {
     if (!arrivalAt) arrivalAt = now + ARRIVAL_DELAY_MS;

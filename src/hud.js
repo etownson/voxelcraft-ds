@@ -91,6 +91,7 @@ export const sprintStateEl = document.getElementById('sprint-state');
 const healthBarEl = document.getElementById('health');
 const damageFlashEl = document.getElementById('damage-flash');
 export const sleepFadeEl = document.getElementById('sleep-fade');
+export const arrivalFadeEl = document.getElementById('arrival-fade');
 export const deathScreenEl = document.getElementById('death-screen');
 export const deathCauseEl = document.getElementById('death-cause');
 const respawnButton = document.getElementById('respawn-button');

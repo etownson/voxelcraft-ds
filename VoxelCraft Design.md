@@ -820,6 +820,13 @@ walker's own song, `assets/music/first-spawn/`, plays through on the music bus, 
 clock's windows take the world back when it ends. The morning bed and the arrival song
 can never be up together. A saved world never hears the hold or the song.
 
+The arrival has nothing on screen but a fade lifting off black, so the teleport is told
+by ear alone: three synthesised gestures hung across the fade as shares of it — a
+carrier climbing out of the transmitter's range, three detuned pulses of beam held
+mid-air, and a carrier falling back down its own way into a held fifth with one bright
+tick on top. Each is asked for again the frame after it fails, because the audio clock
+only wakes on the click that lifts the menu.
+
 Animal and hostile calls are quiet on purpose: each passive idles 15–35 s with a shared
 4–8 s gap at 0.22 gain; hostiles roll 11–24 s with a shared 6–11 s gap; pain is scaled
 per species (`MOB_HURT_GAIN`: cow 0.53, chicken 0.6, pig/sheep 0.7, hostiles 1) since
@@ -862,7 +869,7 @@ repository and the page:
     src/farming.js      farmland and crops
     src/aim.js          the crosshair's block ray and crack
     src/interaction.js  mining, placing, doors, beds, buckets, hoes, seeds
-    src/intro.js        the first-spawn scene: the walker is beamed in
+    src/intro.js        the first-spawn scene: a slow fade from black, the teleport heard
     src/combat.js       the crosshair's mob ray, swings and shearing
     src/mob.js          animals, hostiles, spawning, explosions
     src/fx.js           particles, embers, ambient sound

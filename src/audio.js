@@ -1252,6 +1252,72 @@ export function playTeleportSound() {
 }
 
 /**
+ * The middle of the arrival: the beam holding the walker somewhere the world
+ * cannot see them. Three pulses of a carrier, each a little higher than the
+ * last, doubled a quarter-tone flat against itself so it beats, with a thin
+ * wash of static riding over the top. It is the sound of being held in the
+ * wire rather than sent through it, and it belongs to the fade, not the scene:
+ * the arrival is told by ear now, with nothing on screen but the black lifting.
+ */
+export function playTeleportHoldSound() {
+  if (!audioIsAudible()) return false;
+  const start = audioCtx.currentTime + 0.02;
+  for (let i = 0; i < 3; i++) {
+    const now = start + i * 0.26;
+    const root = 150 + i * 38;
+    audioTone({
+      type: 'sawtooth', from: root, to: root * 1.2, duration: 0.5,
+      filterType: 'bandpass', filterFreq: 300 + i * 90, filterQ: 3.2,
+      volume: 0.07, now, bus: 'ui', priority: 2
+    });
+    audioTone({
+      type: 'sawtooth', from: root * 1.014, to: root * 1.217, duration: 0.52,
+      filterType: 'bandpass', filterFreq: 340 + i * 90, filterQ: 3.6,
+      volume: 0.045, now: now + 0.03, bus: 'ui', priority: 2
+    });
+  }
+  audioStatic({
+    type: 'bandpass', freq: 380, freqEnd: 1400, q: 1.4, duration: 0.8,
+    volume: 0.03, now: start + 0.08, bus: 'ui', priority: 2
+  });
+  return true;
+}
+
+/**
+ * The end of the arrival: the beam letting go. The carrier that climbed at the
+ * send now falls back down its own way, a wash of static closes over it, and
+ * the walker comes back together underneath as a held fifth and one bright tick
+ * of feet finding real ground. Everything is scheduled ahead of time, so the
+ * whole gesture fits in the last breath of the fade.
+ */
+export function playTeleportSettleSound() {
+  if (!audioIsAudible()) return false;
+  const start = audioCtx.currentTime + 0.02;
+  audioTone({
+    type: 'sawtooth', from: 392, to: 98, duration: 0.8,
+    filterType: 'lowpass', filterFreq: 900, filterQ: 1.1,
+    volume: 0.085, now: start, bus: 'ui', priority: 2
+  });
+  audioStatic({
+    type: 'bandpass', freq: 2600, freqEnd: 420, q: 1.1, duration: 0.7,
+    volume: 0.055, now: start + 0.06, bus: 'ui', priority: 2
+  });
+  audioTone({
+    type: 'sine', from: 196, to: 196, duration: 0.7,
+    volume: 0.045, now: start + 0.5, bus: 'ui', priority: 2
+  });
+  audioTone({
+    type: 'sine', from: 294, to: 294, duration: 0.6,
+    volume: 0.03, now: start + 0.58, bus: 'ui', priority: 2
+  });
+  audioTone({
+    type: 'triangle', from: 1046, to: 1568, duration: 0.16,
+    volume: 0.035, now: start + 0.76, bus: 'ui', priority: 2
+  });
+  return true;
+}
+
+/**
  * How long `playTransmissionHandshakeSound` takes, so the page that shows the
  * panel knows when the line is actually connected. Audio owns the shape of the
  * handshake; the HUD only owns the words.
