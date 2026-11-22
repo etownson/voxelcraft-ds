@@ -750,15 +750,19 @@ function explodeCreeper(mob) {
   const cx = mob.pos.x;
   const cy = mob.pos.y + 0.75;
   const cz = mob.pos.z;
-  const radius = 3.2;
+  // A crater just over two blocks deep. The old 3.2 bit out nearly a stack of
+  // barrels of terrain at once; this still takes the ground out from under the
+  // player and opens a visible scar, but a house or a mine entrance can now
+  // survive standing next to one.
+  const radius = 2.2;
   const edits = [];
   const drops = [];
   // One door spread over two cells should only pay out its item once.
   const blastDoors = new Set();
 
-  for (let dy = -3; dy <= 3; dy++) {
-    for (let dz = -3; dz <= 3; dz++) {
-      for (let dx = -3; dx <= 3; dx++) {
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      for (let dx = -2; dx <= 2; dx++) {
         if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
         const x = Math.floor(cx) + dx;
         const y = Math.floor(cy) + dy;
