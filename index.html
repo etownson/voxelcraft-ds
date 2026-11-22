@@ -177,6 +177,9 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, createMobModel, damageMob, hostileSpawnTally, mobs,
   setMobWorld, spawnMob, trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './src/mob.js';
+import {
+  aimOrigin, aimPlayer, applyLook, player, restorePlayerLook, turnPlayer, view
+} from './src/player.js';
 import { camera, renderer, scene, skyDome } from './src/render.js';
 import {
   advanceDayTime, applyDayNight, clockHours, dayTime, daylight, formatClock, isNight,
@@ -2257,9 +2260,6 @@ const canvas = renderer.domElement;
 const overlayEl = document.getElementById('overlay');
 const pressedKeys = new Set();
 
-let yaw = 0.7;
-let pitch = -0.2;
-/** Whether the left mouse button is held: mined with, and swung with. */
 let leftMouseDown = false;
 
 /**
@@ -2277,40 +2277,6 @@ let fallbackDragDistance = 0;
 let fallbackRightDrag = false;
 let lastFallbackMouseX = 0;
 let lastFallbackMouseY = 0;
-
-const player = {
-  /** Feet position at the centre of the collision box. */
-  pos: new THREE.Vector3(),
-  vel: new THREE.Vector3(),
-  onGround: false,
-  inWater: false,
-  headInWater: false,
-  sprinting: false,
-  health: 20,
-  maxHealth: 20,
-  /** Food points, 0 to 20. Half a point is never shown, just like Minecraft. */
-  hunger: 20,
-  /**
-   * Minecraft's hidden saturation counter, on the same 0-20 scale and never above
-   * the food it sits on. Exhaustion spends this before it touches food, which is
-   * what lets a good meal carry a busy day, and the food bar jitters the moment
-   * it runs out.
-   */
-  saturation: 5,
-  /** Invisible counter that spends one point of saturation or food every 4.0. */
-  exhaustion: 0,
-  dead: false,
-  hurtCooldown: 0,
-  regenDelay: 0,
-  /**
-   * The wall-facing of the ladder whose cell the player's feet are in, or null
-   * when nothing is holding them. This is the whole of what it means to be
-   * climbing: there is no mode to enter. The facing is kept because a rung holds
-   * a climber against the wall it hangs on.
-   */
-  onLadder: null,
-  fallPeakY: 0
-};
 
 /**
  * Sprint is latched rather than held: one press of Shift, Ctrl or B starts the
@@ -2346,42 +2312,6 @@ function clearSprintLatch() {
 function renderSprintState() {
   if (!sprintStateEl) return;
   sprintStateEl.classList.toggle('hidden', !sprintLatched);
-}
-
-/* The controller owns the view. Everything else asks for a look in one of two
-   ways — turn by this much, or point here — so the tilt limit is written once
-   and lives where the camera it protects does. */
-
-/** How far the view may tilt, up or down: just short of straight overhead. */
-const PITCH_LIMIT = 1.55;
-
-/** Turns the view by a delta: a thumb on a stick, a mouse, an arrow key. */
-function turnPlayer(dYaw, dPitch) {
-  yaw += dYaw;
-  pitch = clamp(pitch + dPitch, -PITCH_LIMIT, PITCH_LIMIT);
-}
-
-/** Points the view at absolute angles, as absolute as a save file leaves them. */
-function aimPlayer(nextYaw, nextPitch) {
-  yaw = nextYaw;
-  pitch = clamp(nextPitch, -PITCH_LIMIT, PITCH_LIMIT);
-}
-
-/**
- * Puts the view back where a save left it. Either angle may be missing, and
- * then that one stays where the game had already put it.
- */
-function restorePlayerLook(saved) {
-  if (!saved) return;
-  if (Number.isFinite(saved.yaw)) yaw = saved.yaw;
-  if (Number.isFinite(saved.pitch)) {
-    pitch = clamp(saved.pitch, -PITCH_LIMIT, PITCH_LIMIT);
-  }
-}
-
-function applyLook() {
-  camera.rotation.y = yaw;
-  camera.rotation.x = pitch;
 }
 
 /**
@@ -2428,18 +2358,6 @@ function syncCamera() {
     player.pos.y + EYE_HEIGHT - cameraStepOffset,
     player.pos.z
   );
-}
-
-const aimPoint = new THREE.Vector3();
-
-/**
- * Where the crosshair aims from. After a step up the view sits below the eyes
- * for a fifth of a second — half a block at a walk — and a pickaxe should not
- * follow it down into the stair itself, so everything that hits the world uses
- * the real eye instead.
- */
-function aimOrigin() {
-  return aimPoint.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
 }
 
 /** Arrow-key look for embedded browsers without pointer lock. */
@@ -2597,9 +2515,9 @@ function updatePlayer(dt, input) {
   updatePlayerEnvironment();
   player.onLadder = ladderHolding(player.pos.x, player.pos.y, player.pos.z);
 
-  // Desired horizontal direction relative to the camera yaw.
-  const sin = Math.sin(yaw);
-  const cos = Math.cos(yaw);
+  // Desired horizontal direction relative to the camera view.yaw.
+  const sin = Math.sin(view.yaw);
+  const cos = Math.cos(view.yaw);
   let wishX = -sin * input.forward + cos * input.right;
   let wishZ = -cos * input.forward - sin * input.right;
   const wishLength = Math.hypot(wishX, wishZ);
@@ -2837,8 +2755,8 @@ function spawnPlayer(column) {
   player.vel.set(0, 0, 0);
   player.onGround = true;
   cameraStepOffset = 0;
-  yaw = -2.4;
-  pitch = -0.18;
+  view.yaw = -2.4;
+  view.pitch = -0.18;
   applyLook();
   syncCamera();
 }
@@ -3616,7 +3534,7 @@ function respawnPlayer() {
     Math.floor(spawnColumn.x / CHUNK_SIZE),
     Math.floor(spawnColumn.z / CHUNK_SIZE)
   );
-  syncHeldAngles(yaw, pitch);
+  syncHeldAngles(view.yaw, view.pitch);
   ensurePlayerChunks();
   world.updateStreaming(player.pos.x, player.pos.z);
   updateTarget();
@@ -5471,8 +5389,8 @@ function serializeWorldSave() {
       x: player.pos.x,
       y: player.pos.y,
       z: player.pos.z,
-      yaw,
-      pitch,
+      yaw: view.yaw,
+      pitch: view.pitch,
       health: player.health,
       hunger: player.hunger,
       saturation: Number(player.saturation.toFixed(3)),
@@ -5698,7 +5616,7 @@ function restoreSavedPlayer(save) {
   renderHunger();
   applyLook();
   syncCamera();
-  syncHeldAngles(yaw, pitch);
+  syncHeldAngles(view.yaw, view.pitch);
   return true;
 }
 
@@ -5847,7 +5765,7 @@ setFxView({
     player.pos.y + EYE_HEIGHT - cameraStepOffset,
     player.pos.z
   ),
-  yaw: () => yaw,
+  yaw: () => view.yaw,
   paused: () => !!activeScreen || !overlayEl.classList.contains('hidden') || player.dead,
   restore: () => syncCamera()
 });
@@ -5868,8 +5786,8 @@ setMobWorld({
 function heldFrame() {
   return {
     stack: getSelectedStack(),
-    yaw,
-    pitch,
+    yaw: view.yaw,
+    pitch: view.pitch,
     speed: Math.hypot(player.vel.x, player.vel.z),
     onGround: player.onGround,
     hidden: !!activeScreen || player.dead,
