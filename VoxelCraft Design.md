@@ -1,741 +1,357 @@
 # VoxelCraft — Design Document
 
-Build a fully playable 3D Minecraft-style voxel game in the browser using Three.js and
-vanilla JavaScript as native ES modules served straight from the repository, with a CC0 audio bank and a generated fallback beside it. The game should feel like a
-simplified but functional Minecraft experience with an endless procedurally generated
-world. Do not create a fixed world with edges or borders. Instead, use deterministic
-chunk-based procedural generation so the terrain continues generating as the player moves
-in any horizontal direction.
+A fully playable 3D Minecraft-style voxel game in the browser, built with Three.js and
+vanilla JavaScript as native ES modules served straight from the repository, with a CC0
+audio bank and a procedural synthesizer behind it. The world is an endless, deterministic,
+chunk-based voxel map with no edges or borders: terrain streams in around the player and
+unloads behind them, in every horizontal direction, forever.
 
-## Core goal
+## Core shape
 
-Create an infinite-style Minecraft-like voxel sandbox that runs in a modern browser using:
-
-- One `index.html` page, one `styles.css`, and a `src/` graph of native ES modules
-  for the game, plus the CC0 `assets/audio/` sample bank
-- Three.js loaded from a CDN
-- Vanilla JavaScript
-- No build tools and no npm required to play. The browser resolves the `src/`
-  modules itself, so the repository *is* the deploy: GitHub Pages serves the
-  same files it is given, with nothing compiled, bundled, or minified in
-  between. `tools/build-cc0-bank.py` builds the active bank from the source
-  packs; `tools/generate-audio.mjs` regenerates the synthesized fallback bank
-- Serve the game over http, from a static server (`python3 -m http.server`) or
-  from Pages. Under `file://` the browser will not resolve module imports, so the
-  page stays blank. That is one more reason to use a server rather than a new
-  one: `file://` could never fetch the sample bank either.
-- Audio is CC0 (Kenney, OpenGameArt, SpritePilot; see `CREDITS.md`). Textures,
-  colors, and geometry are procedural
-- The active bank is sampled at runtime, with the procedural synthesizer as a
-  fallback
-
-The world should have no visible edges. Terrain should stream in around the player and
-unload when far away.
+- One `index.html` page, one `styles.css`, and a `src/` graph of native ES modules,
+  beside the CC0 sample bank in `assets/audio/` and the music in `assets/music/`
+- Three.js loaded from a CDN; the page's only script line is `import './src/main.js';`
+- No build tools and no npm required to play. The browser resolves the `src/` modules
+  itself, so the repository *is* the deploy: GitHub Pages serves the same files it is
+  given, with nothing compiled, bundled, or minified in between
+- Serve the game over http — `python3 -m http.server` or Pages. Under `file://` the
+  browser will not resolve module imports, so the page stays blank
+- Audio is CC0 (Kenney, OpenGameArt, SpritePilot; see `CREDITS.md`). Textures, icons,
+  colors, geometry, and the fallback sounds are all procedural
+- The document is also the game's tuning record: every gameplay number the game runs on
+  lives in `src/config.js`, and this document describes those numbers as they are
 
 ## World generation
 
-Use procedural noise, such as Perlin, Simplex, or value noise, to generate terrain
-deterministically from a world seed. The world must be divided into chunks:
+Terrain is generated deterministically from a world seed (`WORLD_SEED` in
+`src/config.js`) with hashing and gradient noise. Chunk generation is a pure function of
+(seed, chunkX, chunkZ), so any chunk at any coordinate — including large negative
+coordinates thousands of blocks from spawn — can be generated on demand, and returning to
+a previous area regenerates the same terrain. There are no walls, cliffs, hard stops,
+invisible barriers, or map boundaries; the world is never a pre-generated bounded grid.
 
-- Chunk size: 16×16 blocks horizontally
-- World height: 96 blocks, with sea level around y=48 so roughly half of the world's volume is underground
-- Typical surface terrain should have at least 40 blocks of minable stone beneath it before reaching bedrock
-- Chunks must support positive and negative world coordinates
-- Generate chunks dynamically based on the player's current chunk position
-- Render chunks within a configurable render distance, defaulting to 8–10 chunks (128–160 blocks), with fog positioned near the far edge to hide pop-in
-- Unload or hide chunks that move outside the render distance
-- Use the same seed so returning to a previous area regenerates the same terrain
+- Chunk size: 16×16 blocks horizontally, 96 blocks tall, with sea level at y=48
+- Chunks span positive and negative coordinates
+- Chunks generate dynamically around the player's current chunk position, within a
+  render distance of 8 chunks (128 blocks); chunks unload past render distance + 3
+- Fog sits near the render edge (near 48, far 132) to hide pop-in
+- Bedrock floors the bottom of the world with a ragged transition: layers y=1 through
+  y=3 are a decreasing random mix of bedrock and stone
+- The player spawns at the center of the world on top of the generated terrain
 
-Terrain should include:
+Terrain content:
 
-- Varied, dramatic terrain: gentle plains, rolling hills, steep cliffs, and tall mountain ranges — terrain amplitude should depend on the biome, so plains stay walkable while mountain regions rise steeply well above the treeline
-- At least these biomes: plains, forest, rainforest/jungle, desert, beach, ocean, rocky highlands, and snowy mountains
-- Biomes determined by combining temperature and humidity noise with elevation: hot + dry = desert, hot + humid = rainforest, cold or high = snow, temperate = plains/forest
-- Biome transitions must blend smoothly — no sudden walls or seams in terrain height at biome borders
-- Water filling open, sky-exposed areas below a fixed sea level (caves are exempt — see the cave rules below)
-- Beaches near sea level
-- Snow on high-elevation terrain
-- Tree style varies by biome: scattered oaks in plains, dense trees in forest, very dense and taller jungle trees with big canopies in rainforest, none in desert
-- Rivers: winding water channels carved where the absolute value of a dedicated low-frequency noise field is below a small threshold; rivers cut down to just below sea level, fill with water, line their beds with sand, and visually connect lakes and oceans
-- A connected Minecraft-style cave system carved with 3D noise:
-  - Long winding "spaghetti" tunnels, carved where the absolute value of a low-frequency 3D noise field is below a small threshold; use two independent noise fields at different scales so tunnels branch and intersect into networks
-  - Occasional larger caverns and rooms from a separate blobby 3D noise pass that intersects the tunnels
-  - Cave density should increase with depth, and tunnels should occasionally break through the surface as natural, walkable cave entrances
-  - Cave interiors always generate as air, even when below sea level — never flood caves with water; only columns open to the sky (oceans, lakes, rivers) fill with water up to sea level
-  - Carving must not open the sea into a cave either: a cave may not be carved at or below sea level where the ground above it, or the neighbouring column, is flooded down to that height, because a breach lets the flow simulation flood a cave the player was meant to find dry
-- Ore veins embedded in stone, placed deterministically from the world seed:
-  - Coal ore: common, in veins of 3–8 blocks, found at most underground depths
-  - Iron ore: less common, in veins of 2–6 blocks, more frequent the deeper you go
-  - Ores only replace stone blocks, and are often exposed on cave walls so caving is rewarded
-- Bedrock at the bottom of the world with a ragged multi-layer floor
-
-The player should spawn at the center of the world on top of the generated terrain.
-
-**Important: do not generate a fixed-size world.** There should be no walls, cliffs, hard
-stops, invisible barriers, or obvious map boundaries. The world must continue generating
-indefinitely in every horizontal direction as the player walks. Chunk generation must be a
-pure function of (worldSeed, chunkX, chunkZ) so any chunk at any coordinate — including
-large negative coordinates thousands of blocks from spawn — can be generated on demand.
-Never pre-generate a bounded grid of chunks at startup and treat it as the world. To
-verify: the player should be able to walk 1,000+ blocks in any direction and continue
-seeing new terrain with no boundary.
+- Varied, dramatic terrain: gentle plains, rolling hills, steep cliffs, and tall
+  mountain ranges — amplitude depends on the biome, so plains stay walkable while
+  mountain regions rise steeply well above the treeline
+- Biomes: plains, forest, rainforest/jungle, desert, beach, ocean, rocky highlands, and
+  snowy mountains, determined by temperature and humidity noise combined with elevation
+  (hot + dry = desert, hot + humid = rainforest, cold or high = snow, temperate =
+  plains/forest), blended smoothly across borders with no seams in terrain height
+- Beaches near sea level; snow on high-elevation terrain
+- Trees vary by biome: scattered oaks in plains, dense trees in forest, very dense and
+  taller jungle trees with big canopies in rainforest, none in desert
+- Rivers: winding channels carved where a dedicated low-frequency noise field crosses
+  zero, cut down to just below sea level, filled with water, bedded with sand, and
+  visually connecting lakes and oceans
+- A connected cave system carved with 3D noise: long winding "spaghetti" tunnels from
+  two independent low-frequency fields that branch and intersect into networks, plus
+  occasional larger caverns from a separate blobby pass. Cave density increases with
+  depth, and tunnels occasionally break through the surface as walkable cave entrances
+- Water fills columns open to the sky below sea level (oceans, lakes, rivers). Caves are
+  exempt: cave interiors are always air, and carving never opens the sea into a cave —
+  `cutOpensSea` refuses a carve at or below sea level where the ground above it, or the
+  neighbouring column, is flooded down to that height
+- Ore veins, embedded in stone and placed deterministically from the seed, biased to
+  deep rock and commonly exposed on cave walls:
+  - Coal: veins of 3–8, from y=4 up to near the surface
+  - Iron: veins of 2–6, deeper-biased
+  - Diamond: veins of 2–5, only between y=4 and y=26, most near the bottom — the
+    diamond tier comes after the furnace, not around it
 
 ## Block types
 
-Include at least these block types:
+Blocks live in a single `BLOCKS` table indexed by id. **New blocks are appended from id
+16 upwards and never renumbered** — ids are storage (chunk cells are one byte per cell),
+and a runtime assertion enforces that each block sits at its own id.
 
-- Grass
-  - Green speckled top face
-  - Brown dirt-like side faces with a green grass fringe along the top edge
-  - Used on surface terrain in grassy biomes (plains, forest, rainforest)
-- Dirt
-  - Brown on all faces
-  - Found under grass and surface layers
-- Stone
-  - Grey
-  - Found deeper underground and in mountains
-- Cobblestone
-  - Grey with a rounded-stone mosaic pattern
-  - Dropped when stone is mined
-  - Used in crafting recipes
-- Coal Ore
-  - Stone texture with clusters of black angular chunks
-  - Drops 1–2 Coal items when mined (coal is a material item, not placeable)
-  - Mines significantly faster with a pickaxe
-- Iron Ore
-  - Stone texture with rust/tan colored flecks
-  - Drops Iron directly when mined — no furnace or smelting system, for simplicity
-  - Should be mined with a stone pickaxe or better; bare hands or wooden tools are very slow
-- Sand
-  - Tan/yellow
-  - Used in deserts, on beaches near water, and lining river beds
-- Water
-  - Semi-transparent blue
-  - No collision
-  - Fills below sea level
-  - Not one block but fifteen states: a source, seven resting levels, and the same seven again
-    carrying their own level while falling — see the water flow addendum at the end
-- Wood (Log)
-  - Brown bark texture on side faces
-  - Ring pattern on top and bottom faces
-  - Used for tree trunks
-- Planks
-  - Lighter brown with horizontal board lines
-  - Crafted from wood logs
-- Leaves
-  - Green
-  - Slightly transparent with small gaps in the texture
-  - Used for tree canopies
-- Snow
-  - White
-  - Appears on high-elevation blocks
-- Crafting Table
-  - Plank-like sides with a tool-grid pattern on top
-  - Placeable; right-clicking it opens the 3×3 crafting grid
-- Torch
-  - Small brown stick with a glowing yellow/orange tip, rendered as thin geometry attached to the top of a solid block
-  - Placeable on top faces of solid blocks; no collision; breaks instantly and drops itself
-  - Emits block light (see the voxel lighting rules under Lighting and Atmosphere)
-- Bedrock
-  - Dark grey
-  - Indestructible
-  - Fills the bottom layer completely, with a ragged transition: layers y=1 through y=3 are a decreasing random mix of bedrock and stone, like Minecraft's bedrock floor
+| Id | Block | Notes |
+| --- | --- | --- |
+| 0 | Air | |
+| 1 | Grass Block | Green speckled top, dirt sides with a grass fringe |
+| 2 | Dirt | Brown on all faces |
+| 3 | Stone | Grey |
+| 4 | Cobblestone | Rounded-stone mosaic; dropped when stone is mined |
+| 5 | Coal Ore | Drops 1–2 Coal |
+| 6 | Iron Ore | Drops Raw Iron |
+| 7 | Sand | Deserts, beaches, river beds |
+| 8 | Water | A source; see Water flow |
+| 9 | Oak Log | Bark sides, ring top/bottom |
+| 10 | Oak Planks | Horizontal boards |
+| 11 | Oak Leaves | Slightly transparent cutout; drops apples, never itself |
+| 12 | Snow Block | High-elevation surface |
+| 13 | Crafting Table | Right-click opens the 3×3 grid |
+| 14 | Torch | Thin geometry on a top face, light 14, no collision |
+| 15 | Bedrock | Indestructible |
+| 16 | Diamond Ore | Drops Diamond; needs an iron pickaxe or better |
+| 17 / 18 | Furnace / lit Furnace | A burning furnace is a second id and emits light 13 |
+| 19 | Glass | Smelted sand; no tool speeds it, as in Minecraft |
+| 20 | Farmland | Made by hoeing grass or dirt |
+| 21–28 | Wheat, stages 0–7 | Crop growth lives in the block id, so fields survive chunk unloads |
+| 29–32 | Wooden Door (lower/upper, closed/open pair) | One item across two cells; the open ids are non-solid |
+| 33 / 34 | Red Bed (foot/head) | One item across two cells |
+| 35–48 | Water flow/fall levels 1–7 each | Resting sheets and falling water; see Water flow |
+| 49 | Chest | Contents live in a block entity |
+| 50 / 51 | Oak Stairs / Cobblestone Stairs | The only sub-block collider in the game |
+| 52 | Ladder | Solid: false; the first block a player stands inside of |
+
+Grass grows on surface terrain in grassy biomes; dirt underlies the surface layers;
+stone fills the deep rock and mountains. Water and bedrock are never placed or mined by
+the player.
 
 ## Textures and materials
 
-All textures must be procedurally generated at runtime. External image files are not
-allowed. Generate Minecraft-style pixel textures:
-
-- Create each block texture as a 16×16 pixel canvas, drawn pixel-by-pixel with code
-- Combine all block textures into a single texture atlas canvas and map UVs per face
-- Use NearestFilter (no texture smoothing/mipmap blur) so textures look crisp and pixelated like Minecraft
-- Add per-pixel random noise/speckle variation within each texture using a seeded random so textures are consistent between runs
-- Give each block type a distinct hand-drawn-looking pattern:
-  - Grass top: green base with lighter and darker green speckles
-  - Grass side: dirt texture with an irregular green fringe across the top 3–4 pixel rows
-  - Dirt: brown base with darker brown clumps and occasional small stones
-  - Stone: grey base with darker grey cracks and mottling
-  - Cobblestone: mosaic of rounded grey stones with dark mortar lines
-  - Coal ore: stone base with irregular black angular blobs
-  - Iron ore: stone base with rust-tan flecks outlined in darker brown
-  - Sand: pale yellow with subtle grain speckle
-  - Wood log side: vertical bark striations in two brown tones
-  - Wood log top: concentric ring pattern
-  - Planks: horizontal boards separated by darker seam lines, with subtle grain
-  - Leaves: layered greens with a few fully transparent pixels for depth
-  - Snow: white with faint blue-grey speckle
-  - Water: semi-transparent blue with lighter ripple pixels
-  - Torch: thin brown handle with a bright yellow-white tip
-  - Bedrock: dark grey with near-black jagged patches
-- Support different textures per face (top, bottom, sides) where appropriate
-- Basic material roughness and transparency settings
+All block textures are generated at runtime — no external image files. Each texture is a
+16×16 pixel canvas drawn pixel-by-pixel and combined into a single 16×16-tile atlas with
+UVs mapped per face, sampled with `NearestFilter` so it stays crisp and pixelated.
+Per-pixel speckle uses a seeded random so textures are identical between runs. Each block
+has a distinct hand-drawn-looking pattern (grass with fringe, stone cracks, cobblestone
+mosaic, ore blobs and flecks, bark striations and rings, plank boards, layered leaves,
+ripple water), plus dedicated tiles for the furnace faces, chest faces, door leaves, bed
+pieces, ladder rungs, crack overlay stages, and the eight wheat stages. Blocks support
+different textures per face (top, bottom, side, front), and materials carry roughness and
+transparency settings; the cutout pass handles leaves, glass, doors, beds, ladders, and
+torches with correct transparency. Item icons are separate procedural pixel-art canvases
+in `src/icons.js`.
 
 ## Player and controls
 
-Implement a first-person player controller:
+A first-person controller:
 
-- Pointer lock on click
-- Mouse look
-- WASD movement relative to camera direction
-- Spacebar to jump
-- Gravity
-- Ground detection
-- Shift or Ctrl to sprint at 1.5× speed
-- Collision detection against solid blocks
-- Player cannot walk through solid blocks
-- Player can pass through water, but movement may optionally slow down in water
-- Gamepad support using standard Web Gamepad API (left stick to move, right stick to look with configurable sensitivity, A/Cross to jump, right trigger to mine/attack, left trigger to place block/interact, shoulder buttons to scroll hotbar, Start/Menu to open/close inventory)
-- Advanced Gamepad UI controls: navigate crafting/inventory grid with D-pad or left stick, press A to pick up whole stacks, A to place whole stacks, X/Square to pick up half of a stack, X to place one item of a stack, Y/Triangle to quick-move stacks to hotbar/crafting grid, and back/Select to close menus
+- Pointer lock on click; mouse look; WASD relative to the camera
+- Space to jump; gravity; ground detection; collision against solid blocks, correct
+  across chunk boundaries
+- Sprint is a latch, not a held key: Shift, either Ctrl, or the gamepad's B / L3 starts
+  the run and the same key stops it. Sprinting walks at 6.9 blocks/s instead of 4.6.
+  The latch drops whenever the controls leave the player — pause, any open screen,
+  death, respawn, window blur, gamepad disconnect — so a sprint never resumes by
+  surprise. Standing still or being in water pauses the effect without dropping the
+  latch. The debug stack shows a `Sprint on` line while it is set
+- Step-up walking: `PLAYER_STEP_HEIGHT = 0.6`. When a grounded frame's horizontal move
+  is blocked, the move is replayed stood a little taller, in lifts up to 0.6, so half-
+  block stair treads are walked up rather than jumped. Anything taller still has to be
+  jumped; water keeps its own taller mantle trick
+- The camera pays for those lifts with a glide rather than a jolt: `tryStepUp` reports
+  how far the feet rose, and the view is eased down below the eyes
+  (`cameraStepOffset`, exponential decay, rate 13, cap 1.2 blocks), zeroed by teleport,
+  respawn, void rescue and load. Everything that touches the world — the block ray,
+  the water ray, the mob ray — aims from the true eye (`aimOrigin()`), not the gliding
+  view
+- The player can pass through water, with movement slowed and a swimming model (swim
+  acceleration, buoyancy, a mantle at the surface). Ladders are climbed, not collided
+  with — see Ladders
+- The collision box is 0.6 wide, 1.8 tall, eye at 1.62
+- Gamepad support via the Web Gamepad API: left stick moves, right stick looks
+  (configurable sensitivity), A/Cross jumps, right trigger mines/attacks, left trigger
+  places/interacts, shoulder buttons scroll the hotbar, B/L3 latches sprint,
+  Start/Menu opens and closes the inventory. Menu grids are walked with the D-pad or
+  stick: A picks up and places whole stacks, X takes half a stack and places one item,
+  Y/Triangle quick-moves, back/Select closes
 
-The player should have a collision box, roughly:
+Health:
 
-- Width: 0.6 blocks
-- Height: 1.8 blocks
+- 10 hearts (20 health points), drawn as a heart bar above the hotbar
+- Damage from hostile mobs, creepers, starvation, and falls greater than 3 blocks
+- Health regenerates only through the hunger system (see Hunger): a nearly full stomach
+  heals, an empty one kills
+- On death, a respawn screen offers a respawn (its button, the `A` key, or gamepad A)
+  at the spawn point with full health and a full stomach; the inventory is kept
 
-Collision detection must work across chunk boundaries. The player has health:
+## Mining and block interaction
 
-- 10 hearts (20 health points) shown as a heart bar above the hotbar
-- Damage from hostile mobs and fall damage from falls greater than 3 blocks
-- Health slowly regenerates over time
-- On death, show a respawn screen and respawn the player at the spawn point with full health and a full hunger bar; inventory may be kept for simplicity
+- Crosshair in the center; a raycast from the true eye picks the targeted block, drawn
+  with a subtle wireframe outline over the whole cell (the picker is cell-granular even
+  for the sub-block stairs and ladder)
+- Left click (hold) mines the target with progress drawn as cracking stages on the block
+- Broken blocks drop as small floating, spinning item entities that are pulled toward
+  and collected by the player
+- Right click places the selected block, consuming one from its stack; right-clicking a
+  crafting table opens the 3×3 grid instead
+- A block may not be placed inside the player's collision box; placing against a bottom
+  face is refused
+- Water is see-through to the block raycast (the bucket gets its own water ray) and
+  cannot be mined at all — `breakable: false`
+- Bedrock never breaks
 
-## Block interaction
+Break time is Minecraft's formula: `hardness * 1.5 / speed` with the right tool at the
+right tier, `hardness * 5 / speed` with anything else, floored at 0.05 seconds. A block
+whose tier gate outranks the tool still breaks, but drops nothing — which is how diamond
+ore refuses a stone pickaxe and iron ore refuses bare hands.
 
-Implement Minecraft-style block interaction:
+Tool tiers (`TOOL_TIERS`):
 
-- Crosshair in the center of the screen
-- Raycast from the camera to detect the targeted block
-- Show a subtle wireframe outline around the targeted block
-- Left click (hold) mines the targeted block with a short mining delay based on block hardness and the tool held
-- While mining, show visible progress on the targeted block — cracking stages or a filling progress indicator — so the player can see that mining is working and that the correct tool is clearly faster
-- Broken blocks drop as small floating, spinning item cubes that are pulled toward and collected by the player when nearby, adding to the inventory
-- Right click places the currently selected block from the hotbar, consuming one from its stack
-- Right click on a crafting table opens the 3×3 crafting UI instead of placing a block
-- Do not allow placing a block inside the player's collision box
-- Bedrock cannot be destroyed
-- Water should not block raycasts unless intentionally targeted
+| Tool material | Mining speed | Tier | Durability | Attack damage |
+| --- | --- | --- | --- | --- |
+| hand, or the wrong kind of tool | 1 | — | — | 1 |
+| Wood | 2 | 1 | 60 | 2.5 |
+| Stone | 4 | 2 | 132 | 3.5 |
+| Iron | 6 | 3 | 251 | 5.0 |
+| Diamond | 8 | 4 | 1561 | 7.0 |
+
+Hardnesses, tool gates and drops, each block's correct tool in italics:
+
+| Block | Hardness | Correct tool | Min tier | Drops |
+| --- | --- | --- | --- | --- |
+| Dirt | 0.5 | *shovel* | — | Dirt |
+| Grass Block | 0.6 | *shovel* | — | Dirt, plus 1–2 seeds at 25% |
+| Sand | 0.5 | *shovel* | — | Sand |
+| Snow Block | 0.2 | *shovel* | — | Snow |
+| Farmland | 0.6 | *shovel* | — | Dirt |
+| Oak Leaves | 0.2 | *hoe* | — | Apple at 2.5%; never a leaf block |
+| Torch | 0 | — | — | Torch |
+| Oak Log | 2.0 | *axe* | — | Oak Log |
+| Oak Planks | 2.0 | *axe* | — | Oak Planks |
+| Crafting Table | 2.5 | *axe* | — | Crafting Table |
+| Stone | 1.5 | *pickaxe* | 1 (wood) | Cobblestone |
+| Cobblestone | 2.0 | *pickaxe* | 1 (wood) | Cobblestone |
+| Coal Ore | 3.0 | *pickaxe* | 1 (wood) | 1–2 Coal |
+| Iron Ore | 3.0 | *pickaxe* | 2 (stone) | Raw Iron |
+| Diamond Ore | 3.0 | *pickaxe* | 3 (iron) | Diamond |
+| Glass | 0.3 | — | — | Glass |
+| Furnace | 3.5 | *pickaxe* | 1 (wood) | Furnace |
+| Wooden Door | 3.0 | *axe* | — | Door |
+| Red Bed | 0.2 | — | — | Bed |
+| Chest | 2.5 | *axe* | — | Chest |
+| Oak Stairs | 2.0 | *axe* | — | Oak Stairs |
+| Cobblestone Stairs | 2.0 | *pickaxe* | 1 (wood) | Cobblestone Stairs |
+| Ladder | 0.4 | *axe* | — | Ladder |
+| Bedrock | ∞ | — | — | never breaks |
+
+Between blocks, a held click does not chain at full speed: once a block gives way the
+game waits six ticks (`MINING_BLOCK_DELAY`, 0.3 s) before the next one starts to crack,
+unless the block shatters inside a single tick, which skips the gap — that is what lets
+an iron shovel tear through a snowfield. The gap runs whether or not the button stays
+held; swinging at unbreakable bedrock neither earns nor spends one. The swing itself —
+the arm animation and the contact sound — repeats every 0.3 s (`MINING_SWING_INTERVAL`).
+
+Durability is only spent by swings that break something and blows that land; a broken
+tool vanishes with a toast, and the HUD draws a durability bar on worn tools and armour.
+Mining with the head underwater, sword swing speeds, and shears-as-tools are deliberately
+not modelled.
+
+Combat: left click while a mob is under the crosshair within reach attacks it, with
+knockback and an attack cooldown; swords hit hardest. `tryShearMob` is the one
+interaction wired to both buttons (see Shearing).
 
 ## Held item view
 
-Render the currently selected hotbar item in first person so the player can always see what
-they are holding:
-
-- A view-model anchored to the bottom-right of the camera, like Minecraft's held item
-- Blocks render as a small 3D cube using their actual atlas textures
-- Tools, torches, and material items render using their pixel-art icon (a flat or slightly extruded quad is fine)
-- Play a short swing animation on left click and while mining or attacking
-- Add a subtle bob while walking and a small sway when turning the camera
-- Switching hotbar slots visibly swaps the held item
-- An empty hand shows nothing (or a simple blocky arm)
+The selected hotbar item is drawn in first person, anchored bottom-right like
+Minecraft's held item: blocks as small 3D cubes wearing their real atlas textures
+(stairs and the rest all draw as cubes in the hand); tools, torches, doors, ladders,
+and material items as their pixel-art icon (the ladder uses its flat 32×60 tile, like
+the torch and door). A short swing plays on left click and while mining or attacking;
+the view bobs while walking and sways on turns; switching slots swaps it visibly; an
+empty hand shows nothing.
 
 ## Inventory system
 
-Implement a full Minecraft-style inventory:
-
-- 36 slots total: 9 hotbar slots plus 27 storage slots
-- Press E to open and close the inventory screen (releases pointer lock while open, pauses mouse look)
-- Items stack up to 64 per slot, with the count rendered in the corner of each slot
-- Click a stack to pick it up, click another slot to place it; right click to place a single item from a held stack
-- Number keys 1–9 select the corresponding hotbar slot
-- Mouse wheel scrolls through hotbar slots
-- The hotbar is always visible at the bottom of the screen with the selected slot highlighted and the selected item's name shown briefly when switching
-- Mined blocks and mob drops go into the inventory automatically, stacking with existing items first, then filling empty slots
-- If the inventory is full, drops remain in the world as item entities
-- Placing blocks decrements the stack; empty stacks clear the slot
-- The player starts with an empty inventory and gathers everything by mining
+- 36 slots: 9 hotbar plus 27 storage; E opens and closes the screen (releasing pointer
+  lock); the inventory, crafting, chest and give screens pause the player's input
+- Items stack to 64 (buckets 16; tools, armour, water buckets 1), with the count in the
+  slot corner and a durability bar when relevant; a damaged tool never merges with a
+  fresh one
+- Click picks up a whole stack, click again places it; right click places one item;
+  shift-click quick-moves between pack rows, and into or out of an open container —
+  from the pack into a chest it tops up matching stacks, then claims free rows;
+  armour shift-clicked from a container goes onto the body
+- Number keys 1–9 and the mouse wheel select the hotbar; the hotbar is always visible
+  with the selected slot highlighted and the item's name shown briefly on switch
+- Drops go into the inventory automatically, stacking first; if the pack is full they
+  stay in the world as entities. The player starts with an empty inventory
+- A stack can also ride the cursor between screens; the gamepad walks every grid with
+  the rules listed under Player and controls
 
 ## Crafting system
 
-Implement a crafting system with two tiers:
-
-- A 2×2 crafting grid built into the inventory screen
-- A 3×3 crafting grid opened by right-clicking a placed crafting table
-- A result slot that previews the output of the current grid arrangement; clicking it consumes ingredients and gives the result
-- Shape-aware recipe matching (recipes match their pattern anywhere within the grid)
-
-Include at least these recipes:
-
-- 1 Wood Log → 4 Planks (2×2)
-- 2 Planks stacked vertically → 4 Sticks (2×2)
-- 4 Planks in a square → 1 Crafting Table (2×2)
-- 1 Coal on top of 1 Stick → 4 Torches (2×2)
-- 3 Planks across the top + 2 Sticks down the middle → Wooden Pickaxe (3×3)
-- 3 Cobblestone across the top + 2 Sticks down the middle → Stone Pickaxe (3×3)
-- 3 Iron across the top + 2 Sticks down the middle → Iron Pickaxe (3×3)
-- 2 Planks stacked + 1 Stick below → Wooden Sword (3×3, single column)
-- 2 Cobblestone stacked + 1 Stick below → Stone Sword (3×3, single column)
-- 2 Iron stacked + 1 Stick below → Iron Sword (3×3, single column)
-- 1 Plank + 1 Stick below it, with 2 more planks forming an L → Wooden Axe (3×3)
-- 1 Plank on top + 2 Sticks below → Wooden Shovel (3×3, single column)
-
-Tools affect gameplay:
-
-- Pickaxes mine stone, cobblestone, and ores significantly faster; each tier (wood → stone → iron) is faster than the last
-- Iron ore should effectively require a stone pickaxe or better
-- Axes speed up mining wood and planks
-- Shovels speed up mining dirt, sand, grass, and snow
-- Swords deal extra damage to mobs; iron sword is the strongest
-- Coal and Iron are material items used only in crafting; they cannot be placed in the world
-- Tools are items, not blocks: render a simple procedural pixel-art icon for each in the inventory/hotbar, and they cannot be placed in the world
-- Tool durability is optional; if included, show a small durability bar on the item
-
-## Animals and mobs
-
-Add simple mobs built from procedurally generated box geometry (Minecraft-style blocky
-bodies with a head, body, and four legs), textured with the same 16×16 procedural pixel
-approach. Passive animals:
-
-- Cows, pigs, sheep, and chickens
-- Spawn on grass surface blocks in plains, forest, and rainforest biomes as chunks load, with a per-chunk spawn cap — and deliberately scarce: the wild population cannot feed a player on its own, so farming is the reliable half of the food economy
-- Wander idly: pick a random nearby point, walk to it, pause, repeat
-- Simple leg-swing walking animation and head bobbing
-- Affected by gravity and block collision; can hop up one block
-- Flee briefly when hit
-- Have health; when killed, play a small particle burst and drop items into the world (e.g., raw meat or feathers as simple stackable items)
-
-Hostile mobs:
-
-- Zombies spawn on solid ground at night or in dark caves, in a band 20 to 48 blocks around the player, within a cap of their own; with the voxel lighting system, "dark" means the light level at the spawn spot is below a threshold, so unlit caves can spawn zombies even during the day, and torch-lit areas are safe
-- Night arrives in batches: a spawn pass after dark may place up to three hostiles, so dusk turns dangerous within seconds instead of one zombie at a time, while daytime cave spawning keeps to its trickle
-- Creepers spawn rarely under the same conditions
-- Zombies path toward the player when within detection range (simple direct-walk steering with one-block step-up is acceptable; full pathfinding not required), and deal contact damage on touch with a cooldown
-- Creepers approach the player, then hiss, flash, and explode after a short fuse, damaging the player and destroying nearby non-bedrock blocks (destroyed blocks drop as items). The fuse lights when the player is within about 2.5 blocks in three dimensions and in clear sight; leaves and water do not break the sight line, walls and closed doors do
-- Hostile mobs take damage from player attacks (left click while looking at a mob within reach), with knockback
-- Hostile mobs burn/despawn at dawn (mobs sheltered underground in darkness are exempt), but an idle hostile more than 32 blocks off in three dimensions keeps rolling until it gives up and vanishes, so a cave under the player's base cannot hold the entire hostile budget
-- Mobs must not spawn inside blocks or in water, and despawn when the player is 96 blocks away measured in three dimensions, not just horizontally
-
-Mob management:
-
-- Mobs are entities separate from the voxel grid, updated each frame
-- Cap total live mobs for performance, and split that cap into a passive half and a hostile half that add up to no more than the total. Caps that overlap put the two groups in competition for the last few slots, and animals win that fight: a healthy herd left room for nine zombies and nights never filled
-- Mobs persist while their area is loaded and are removed when their chunk unloads
-- A chunk's herd roll is spent only while the player is close enough to have seen it, and a timer draws on the rolls still unspent around the player, so herds arrive as the player travels rather than only around the first spawn point
-- Meat is a find, not a stipend: the passive cap, the herd roll, and the refill timer together make hunted ground stay empty long enough that the pressure lands on the wheat field rather than the nearest cow
-
-## Block changes and persistence
-
-Because the world is procedurally generated, edited blocks must override generated terrain.
-Implement an in-memory block override system:
-
-- Store destroyed blocks by world coordinate
-- Store placed blocks by world coordinate
-- When a chunk is regenerated, apply stored overrides after procedural generation
-- Use a key format like "x,y,z" for modified blocks
-- This does not need to persist after page refresh, but the code should be structured so localStorage or IndexedDB could be added later
-
-## Rendering and performance
-
-Use chunk-based rendering for performance. Requirements:
-
-- Each chunk should generate a single optimized mesh or a small number of meshes grouped by material type
-- Do not render hidden faces between solid blocks
-- Only render faces exposed to air, water, leaves, or transparent blocks
-- Water is drawn at the height its level actually fills, not at the top of its cell, and shared
-  grid corners blend so neighbouring levels slope into each other instead of stepping
-- Rebuild chunk meshes when blocks are added or removed
-- Rebuild neighboring chunk meshes when editing blocks on a chunk border
-- Use render distance to limit active chunks
-- Add fog to hide chunk pop-in
-- Use frustum culling where possible
-- Target smooth performance in modern Chrome and Firefox
-- The larger default render distance (8–10 chunks) means several hundred loaded chunks; keep per-chunk data in typed arrays, keep meshing efficient, and spread work across frames so performance stays smooth
-
-Chunk loading should be incremental:
-
-- Do not freeze the browser by generating too many chunks in one frame
-- Queue chunk generation and process a few chunks per frame
-- Prioritize chunks closest to the player
-- Remove or dispose of geometries and materials when chunks are unloaded
-
-## Lighting and atmosphere
-
-Add:
-
-- Ambient light
-- Directional sunlight
-- Fog matching the sky color
-- A sky gradient background using CSS, a shader, or scene background updates
-- Simple sun and moon objects in the sky
-- Minecraft-style per-voxel lighting baked into chunk meshes:
-  - Sky light: blocks open to the sky are fully lit; sky light propagates downward and spreads sideways into overhangs and cave mouths with falloff, so tunnels and deep caves fade to near-black without a light source
-  - Block light: torches emit light at a high level (e.g., 14) that spreads outward via flood fill, losing one level per block
-  - Each block's brightness is the maximum of its sky light and block light; bake this into the chunk mesh as vertex colors or per-face shading during mesh generation
-  - The sky light contribution scales with time of day, so the surface darkens at night while torch light stays constant; caves are dark even at noon
-  - Recompute lighting for affected areas and rebuild those chunk meshes when blocks are placed or broken and when torches are added or removed
-  - Keep light updates incremental and localized so placing a torch does not cause frame hitches
-
-## Day/night cycle
-
-Implement a slow day/night cycle:
-
-- One full cycle takes 20 real minutes, the length Minecraft runs on: the sun is up about 10 minutes and down about 10, with roughly half a minute of dusk and dawn at each end
-- Sky color transitions from daytime blue to sunset colors to dark navy/black
-- Directional light rotates to simulate the sun
-- Ambient light dims at night
-- A visible sun moves across the sky
-- A visible moon appears at night
-- Fog color should shift subtly with the sky
-- Night triggers hostile mob spawning; dawn burns hostile mobs away
-
-## HUD and UI
-
-Include:
-
-- Crosshair
-- Hotbar (9 slots) with item icons, stack counts, and the selected slot highlighted
-- Health bar (hearts) above the hotbar
-- Inventory screen (E) with the 27 storage slots, 9 hotbar slots, and the 2×2 crafting grid plus result slot
-- Crafting table screen with the 3×3 grid plus result slot
-- FPS counter in the top left
-- Current chunk coordinate display, useful for debugging
-- Brief instructions overlay on first load
-- Overlay dismisses when the player clicks and pointer lock starts
-
-Instructions overlay should explain:
-
-- Click to lock mouse
-- WASD to move
-- Mouse to look
-- Space to jump
-- Shift or Ctrl to sprint
-- Left click to break blocks / attack mobs
-- Right click to place blocks / use crafting table
-- Number keys 1–9 or mouse wheel to select hotbar slot
-- E to open inventory and crafting
-
-## Particles and feedback
-
-When a block is destroyed:
-
-- Remove it immediately
-- Spawn a brief particle effect using small colored cubes or sprites
-- Particles should scatter outward and fade quickly
-- Particle colors should match the destroyed block type
-
-Also add:
-
-- Hit particles and a brief red flash when a mob takes damage
-- Explosion particles for creepers
-- Occasional small ember/flicker particles above placed torches
-
-## Audio
-
-Use the Web Audio API for every sound. The game now has three layers:
-
-- The active CC0 bank in `assets/audio/`, built by
-  `tools/build-cc0-bank.py` from Kenney, OpenGameArt, and SpritePilot packs.
-  It covers block break/place, footsteps, mob voices, player and mob hurt,
-  explosions, UI, water, chests, furnaces, and seven ambient/music loops.
-- The synthesized reference bank is not committed; `tools/generate-audio.mjs`
-  renders it on demand. `tools/build-cc0-bank.py` only needs two files from
-  it — the creeper fuse and the heartbeat — and renders it into a throwaway
-  directory with `--out` to take them.
-- The original procedural synthesizer, still the runtime fallback. If the
-  active bank cannot be fetched (for example when `index.html` is opened from
-  `file://`) or a file fails to decode, `audioSample` returns false and
-  `audioNoiseHit`/`audioTone` answer instead.
-
-Every file in the active bank is CC0 1.0; `CREDITS.md` records the source pack,
-author, and slot mapping. No attribution is required, but the provenance is
-kept so the licence can be audited. The files are loaded over ordinary HTTP
-from the same origin, which keeps GitHub Pages happy.
-
-Sound coverage now includes:
-
-- Block break, mining contact, and place, per material
-- Footsteps per material, with four variants each
-- Zombie, creeper, cow, pig, sheep, and chicken voices
-- Player hurt, mob hurt, death, and a low-health heartbeat
-- Crafting, eating, tool breaking, doors, shears, buckets, hoes, chests, and furnaces
-- Landing thuds, water entry, swimming, jumping, item pickup, and UI feedback
-- Wind, water, cave, fire, and underwater beds mixed by the environment
-- Scheduled music, one random song played once per window from `assets/music/`: dawn, noon, dusk, midnight, with silence between
-
-## Technical requirements
-
-The game is one page and a graph of native ES modules; the audio banks sit beside
-them:
-
-- HTML
-- CSS
-- JavaScript
-- Procedural noise implementation
-- Game logic
-- Rendering logic
-- UI
-- Audio bank loading, mixing, and procedural fallback in the same file
-- `assets/audio/*.wav` — active CC0 bank, built by `tools/build-cc0-bank.py`
-- `CREDITS.md` — source and licence record for the active bank
-
-Use Three.js from a CDN. The code is organized by concern. It began as clearly
-marked sections of the one inline script and is becoming one file per concern under
-`src/`, in the same order, with no build step between the repository and the page:
-
-- Constants and configuration
-- Block and item definitions
-- Procedural texture atlas generation
-- Noise functions
-- Chunk class or chunk management
-- World generation
-- Voxel lighting (sky light and torch light)
-- Mesh generation
-- Player controls and health
-- Collision detection
-- Raycasting and block editing
-- Held item view model
-- Inventory and crafting systems
-- Mob entities and AI
-- HUD and UI
-- Day/night cycle
-- Main animation loop
-
-The game must run without errors in modern Chrome and Firefox.
-
-## Implementation priorities
-
-Prioritize the following in order:
-
-1. Infinite chunk-based procedural terrain with no world edges
-2. Smooth first-person movement and collision
-3. Block breaking and placing across chunks with item drops
-4. Hidden face culling for performance
-5. Minecraft-style procedural pixel texture atlas
-6. Inventory system with hotbar, stacking, and the inventory screen
-7. Crafting system (2×2 and 3×3) with tools
-8. Biomes, trees, rivers, water, cave systems, ore veins, and snow
-9. Voxel lighting: underground darkness and torch light
-10. Held-item view model and mining progress feedback
-11. Passive animals, then hostile mobs and player health
-12. Day/night cycle and atmospheric effects
-13. Particles and audio polish
-
-Build the entire game in one continuous pass. Do not stop to ask questions or wait for
-confirmation between sections — deliver the complete, working game. The game code stays
-in one HTML file; the audio banks are the asset directories beside it.
-
----
-
-## Milestone 11 addendum — tools, furnaces and farming
-
-Recorded after the fact. The brief above describes the first pass of the game. Milestone 10
-added world persistence; milestone 11 adds the survival layer the brief never had: a tech
-tree that has to be climbed in order, gear that wears out, and a stomach that empties while
-you work. Everything below lives in the same single HTML file, with the same procedural
-textures and icons, and no build step. (The audio bank described at the end is a
-later addition: the game still runs without it, on the original synthesizer.)
-
-### The progression chain
-
-- A bare hand and wooden tools gather dirt, grass, wood, coal and stone, but stone is slow by hand and iron ore yields nothing at all to a wooden pickaxe.
-- Eight cobblestone plus some coal makes a furnace, and the furnace turns raw iron into ingots. The furnace is now mandatory rather than convenient.
-- Diamond ore only drops for an iron pickaxe or better, and sits in veins between y=4 and y=26, so the diamond tier comes after the furnace rather than around it.
-- A hoe turns grass or dirt into farmland, seeds sown on it grow into wheat, and three wheat make a loaf at the crafting table.
-
-### Mining speed and tool wear
-
-Break time is `hardness * 1.5 / speed` with the right tool at the right tier, and
-`hardness * 5 / speed` with anything else, with a floor of 0.05 seconds. A block whose tier
-outranks the tool in hand still breaks, but drops nothing — which is how diamond ore refuses
-a stone pickaxe. Durability is only spent by swings that break something and blows that
-land; a broken tool vanishes with a toast.
-
-Tool tiers, from `TOOL_TIERS`:
-
-| Tool | Mining speed | Tier | Durability (uses) |
-| --- | --- | --- | --- |
-| hand, or the wrong kind of tool | 1 | — | — |
-| Wood | 2 | 1 | 60 |
-| Stone | 4 | 2 | 132 |
-| Iron | 6 | 3 | 251 |
-| Diamond | 8 | 4 | 1561 |
-
-Hardnesses and tier gates are Minecraft's own:
-
-| Block | Hardness | Correct tool | Minimum tool tier | Drops |
-| --- | --- | --- | --- | --- |
-| Dirt | 0.5 | shovel | — | Dirt |
-| Grass Block | 0.6 | shovel | — | Dirt, plus 1–2 seeds at 25% |
-| Sand | 0.5 | shovel | — | Sand |
-| Snow Block | 0.2 | shovel | — | Snow |
-| Farmland | 0.6 | shovel | — | Dirt |
-| Oak Leaves | 0.2 | hoe | — | Apple at 2.5%, and never a leaf block |
-| Torch | 0 | — | — | Torch |
-| Oak Log | 2.0 | axe | — | Oak Log |
-| Oak Planks | 2.0 | axe | — | Oak Planks |
-| Crafting Table | 2.5 | axe | — | Crafting Table |
-| Stone | 1.5 | pickaxe | 1 (wood) | Cobblestone |
-| Cobblestone | 2.0 | pickaxe | 1 (wood) | Cobblestone |
-| Coal Ore | 3.0 | pickaxe | 1 (wood) | 1–2 Coal |
-| Iron Ore | 3.0 | pickaxe | 2 (stone) | Raw Iron |
-| Diamond Ore | 3.0 | pickaxe | 3 (iron) | Diamond |
-| Glass | 0.3 | — | — | Glass |
-| Furnace | 3.5 | pickaxe | 1 (wood) | Furnace |
-| Bedrock | ∞ | — | — | never breaks |
-
-Two blocks outside that list carry Minecraft's numbers as well: a wooden door is 3.0 with an
-axe to speed it up, and a bed is 0.2 with no tool at all.
-
-Resulting break times, in seconds. Each tool column assumes that tier's correct kind of
-tool for the row; ✗ means the block breaks but drops nothing, and those entries carry the
-five-times penalty. Bedrock is unbreakable, and the 0.05 second floor is what holds snow at
-0.05 in the diamond column and pins the whole torch row to 0.05. Glass has no tool at all in
-Minecraft, so its row is one flat 0.45: a diamond pickaxe chops it no faster than a fist.
-
-| Block (hardness) | hand | wood | stone | iron | diamond |
-| --- | --- | --- | --- | --- | --- |
-| Dirt (0.5) | 0.75 | 0.375 | 0.1875 | 0.125 | 0.09375 |
-| Grass Block (0.6) | 0.9 | 0.45 | 0.225 | 0.15 | 0.1125 |
-| Sand (0.5) | 0.75 | 0.375 | 0.1875 | 0.125 | 0.09375 |
-| Snow Block (0.2) | 0.3 | 0.15 | 0.075 | 0.05 | 0.05 |
-| Farmland (0.6) | 0.9 | 0.45 | 0.225 | 0.15 | 0.1125 |
-| Oak Leaves (0.2) | 0.3 | 0.15 | 0.075 | 0.05 | 0.05 |
-| Torch (0) | 0.05 | 0.05 | 0.05 | 0.05 | 0.05 |
-| Oak Log (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
-| Oak Planks (2.0) | 3 | 1.5 | 0.75 | 0.5 | 0.375 |
-| Crafting Table (2.5) | 3.75 | 1.875 | 0.9375 | 0.625 | 0.46875 |
-| Stone (1.5) | 7.5 ✗ | 1.125 | 0.5625 | 0.375 | 0.28125 |
-| Cobblestone (2.0) | 10 ✗ | 1.5 | 0.75 | 0.5 | 0.375 |
-| Coal Ore (3.0) | 15 ✗ | 2.25 | 1.125 | 0.75 | 0.5625 |
-| Iron Ore (3.0) | 15 ✗ | 7.5 ✗ | 1.125 | 0.75 | 0.5625 |
-| Diamond Ore (3.0) | 15 ✗ | 7.5 ✗ | 3.75 ✗ | 0.75 | 0.5625 |
-| Glass (0.3) | 0.45 | 0.45 | 0.45 | 0.45 | 0.45 |
-| Furnace (3.5) | 17.5 ✗ | 2.625 | 1.3125 | 0.875 | 0.65625 |
-
-### The gap between two blocks
-
-A held click does not chain breaks at full speed. Once a block gives way Minecraft waits six
-ticks before the next one starts to crack, so a row of dirt costs 1.05 seconds a block in a
-bare hand — 0.75 to break and 0.3 of nothing — and 0.675 with a wooden shovel. A block that
-shatters inside a single tick skips the gap outright, which is what lets an iron shovel tear
-through a snowfield and an iron hoe through a canopy. `MINING_BLOCK_DELAY` is the six ticks;
-`MINING_SWING_INTERVAL` stays what it was, the arm and its contact sound.
-
-Measured by holding the click over a row of four blocks and counting 1/60 second frames, so
-the chained column can sit a frame above the exact figure:
-
-| Block, in hand | Break | Chained, per block |
+Two grids: a 2×2 built into the inventory screen and a 3×3 opened by right-clicking a
+placed crafting table. A result slot previews the output; clicking it consumes the
+ingredients. The matcher is shape-aware: patterns match anywhere in the grid, patterns
+are trimmed to their bounding box, a `.` must stay empty, patterns never mirror or
+rotate (which is why both shears diagonals are written down), and shapeless recipes
+compare which item ids are present, not how many.
+
+Recipes:
+
+| Result | Pattern | Grid |
 | --- | --- | --- |
-| Dirt, hand | 0.75 | 1.05 |
-| Dirt, wooden shovel | 0.375 | 0.683 |
-| Oak Leaves, hand | 0.3 | 0.617 |
-| Oak Leaves, wooden hoe | 0.15 | 0.467 |
-| Oak Leaves, iron hoe | 0.05 | 0.067 |
-| Snow Block, iron shovel | 0.05 | 0.067 |
+| Oak Planks ×4 | 1 Oak Log | 2×2, shapeless |
+| Stick ×4 | two planks stacked | 2×2 |
+| Crafting Table ×1 | 2×2 planks | 2×2 |
+| Torch ×4 | coal (or charcoal) over a stick | 2×2 |
+| Furnace ×1 | eight cobblestone ring | 3×3 |
+| Bread ×1 | `WWW` | 3×3 |
+| Wooden Door ×3 | `PP` / `PP` / `PP` | 3×3 |
+| Shears ×1 | two iron ingots point-to-point (either diagonal) | 2×2 |
+| Red Bed ×1 | `WWW` over `PPP` | 3×3 |
+| Bucket ×1 | `I.I` / `.I.` | 3×3 |
+| Chest ×1 | `PPP` / `P.P` / `PPP` | 3×3 |
+| Oak / Cobblestone Stairs ×4 | six planks (or cobblestone) in a V | 3×3 |
+| Ladder ×3 | `S.S` / `SSS` / `S.S` | 3×3 |
+| Pickaxe / Axe / Shovel / Hoe / Sword, in wood, stone, iron or diamond | Minecraft's own tool shapes over a stick handle | 3×3 |
+| Helmet / Chestplate / Leggings / Boots, in leather, iron or diamond | Minecraft's own armour shapes | 3×3 |
 
-The gap runs out whether or not the button is still held, so releasing it halfway through
-buys nothing on the next block, and swinging at bedrock — which never breaks — neither
-earns nor spends one.
+Anything three cells across — bed, bucket, chest, stairs, ladder, bread, door, furnace,
+tools, armour — needs the crafting table; the pocket 2×2 folds only planks, sticks,
+tables, and torches. Coal, charcoal, raw iron, iron ingots, diamond, leather, wool,
+feathers, seeds and apples are material or food items and cannot be placed in the
+world.
 
-What is left unmapped is deliberate. Minecraft counts break progress in whole ticks and
-rounds up, so it can be a hair slower than the figures above; the times here are continuous,
-never above Minecraft's and at most one tick under. Sword speed (1.5 on everything), shears,
-the gold, netherite and copper tiers, and the five-fold penalty for mining with the head
-underwater or feet off the ground are not in the game at all.
+## Armour
 
-### Furnaces and smelting
+Leather, iron and diamond sets, one piece per slot, with Minecraft's own numbers:
 
-Every item takes ten seconds. A burning furnace is a second block id and gives off light
-level 13, which is what makes a mine shaft readable. Contents and the direction a furnace
-faces live in a block entity keyed by position; only furnaces within 32 blocks of the
-player, plus the one on screen, tick.
-
-| Input | Output | Seconds |
+| Material | Defence (H/C/L/B) | Durability (H/C/L/B) |
 | --- | --- | --- |
-| Raw Iron | Iron Ingot | 10 |
-| Raw Beef | Steak | 10 |
-| Sand | Glass | 10 |
-| Cobblestone | Stone | 10 |
-| Oak Log | Charcoal | 10 |
+| Leather | 1 / 3 / 2 / 1 | 55 / 80 / 75 / 65 |
+| Iron | 2 / 6 / 5 / 2 | 165 / 240 / 225 / 195 |
+| Diamond | 3 / 8 / 6 / 3 | 363 / 528 / 495 / 429 |
 
-Fuel buys heat, and heat carries over between items, so a stick only covers half of one:
-
-| Fuel | Seconds of heat | Items per unit |
-| --- | --- | --- |
-| Coal | 80 | 8 |
-| Charcoal | 80 | 8 |
-| Oak Planks | 15 | 1.5 |
-| Oak Log | 15 | 1.5 |
-| Crafting Table | 15 | 1.5 |
-| Stick | 5 | 0.5 |
-
-The Raw Beef row is what puts a cooker in the food chain: meat dropped by a cow, pig or sheep
-is not edible until it has been through a furnace, so steak, and the eight points it restores,
-are gated behind the same ten seconds and one piece of fuel as an iron ingot.
-
-### Armour
-
-Leather, iron and diamond sets, one piece per slot.
-
-| Material | Helmet | Chestplate | Leggings | Boots |
-| --- | --- | --- | --- | --- |
-| Leather — defence | 1 | 3 | 2 | 1 |
-| Iron — defence | 2 | 6 | 5 | 2 |
-| Diamond — defence | 3 | 8 | 6 | 3 |
-| Leather — durability | 55 | 80 | 75 | 65 |
-| Iron — durability | 165 | 240 | 225 | 195 |
-| Diamond — durability | 363 | 528 | 495 | 429 |
-
-Damage absorbed is
-
-```text
-amount * min(20, max(defence / 5, defence - amount / 2)) / 25
-```
-
+Damage absorbed is `amount * min(20, max(defence / 5, defence - amount / 2)) / 25`.
 Each hit costs one random worn piece four durability per point absorbed, so a set wears
-unevenly, and a piece that runs out un-equips itself. The HUD draws the set as ten shields
-above the hunger bar, and the row is hidden entirely while nothing is worn.
+unevenly, and a piece that runs out un-equips itself. The HUD draws the set as ten
+shields above the hunger bar; the row is hidden while nothing is worn. Starvation
+damage goes straight through armour.
 
-### Hunger
+## Hunger and food
 
-Twenty points of food, with Minecraft's hidden saturation counter sitting on top of it.
-Exhaustion spends saturation first and food only once the cushion is gone, and it has to
-reach 4.0 before it spends either of them. Health only regenerates on a nearly full stomach,
-and an empty bar costs half a heart every four seconds and will kill you. A bite takes 0.6
-seconds. Death ends the empty stomach: respawn fills the bar back to 20, sets Minecraft's own
-five points of saturation, and zeroes the exhaustion counter, so hunger can kill you once but
-never twice in a row.
+Twenty points of food with Minecraft's hidden saturation counter on top of it:
 
-| Constant | Value |
+| Rule | Value |
 | --- | --- |
-| Hunger maximum | 20 points |
-| Saturation | hidden, 0-20, never above the food it cushions |
-| Exhaustion per point spent | 4.0, saturation before food |
-| Health regenerates at | hunger 18 or above, or any saturation left |
-| Slow heal | half a heart every 4 seconds, 6 exhaustion each |
-| Saturation boost | half a heart every 0.5 seconds at a full bar, 1.5 saturation each |
-| Wait after a hit | 6 seconds, on the slow heal only |
-| Starvation | half a heart every 4 seconds at hunger 0, straight through armour |
-| Time per bite | 0.6 seconds |
-| Food on respawn | 20 points, 5 saturation, exhaustion 0 |
+| Hunger maximum | 20 points, drawn as a shank bar |
+| Saturation | hidden, 0–20, never above the food it cushions |
+| Exhaustion spends at | 4.0, saturation before food, one point of either per crossing |
+| Slow heal | half a heart every 4 s at hunger 18+, or with any saturation left; 6 exhaustion each |
+| Saturation boost | half a heart every 0.5 s at a completely full bar with saturation left, 1.5 saturation each |
+| Post-hit wait | 6 s, gating the slow heal only, never the boost |
+| Starvation | half a heart every 4 s at hunger 0, straight through armour, no exhaustion |
+| Time per bite | 0.6 s |
+| On respawn | food 20, saturation 5, exhaustion 0 |
 
-Saturation has no bar of its own, so the food bar jitters whenever there is food left and no
-cushion under it, which is Minecraft's only tell. It is also the reason to eat early: a meal
-at a half-empty stomach wastes most of its saturation, and a full bar refuses a bite even
-with nothing cushioning it, which leaves only the four-second heal until something is eaten
-at 19 or below.
+The two heal paths never run at once — at a full bar with saturation the boost pays for
+the health. There is no difficulty setting and no floor, so an empty bar can kill, and
+the respawn refill means hunger can kill once but never twice in a row.
 
-The two heal paths never run at once. At a full bar with saturation left, the half-second
-boost pays for the health and the slow heal waits, which is the only way a steak's 12.8
-saturation is worth the 8⅓ hearts it is worth in Minecraft.
+Exhaustion costs, per Minecraft Java 1.21: sprinting 0.1 per block, swimming 0.01 per
+block, jumping 0.05 per jump, sprint-jumping 0.2, mining a block 0.005, a landed swing
+0.1, taking a hit 0.1, regenerating 6.0 per half heart. Walking is free, so exploring
+costs nothing and a meal buys work rather than footsteps. There is no sprint-swimming;
+water always charges the swim rate. Sprinting is never gated by low hunger.
 
-What each activity costs, in exhaustion points — Minecraft Java 1.21's table, unchanged:
-
-| Activity | Exhaustion |
-| --- | --- |
-| Walking | nothing |
-| Sprinting | 0.1 per block |
-| Swimming | 0.01 per block |
-| Jumping | 0.05 per jump |
-| Sprint-jumping | 0.2 per jump |
-| Mining a block | 0.005 |
-| Attacking | 0.1 per landed swing |
-| Taking a hit | 0.1 |
-| Regenerating health | 6.0 per half heart |
-
-Walking is free, so exploring costs nothing and a meal buys work rather than footsteps. There
-is no sprint-swimming here, so water always charges the swim rate. Mending is the dearest
-thing in the game by a wide margin: twelve health back is 72 exhaustion, more than a full day
-of sprinting, mining, swinging and taking hits put together.
+Saturation has no bar of its own; the food bar jitters whenever there is food left and
+no cushion under it — Minecraft's only tell. Eating early matters: a meal at a
+half-empty stomach wastes most of its saturation, and a full bar refuses a bite even
+with nothing cushioning it.
 
 | Food | Hunger | Saturation |
 | --- | --- | --- |
@@ -744,2067 +360,457 @@ of sprinting, mining, swinging and taking hits put together.
 | Bread | 5 | 6.0 |
 | Steak | 8 | 12.8 |
 
-Raw meat is not on that list, because it feeds nobody as it comes. Cows, pigs and sheep drop
-Raw Beef, and only a furnace turns it into steak: right-clicking it costs the click, not the
-item, and answers `Raw Beef needs cooking in a furnace` while there is room left to eat. The
-slot tooltip carries the same reminder. Minecraft gives raw beef 3 food and 1.8 saturation
-and relies on hunger alone to push players toward a cooker; withholding both is what makes
-the furnace the only road past it here.
+Deliberate divergences from Minecraft: raw beef feeds nobody as it comes (right-click
+answers *Raw Beef needs cooking in a furnace*; only a furnace's steak is food, which
+makes the cooker a gate of the food chain, not just of the tech tree); wheat itself is
+edible, so farming has to feed you or it is decoration; the apple's food values are
+Minecraft's but its source is not — see Farming.
 
-The apple is the other end of that design: the one food that needs no cooker, no field and no
-knife, because it is already hanging in the canopy. Breaking a leaf block rolls it at 2.5%, and
-a leaf gives up nothing else — no leaf block, ever. Both halves of that sentence diverge from
-Minecraft, and the apple addendum at the end of this document records which numbers are borrowed
-and which are this game's own.
+## Furnace and smelting
 
-### Wheat
+Eight cobblestone ring a furnace at the crafting table, and the furnace is mandatory:
+iron only becomes an ingot through it, and so does steak, glass and charcoal. Every
+smelt takes ten seconds. A burning furnace is a second block id and gives off light
+level 13. Contents, remaining burn, and the direction it faces live in a block entity
+keyed by position; block entities within 32 blocks of the player, plus the one whose
+screen is open, tick.
 
-- Seeds come from breaking grass: 25% chance of one or two. Farmland is made by hoeing grass or dirt.
-- Eight growth stages, drawn as two crossed quads that grow taller, leaf out, and turn gold at the tip.
-
-One growth attempt per crop per second at a 1.2% chance, and only where sky or lamp light
-reaches 9, so an unlit field never ripens. Roughly ten real minutes in the open.
-
-| Constant | Value |
+| Input | Output |
 | --- | --- |
-| Growth tick | 1 second per crop |
-| Chance per tick | 1.2% |
-| Light needed | 9 or higher, sky or block |
-| Stages | 8, block ids 21–28 |
-| Ripe time in the open | about 10 real minutes |
+| Raw Iron | Iron Ingot |
+| Raw Beef | Steak |
+| Sand | Glass |
+| Cobblestone | Stone |
+| Oak Log | Charcoal |
 
-| Harvest | Drops |
-| --- | --- |
-| Ripe wheat | 1 wheat and 1–2 seeds |
-| Unripe crop | its seed, and the furrow stays tilled |
-| Farmland dug out from under a crop | the crop is destroyed |
+Fuel buys heat, and heat carries over between items:
 
-### Sprint is a latch, not a held key
-
-Shift, either Ctrl, or the gamepad's B / L3 starts the run and the same key stops
-it, so nothing about sprinting depends on holding a modifier down. The latch drops
-whenever the controls leave the player — the pause overlay, any open screen, death,
-respawn, the window losing focus, a gamepad disconnect — so a sprint can never
-resume by surprise. While it is set the HUD shows a `Sprint on` line in the debug
-stack, above the sound state.
-
-| Situation | Result |
-| --- | --- |
-| Latch set, moving | 6.9 blocks/s instead of 4.6 |
-| Latch set, Shift let go | Keeps running |
-| Latch set, standing still | Not sprinting, latch stays armed |
-| Latch set, in water | Not sprinting, latch survives |
-| Pause, screen, death, blur, pad lost | Latch drops |
-
-### Notes for whoever picks this up next
-
-- The save format is schema 4 under the key `voxelcraft:world:v4`. Older saves are deliberately not migrated: the game starts a fresh world and says so on screen. v1 and v2 fell to the furnace update, and v3 to the hunger parity pass below.
-- New block ids are appended from 16 upwards and never renumbered, enforced by a runtime assertion. The eight wheat stages are block ids 21–28 rather than block entities, so crop stage survives chunk unloads with no change to the save format.
-- `window.__voxelcraft` gained `breakTime`, `mine`, `give`, `durability`, `hunger`, `setHunger`, `eat`, `armour`, `equip`, `openFurnace`, `furnace`, `furnaceList`, `setFurnaceSlots`, `smelting`, `tillDirt`, `plantSeed`, `crops`, `growCrops`, `setSprint` and `sprintState`; `stats()` reports `sprintLatched` next to `sprinting`. Every number in this addendum was asserted through that API plus screenshots, including a gamepad-only pass over the armour, furnace and craft result slots.
-- Accepted behaviour changes: iron is locked behind the furnace, hunger can kill, cows drop leather, grass drops seeds, sprint is tapped on and off instead of held, and any world saved before this milestone resets.
-
----
-
-## Milestone 12 addendum — beds and shears
-
-Recorded after the fact. Milestone 12 gives the world somewhere to wake up in and a reason to
-keep a flock: shears take wool off a sheep, that wool becomes a bed, and a bed owns the respawn
-point. After dark a bed also ends the night. Everything below is still the same single HTML
-file, with textures, icons and sounds generated in code as before.
-
-### Shearing
-
-Shears are the first tool with no tier. They match no block's `tool`, so mining is untouched:
-a log takes the same three seconds with shears as with a bare hand, and a swing that breaks
-something spends none of their durability.
-
-| Shears | Value |
-| --- | --- |
-| Craft | 2 iron ingots, either diagonal |
-| Durability | 64 uses, one per sheep |
-| Swing damage | 2, the improvised-weapon floor any non-sword tool swings at — but never against a sheep |
-| Wear per blow that lands | 2, and a blow only lands on something that is not a sheep |
-| Stack size | 1 |
-| Mining speed | 1, the same as a hand |
-| Wears while mining | never |
-
-Either button shears. Right-click is the deliberate use, and the left button answers to it too,
-because a pair of shears reads as a tool you swing, and a player who means to kill a sheep has
-something sharper in hand. With the crosshair on a fleecy sheep the fleece comes off in one go:
-the animal is not harmed, bleats, and trots away bare.
-
-| Shearing | Result |
-| --- | --- |
-| Woolly sheep, either button | 1–3 wool, sheep becomes shorn, 1 durability, 0.005 exhaustion, toast `Sheared` |
-| Already shorn, either button | toast `That sheep is already sheared`, no durability spent |
-| Cow, pig, chicken, creeper — left button | takes the swing: 2 damage, 2 durability, as any other tool |
-| Cow, pig, chicken, creeper — right button | toast `Nothing to shear here`, nothing spent, and the click is not handed on to placing |
-| Sheep behind a solid cell | out of reach: the left button mines the cell in front, the right click uses it |
-| Sheared sheep killed | meat only |
-| Woolly sheep killed | meat plus 1 wool |
-
-Shears are the one tool that never strikes a sheep, on either button. Holding the left button
-down is an exception on noise only: the press toasts and every frame after it swings in silence,
-so standing on a shorn sheep with the button held does not fill the screen with the same
-refusal.
-
-The reach is judged twice, once for the animal and once for the air in front of it. The mining
-pass drops a mob as a target as soon as any block face is nearer, which is right for a pickaxe —
-the ore behind the cow is the better target — and wrong for shears: aiming even slightly low at a
-sheep on a slope puts the ground in front of the animal nearer than the animal's own box, so
-every one of those shots was a snip that failed without even a sound. `mobUnderCrosshair` casts
-the mob ray on its own and then steps `airClearTo` back along it, so clear air still has to
-reach the fleece and a sheep on the other side of a wall stays out of reach until the player
-walks in. A nearer block still wins a right click outright: a crafting table with a cow pressed
-in behind it opens rather than being told what it is not.
-
-A shorn sheep stays shorn: fleece never grows back, so a fleecy hillside is worth fencing.
-The bare model is rebuilt from the same parts minus the fleece — seven pieces become six, the
-body drops from 0.86 × 0.74 × 1.16 to 0.66 × 0.52 × 0.94, and a new `sheep_skin` texture
-replaces the wool on the body and legs while the face keeps its own texture. Wool has no other
-use yet, which is the point: it is the bed's ingredient.
-
-### The bed
-
-A bed is one item across two cells, the arrangement the door already uses. The foot cell takes
-the block the player aims at, the head cell sits one step along the facing, and the facing is
-pointed away from whoever places it so the pillow always lands at the far end. Both cells carry
-the facing, so a bed keeps its direction across a save.
-
-| Bed | Value |
-| --- | --- |
-| Block ids | 33 foot, 34 head, appended after the door's 29–32 |
-| Hardness | 0.2, no correct tool — Minecraft gives a bed none |
-| Drops | 1 bed from either half; the half that was not broken is cleared outright, so a bed never pays out twice |
-| Collision | full solid cell, both halves — you walk on a bed, not through it |
-| Light | none |
-| Sound | wood |
-| New atlas tiles | `bed_top`, `bed_side`, `bed_end`, `bed_pillow` |
-
-Plotted as geometry rather than cubes: a mattress slab half a block tall across both cells,
-blanket red on the top and along the length with a wooden rail along the frame, plank boards
-across the two ends, and a white pillow riding the far end of the head cell a little above the
-mattress. It is drawn in the cutout pass, which is double-sided like a door leaf, so the bed
-reads the same from the foot and from the head.
-
-| Placing a bed | Result |
-| --- | --- |
-| Solid ground under both cells, head cell clear | bed laid, one item spent |
-| Air, water or a block over the ground | toast `Beds need solid ground beneath them` |
-| Head cell occupied | toast `Needs a clear cell beside for the bed` |
-| Either cell inside the player | toast `Not enough room to place that` |
-
-### Sleeping, and who owns the respawn point
-
-Right-clicking either half of a bed claims it, whatever else is being held.
-
-| Situation | Result |
-| --- | --- |
-| Daytime, or the hour before dusk | spawn point moves to the foot cell, toast `Spawn point set`, clock untouched |
-| Night | spawn point moves, the screen fades to black, the clock is set to `DAY_START` (0.22, 11:16) and the toast reads `Good morning` |
-| Second click while falling asleep | spawn point moves again, the night is not skipped twice |
-| Death afterwards | respawn on the bed with full health, a full hunger bar and, as ever, the inventory kept |
-
-Night is the same test the sky already uses: the sun below −0.04. The fade takes 0.7 seconds
-out and the world wakes 1.4 seconds after it goes dark. It is a blackout rather than a
-fast-forward: the hours in between are never run through, the clock is simply set to `DAY_START`
-when the world wakes. Nothing else is paused either — mobs within the usual 96 blocks keep
-walking, so anything that was close when you lay down is still close when you get up. Because a
-bed is solid all the way up, waking and dying both put the player standing on top of it.
-
-The respawn point outlives the bed that set it. The save gained a `spawn: { x, z }` field beside
-the player's own position; it is optional, so a world saved before this milestone loads
-unchanged and keeps the world spawn. Schema stays 3 under `voxelcraft:world:v3`.
-
-### Two recipes
-
-| Result | Pattern | Grid |
+| Fuel | Seconds of heat | Items per unit |
 | --- | --- | --- |
-| Red Bed ×1 | `WWW` / `PPP` — three wool over three planks | 3×3 |
-| Shears ×1 | `I.` / `.I`, and `.I` / `I.` — two ingots point to point | 2×2 |
-
-The matcher reads a pattern exactly and never mirrors one, so shears are written down twice,
-once for each diagonal. Both come out of the 2×2 grid, which means a miner with two ingots and
-no table can arm themselves for a flock.
-
-### Notes for whoever picks this up next
-
-- `tryUseSelectedItem` now runs in this order: eat, shear a mob, then whatever right-clicking a
-  block does. Shearing is the only use aimed at an entity rather than a cell, and it wins over
-  placement, so a sheep standing in a doorway cannot be accidentally built over.
-- `tryShearMob(mode)` is the one interaction wired to both buttons, and the mode only changes how
-  loudly it answers: `'use'` for a right click, `'swing'` for the left button coming down (mouse
-  and pad alike), and `'held'` for the left button staying down in `updateCombat`, which is the
-  one that keeps quiet and the one that will never claim a mob that is not a sheep — otherwise a
-  creeper at the crosshair would stop taking the swing. Either left-button path sets
-  `player.attackCooldown` when it takes the shot, so one press cannot shear twice, and the right
-  click keeps no cooldown the way it never did.
-- Reported by playing, not by the harness: `updateMobTarget` was the only target check, so shears
-  attacked sheep whenever a block face sat nearer than the animal, which on anything but flat
-  ground is most shots. The debug API could not show this, because `use()` went through the same
-  call and agreed with it. Assert these things through `document.dispatchEvent` on real
-  `mousedown`/`mouseup` instead, and zero `player.attackCooldown` between sub-tests — a stale
-  throttle swallows the next hit silently and reads as a bug in the new code.
-- Beds clear their partner cell in both `breakBlockAt` and `World.setBlocksBatch`, the same hooks
-  the door uses, so an explosion, a piston-less mass set, or a pickaxe on the pillow all take the
-  whole bed with them.
-- `window.__voxelcraft` gained `use()`, which right-clicks whatever the crosshair is on, and
-  `mobInfo` now reports `sheared`. Every claim in this addendum was asserted through that API:
-  placement and the facing it stores, breaking either half for exactly one bed, a night sleep
-  that rolled the clock from 02:24 to 11:16, respawn landing on the bed at full health, shearing
-  for 2 wool and one point of durability with the model swap verified from the scene graph, death
-  drops for both a fleecy and a shorn sheep, and a save-reload round trip that brought back both
-  cells, their facing, and the spawn point.
-- Read the effect of a bed rather than its return value: right-clicking a bed, a door or a table
-  answers `false`, because those paths claim, toggle or open instead of placing. A claimed bed
-  shows up in `spawnColumn` and, after dark, in the clock. Shearing does answer `true`, including
-  the already-sheared refusal, so durability is the thing to watch there.
-- The mouse path was driven separately from the API, because fallback controls treat a right
-  drag as looking and a right click as using: a drag of 60 px turned the camera 0.19 radians and
-  left the spawn point alone, while the same click without movement set it. The drag threshold
-  for that decision was raised from 4 px to 10 px — the camera still turns from the first pixel,
-  the threshold only decides whether the press also counts as a use, and a swallowed use is
-  silent, which reads as the held item being dead rather than as the click having been lost. A
-  6 px jiggle now shears and turns 0.019 radians; 60 px still only looks.
-- `simulate()` now runs `updateCombat` alongside the frame loop. Without it there was no way at
-  all to say what a held left button does, since a hidden tab never runs a real frame. Note that
-  a held shear on a shorn sheep re-arms `attackCooldown` every frame, so the cooldown staying at
-  0.38 is proof the combat path ran, not that it stalled; probe it on empty air instead.
-- Accepted behaviour changes: sheep give wool when killed as well as when shorn, fleece never
-  regrows, sleeping always ends at 11:16 rather than at sunrise, the respawn point sits on
-  top of the bed rather than in the cell beside it, and shears will not wound a sheep at all —
-  killing one for its wool takes any other tool in the hotbar.
-
-## Mob budget addendum — why nights were empty
-
-Nights were too quiet, and the report was that animals were crowding hostiles out. That was true,
-and a second cause was hiding behind it. Everything below was measured by driving the frame loop
-through `window.__voxelcraft.tick()` with the clock frozen, not by reading the spawn code and
-guessing.
-
-### What the numbers said
-
-| Situation, before the change | Hostiles | Why |
-| --- | --- | --- |
-| Midnight, world cleared of mobs | 13 within 40 s | The spawn machinery was never broken |
-| Midnight with the herd at its cap of 20 | 9, forever | 20 animals plus a `MOB_CAP - 1` reservation, against a total of 30 |
-| Bright noon on the surface, world cleared | 13 within 160 s, all of them underground | Caves pass the darkness test at noon |
-| The night after that noon | nothing new at all | Those 13 never burn, and never counted as far away |
-
-The last two rows were the actual complaint. Sheltered hostiles are exempt from burning, and the
-despawn test measured horizontal distance only, so a zombie sixty blocks under the player's base
-read as standing right next to them and stayed for the rest of the session. A cave network under a
-house therefore held the entire hostile budget from noon onwards, and night had nothing left to
-spawn.
-
-### What changed
-
-| Knob | Was | Now |
-| --- | --- | --- |
-| `MOB_CAP` / `PASSIVE_CAP` / `HOSTILE_CAP` | 30 / 20 / 13 | 32 / 16 / 16 |
-| Reservations off the total | `-1` for hostiles, `-2` for herds | none; the two group caps fit inside the total |
-| Columns probed per pass | 4 | 8 |
-| Night spawn pass | one hostile per 1.9 s | up to three per 1.4 s |
-| Spawn band | 17–42 blocks | 20–48 blocks |
-| Surface candidates after dark | 62% of rolls | 85%, and 35% by day, when only caves can pass anyway |
-| Despawn distance | 96 blocks, horizontal | 96 blocks in three dimensions |
-| Idle hostiles past 32 blocks | stay forever | a 25% chance every 5 s to give up and vanish |
-
-The caps no longer overlap, which is what stops a healthy herd from deciding how dangerous the
-night is. `spawnMob` still refuses anything past `MOB_CAP`, so those reservations were only ever
-compensating for caps that did not add up. The despawn roll cannot interrupt a chase: both
-detection ranges sit inside 32 blocks.
-
-### Measured afterwards
-
-| Situation, after the change | Result |
-| --- | --- |
-| Midnight, world cleared | hostile cap in 10 s, 13 of the 16 on the surface, 10 within 32 blocks |
-| Midnight with the herd full at 16 | hostile cap in 8 s; the total peaked at exactly 32 and never past it |
-| Bright noon above caves, 300 s | hostiles hover between 4 and 7, and `hostile_cap` refusals: 0 all day |
-| Dusk after that noon | five fresh surface hostiles within 4 s; 11 of 13 living hostiles new since dark |
-| 32 mobs on screen | 0.06 ms of simulation per frame, about 3 draw calls a mob against 214 for the terrain |
-
-Mobs were never the expensive part — the terrain alone draws 1.8 M triangles — so the two extra
-slots cost nothing measurable.
-
-### Notes for whoever picks this up next
-
-- `__voxelcraft.spawnReport()` answers the question this whole addendum is about: the live caps,
-  and a tally of why hostile spawns are being refused (`hostile_cap`, `no_chunk`, `terrain`,
-  `light`), with `resetSpawnTally()` to zero it between runs. `stats().mobs` now carries the caps
-  beside the counts. A rising `hostile_cap` with nothing on screen means invisible mobs are holding
-  slots; a high `light` count means torches are doing their job.
-- `spawnHostile()` runs one hostile pass on demand, the way `spawnPassive()` already did.
-- Freeze the clock first (`setTimeScale(0)`, then `setTime()`). The frame loop advances time on its
-  own, and an unfrozen test measures dusk when it meant to measure midnight.
-- `tick()` runs the real `updateMobs`, spawn timers included, so a whole night compresses into
-  about a second of wall time. Heal the player between rounds: sixteen hostiles will otherwise
-  kill them halfway through a run, and the creepers will leave craters in the test site.
-- Accepted behaviour changes: idle hostiles now vanish well before 96 blocks, so a cave the player
-  walks away from empties out instead of seasoning the walk back; and animals are capped at 16
-  rather than 20, so a very green valley now holds a thinner herd than it used to.
-
-## Animal scarcity addendum — meat is a find, not a stipend
-
-The report was that hunger stopped being a system: there was always a cow within a minute, a sword
-beat any field, and nobody sowed wheat. Hunger is only a system while food is uncertain, and while
-animals refilled the wilds, meat never was.
-
-Meat stays the premium food — steak 8 against bread 5, apple 4, wheat 2 (see the hunger parity
-addendum). Nerfing it would have made hunting a chore instead of a goal and punished the player who
-had just learned to cook. The lever is supply. Thinned to this, hunting is a windfall — you spot a
-herd, you eat well tonight — and farming is the plan: sow today or there is no bread on Thursday.
-Every animal killed is now a decision the field answers.
-
-### The knobs
-
-| Knob | Was | Now | Effect |
-| --- | --- | --- | --- |
-| `PASSIVE_CAP` | 16 | 10 | The hard ceiling on live animals, wherever the player stands |
-| Grassy chunks holding a herd | 62% of rolls | 38% | Green country is no longer a guaranteed butcher |
-| Herd size | 1–2, even | lone animal 80%, pair 20% | Mean animals per successful roll: 1.5 → 1.2 |
-| `PASSIVE_SPAWN_INTERVAL` | 3 s | 5 s | A hunted valley refills at a walk |
-
-Expected animals per grassy chunk: 0.93 → 0.46. There is no breeding, and passives have no despawn
-roll of their own, so these four knobs are the whole supply — no back door was left open behind them.
-
-### What did not move
-
-- **Nights.** `PASSIVE_CAP` + `HOSTILE_CAP` still fit inside `MOB_CAP`, so a full herd (or its
-  absence) cannot decide how dangerous the dark is, which was the rule the mob budget addendum set.
-- **The hunger side.** Respawn feeding, saturation, and exhaustion prices are untouched. All of the
-  new pressure is on supply; a player with a field in the ground feels none of it.
-- **The first hour.** The spawn area is green enough that the new cap fills within a minute — day
-  one still teaches steak, the scarcity is what you feel when you come back for more.
-
-### Measured afterwards
-
-Same seed, both builds, clock frozen at noon, driven through `tick()`:
-
-| Situation | Result |
-| --- | --- |
-| Fresh world, 60 s at spawn | 10 animals, the new cap (old build: 16, its cap) |
-| Hunt the herd to zero, watch the refill | cap again at 70 s ≈ 0.14 animals/s (old build: its cap in 60 s ≈ 0.27/s) |
-| Midnight with the herd full at 10 | hostile cap in 30 s, total steady at 26 of 32 |
-
-### Notes for whoever picks this up next
-
-- `spawnReport().caps.passive` reads 10; the hostile half of every midnight table in the mob budget
-  addendum still measures the same with a full herd, because the group caps never overlapped.
-- If playtesting says the first day is too lean, back off the herd roll (the `0.38` in
-  `rollChunkHerd`) before the cap or the interval: it thins the whole world evenly, while those two
-  decide what a hunted valley feels like. And keep the two group caps inside `MOB_CAP` — that
-  invariant is load-bearing for night quality, not for animal scarcity.
-
----
-
-## Respawn feeding addendum — hunger can kill you once
-
-The report was that death by hunger was unfair: the player starved at night, respawned at full
-health with an empty bar, and lost health faster than a cow could be found, cooked and eaten. The
-rate was not the problem. Where the food came back was.
-
-### What the report was and was not
-
-| Claim | Measured |
-| --- | --- |
-| "Health drains too quickly" | Not the bug. The real starvation clock, run through `tick()`: first bite at 4 s, 1 HP each, 20 bites, death at 80.5 s from full health. That is Minecraft's Hard difficulty, unchanged |
-| "I respawned with hunger at 0" | True, and the whole bug: `respawnPlayer()` restored health, velocity and timers but never touched `player.hunger`, so an empty stomach restarted its 80-second countdown at the spawn point |
-| Minecraft | resets food to 20 (and saturation to 5) on every respawn. Starvation also floors at 1 HP on Normal and 10 HP on Easy, so only Hard ever kills. This game keeps the lethal floor on purpose |
-
-### What changed
-
-`respawnPlayer()` now fills the bar back to `HUNGER_MAX`, zeroes `player.exhaustion` so leftover
-exhaustion cannot spend a bite off a stomach that was just filled, redraws the hunger bar, and
-marks the save dirty. One edit, and every respawn path goes through it: the respawn button, the `A`
-key, the gamepad A button and `__voxelcraft.respawn()`.
-
-The save mark is load-bearing rather than tidy. A death and a respawn change nothing in the world,
-so the save was still clean afterwards: starve, respawn, close the tab before the next autosave, and
-the save came back holding the empty bar the death had earned.
-
-| Situation | Result |
-| --- | --- |
-| Starved to death for real, then respawned | 20 food, 0 exhaustion, 20 health, 10 of 10 haunches lit; 20 s standing at the spawn point costs nothing |
-| Leftover exhaustion at death (0.1 from a hit) | 0 after respawn |
-| Clean save holding hunger 0 → die → respawn | `saveInfo().dirty` flips to true, and a reload boots at 20 food with the bar drawn full |
-| Clean save holding hunger 7, no death | boots at 7: respawning feeds, loading a save still does not |
-
-### Notes for whoever picks this up next
-
-- Two deliberate divergences from Minecraft survived what came after this. Armour no longer
-  absorbs starvation damage — the hunger parity addendum below routes that bite straight
-  through the plate — and nothing still stops a sprint below hunger 7, where Minecraft does.
-  Every other divergence listed here was closed by that pass: there is now a saturation buffer,
-  exhaustion spends a bite at Minecraft's 4.0 rather than 1.0, and mining, jumping, attacking
-  and walking are priced the way Minecraft prices them. The starvation clock measured above is
-  untouched, and still correct.
-- Found while screenshotting this, and fixed since: `#armor.hidden` had no CSS rule while every
-  other `.hidden` in the file did, so `renderArmorBar` set the class and the empty row still
-  painted as ten dark shields above the food bar whenever nothing was worn. The rule is there now,
-  and the row measures gone at zero defence, four shields at eight and seven shields plus a half
-  one at iron's fifteen, with the food bar never moving more than a pixel and a half between them.
-
-
----
-
-## Hunger parity addendum — Minecraft's stomach, whole
-
-Recorded after the fact. Hunger already had the right shape and the wrong arithmetic: a
-20-point bar, a private price list, and an exhaustion counter that spent a whole bite for every
-1.0 it accumulated. Walking cost food, a sword fight cost a fortune, and eating was a chore to
-grind through rather than a decision about when to eat. This pass moves the economy onto
-Minecraft Java 1.21's numbers and adds the one counter that was missing. Content the game does
-not have — the hunger effect, pufferfish, chorus fruit, a spear's Lunge — is not priced.
-
-### The counter that was missing
-
-`player.saturation` is Minecraft's hidden buffer, on the same 0-20 scale, never allowed above
-the food it cushions. Exhaustion spends it before it spends food, so a good meal is what carries
-a busy day and an empty cushion is what makes the next hard job cost food. A new world and every
-respawn start at food 20 with saturation 5, which is Minecraft's own starting cushion.
-
-Saturation has no bar of its own, so the food bar jitters whenever food is left and the cushion
-is not: the CSS animation is on `#hunger.jitter`, toggled by `renderHunger()`, and it is the
-player's only tell. `__voxelcraft.hunger().jittering` reads it back.
-
-The ordering matters more than the numbers. Food now only moves once saturation is gone, which
-turns eating into timing: a steak eaten at 3 food loses 1.8 of its saturation to the cap, and a
-full bar refuses a bite outright even with nothing cushioning it, which leaves the player on the
-four-second heal until something is eaten at 19 or below.
-
-### Two ways to mend, and never both at once
-
-- **Saturation boost.** At a completely full bar with saturation left, half a heart every half
-  second, 1.5 saturation each. Eight times the speed of the slow heal, and paid out of a pocket
-  food never sees.
-- **Slow heal.** Half a heart every four seconds while the bar is at 18 or above, or while any
-  saturation is left at a lower bar, and 6 exhaustion each — 1.5 saturation while there is any,
-  otherwise 1.5 food.
-
-The boost takes precedence and returns before the slow heal is considered. That is not tidiness:
-a steak's 12.8 saturation is worth exactly 8⅓ hearts in Minecraft, which only works out arithmetically
-if the boost is the one paying for them. Twelve health back on the slow heal is 72 exhaustion,
-which is more food than a whole day of work, and is the point.
-
-A hit still starts a six-second wait, but it gates the slow heal only. Minecraft resets its own
-food clock on damage without pausing the boost, and so does this.
-
-Starvation, at hunger 0: half a heart every four seconds, straight through any armour, charging
-no exhaustion — Minecraft only exhausts a player for damage armour was in a position to block.
-There is no difficulty setting and no floor to stop at, so the bar can kill you, which is
-Minecraft's Hard difficulty on purpose and keeps `VoxelCraft Design`'s own promise that an empty
-hunger bar is a slow way to die.
-
-### What everything costs, and how each figure was read
-
-Values are Minecraft's. Each one was measured through `__voxelcraft` against the live player,
-summing distance frame by frame because exhaustion is charged frame by frame.
-
-| Action | Minecraft | Measured |
-| --- | --- | --- |
-| Walking | free | 11.66 blocks walked, 0.000 exhaustion |
-| Sprinting | 0.1 per block | 20.54 blocks, 2.054 |
-| Swimming | 0.01 per block | 30.48 m over 2,734 frames, 0.305 |
-| Jumping | 0.05 per jump | one frame, 0.050 |
-| Sprint-jumping | 0.2 per jump | one frame, 0.200 |
-| Mining a block | 0.005 | three dirt blocks, 0.005 each |
-| Landed swing | 0.1 | 25 swings, 2.500 between them |
-| Swing at nothing | nothing | 0.000 |
-| Taking a hit | 0.1 | 0.1, armour wearing as usual |
-| Starvation bite | nothing, and no armour | 0.000, durability untouched |
-| Slow heal | 6.0 per half heart | two health mended, food 20 → 17 |
-| Threshold | 4.0 | 40 hits spent four points, saturation first |
-
-Swimming was the trap: a jump held against the seabed is a ground jump and charges 0.05, so the
-figures above hold forward down and never touch jump. Walking is free, which means exploring
-costs nothing and a meal buys work rather than footsteps.
-
-### A worked day, end to end
-
-Sprinting 302 m, swimming 8 m, mining 100 blocks, 40 jumps and 17 hits taken, starting from a
-fresh world's stomach of 20 food and 5 saturation:
-
-| | Exhaustion |
-| --- | --- |
-| Sprint 302 m | 30.25 |
-| Swim 8 m | 0.08 |
-| Mine 100 blocks | 0.50 |
-| 40 jumps | 2.00 |
-| 17 hits | 1.70 |
-| **Expected** | **34.62** |
-| **Measured** | **34.61** |
-
-Eight points spent: the five of saturation first, then three of food, ending on food 17 with
-3.088 exhaustion banked and the bar jittering. One steak covers that day twice over — 8 food
-plus 12.8 saturation is 20.8 points, or 83 exhaustion — which is what makes hunger a planning
-problem rather than a tax.
-
-Then, bleeding on that food 17: nothing. Twelve seconds of a wounded player at hunger 17 with no
-saturation left mends exactly nothing, because the slow heal needs 18 or a cushion. One steak
-brings the bar to 20 — four points of it wasted, which is the whole argument for eating early —
-and its saturation mends nine health in four and a half seconds, after which the slow heal takes
-two more health and stalls at 19 when the bar drops through 17. The tenth point needs another
-bite. That sequence is the economy working as designed, not a bug.
-
-### Save format
-
-Schema 4 under `voxelcraft:world:v4`, because saturation has no honest default for a stomach
-that is already half empty and every food value changed underneath it. v3 joins v1 and v2 as a
-world that stays in storage, cannot be read, and gets announced: such a save boots as a new
-world with `A world from an older version exists and can't be loaded`.
-
-Both counters are pulled back inside their invariants on the way in: saturation is clamped to the
-food it cushions, and exhaustion that arrives at or past a whole bite, or below zero, starts over
-rather than spending food the instant the world opens. A stored stomach of hunger 13 / saturation
-9.5 / exhaustion 7.4 boots as hunger 13 / saturation 9.5 / exhaustion 0.
-
-### Divergences left in place on purpose
-
-- **Raw Beef feeds nobody**, where Minecraft gives it 3 food and 1.8 saturation. Minecraft trusts
-  hunger alone to push players toward a cooker; here the furnace is already the gate and taking
-  both values keeps it that way.
-- **Wheat is edible**, at 2 food and 1.2 saturation, where Minecraft has no edible wheat item at
-  all. Farming has to feed you or it is decoration; the food value is this game's own and the
-  saturation borrows Minecraft's 2-food tier.
-- **Sprinting is never gated by hunger.** Minecraft stops a sprint at 6 food or less and drops the
-  latch. Nothing here does, and it was measured: hunger 4, latch armed, sprint runs and spends
-  0.822 exhaustion a second.
-- **No difficulty setting**, so starvation is always lethal with no 1 HP floor, and the six-second
-  post-hit wait stays six seconds where Minecraft's food clock uses ten.
-- **No sprint-swimming**, so water always charges the swim rate rather than the sprint rate.
-- **Shearing charges mining's 0.005**, and the row for it in the shears table used to say 0.05.
-
-### Notes for whoever picks this up next
-
-- `__voxelcraft.hunger()` gained `saturation`, `biteCost` and `jittering`; `setSaturation()` is
-  new; `setHunger()` drags saturation down with a lowered bar instead of leaving an invisible
-  cushion on an empty stomach; `stats().health` reports saturation next to food and exhaustion.
-- `simulate()` runs `updatePlayer` and nothing else, so the swing cooldown never cools under it:
-  25 swings in a row need `player.attackCooldown = 0` between them, or 24 of them quietly miss and
-  charge nothing. `tick()` runs the whole loop, which is a trap of its own — a wounded player at a
-  full bar with saturation left mends through the boost mid-measurement and burns the very
-  saturation being counted. Pin health, or make movement the only exhaustion source.
-- Judge distance per frame. Endpoint distance under-reads a curving run badly enough to make a
-  correct 0.1-per-block rate look like 0.45, and a run that wanders into water pays the swim rate
-  for those metres, so track `player.inWater` per frame or the totals will not close.
-
-## Apple addendum — the food that falls out of a tree
-
-Every calorie the game had before this passed a workshop: wheat needed a hoe, a furrow and ten
-minutes; bread needed three of those loaves and a crafting table; steak needed a cow and ten
-seconds of furnace. An apple needs nothing, which makes it the first food a player finds by
-accident rather than by plan.
-
-### What changed
-
-- An `apple` item at `kind: 'food'`: 4 hunger, 2.4 saturation, stacks to 64, bitten in the usual
-  0.6 seconds. Both food values are Minecraft's own.
-- `APPLE_DROP_CHANCE = 0.025`, and one entry on the leaf block's own drop list:
-  `{ item: 'apple', min: 1, max: 1, chance: APPLE_DROP_CHANCE }`. A leaf still never gives up a
-  leaf block.
-- The apple is a drop on a block definition rather than a case in the break handler, so every
-  path that destroys a block owes the same roll — the pickaxe and a creeper crater included.
-  That is what turned up the bug below.
-- A 16×16 icon: a red body, 704 pixels of it, a notch at the top for the stem, one leaf leaning
-  off to the right, a darker underbelly and a highlight down the left flank. Nothing falls back
-  to the grey placeholder, and the slot reads `Apple`.
-
-### The rate, measured
-
-3,850 leaf blocks broken one at a time through `mine()` in one session, with the pack emptied
-first so every apple had to be counted either in the pack or on the ground where it fell:
-
-| | |
-| --- | --- |
-| Leaf blocks broken | 3,850 |
-| Breaks that failed | 0 |
-| Apples | 108 |
-| Measured rate | 2.805% |
-| Expected at 2.5% | 96.3, so 1.21σ away |
-| Expected at Minecraft's 0.5% | 19.3, so 20.28σ away |
-| Leaf blocks collected | 0 |
-
-What a tree is worth, from 23 trees standing clear of every other trunk in their 9×9 footprint,
-so their canopies could not be each other's:
-
-| Canopy | Leaf cells | Apples at 2.5% | Apples at 0.5% |
-| --- | --- | --- | --- |
-| Lone oak, median | 96 | 2.4 | 0.5 |
-| Lone oak, range | 69–175 | 1.7–4.4 | 0.3–0.9 |
-| Jungle, counted in a ±4 box | 286 | 7.2 | 1.4 |
-
-A lone oak's 96 leaves are close to a minute of punching them — 0.617 seconds a leaf once
-Minecraft's six-tick gap between blocks is counted — or 45 seconds with a wooden hoe and six
-with an iron one, whose 0.05 second break skips the gap entirely.
-That is the whole case for 2.5%: Minecraft's rate pays half an apple per felled tree, which is a
-statistic rather than a discovery, and this one pays two and a half, which is a reason to clear
-the canopy before walking on.
-
-### A blast owes the same roll as a pickaxe
-
-Explosions build their drop list in their own loop, and that loop read `min` and `max` off every
-drop and ignored `chance`. Grass has carried a 25% seed drop since the farming pass, so for all
-that time a creeper landing in a field paid 1–2 seeds for *every* grass block in its crater
-rather than a quarter of them. Apples would have made it impossible to miss: one apple for every
-leaf in the canopy. The loop now skips a conditional drop exactly as `breakBlockAt` does.
-
-Three creepers detonated, each inside a shell of leaves built from the canopy air around it, with
-the cells they and the player stand in left open:
-
-| Blast | Blocks destroyed | Dropped | What the roll predicts |
-| --- | --- | --- | --- |
-| Leaves | 68 | 2 apples, 0 leaf blocks | 1.7 apples |
-| Grass and dirt | 24 grass, 56 dirt | 6 seeds, 83 dirt | a quarter of the grass, 1–2 seeds each |
-
-Before the fix those two rows read 68 apples and between 24 and 48 seeds. The dirt comes in three
-over the 80 cells the snapshot held, because the cells left open for the two parties to breathe
-were also in the crater and also dropped their dirt, and were never in the snapshot.
-
-### Eating one
-
-| Stomach | After the bite | |
-| --- | --- | --- |
-| Food 1, saturation 0 | Food 5, saturation 2.4 | Every point lands, none of it capped away |
-| Food 16, saturation 0 | Food 20, saturation 2.4 | The same, with saturation sitting just under its ceiling |
-| Food 20 | Refused | `You're already full`, and the apple stays in the hand |
-
-The cushion spends in Minecraft's order, and a 2.4 saturation apple is small enough to watch it
-happen. After an apple at food 16, a wounded player at pinned health spends exhaustion one wound
-of 0.1 at a time, and touches no food until the fourth whole bite:
-
-| Wounds taken | Saturation | Food |
-| --- | --- | --- |
-| 0 | 2.4 | 20 |
-| 40 | 1.4 | 20 |
-| 80 | 0.4 | 20 |
-| 120 | 0 | 20 |
-| 160 | 0 | 19 |
-
-It ends on food 19, saturation 0, 2.0 exhaustion banked and the bar jittering. A crossing spends
-one point of saturation *or* one of food, never a split of the two, so an apple's 2.4 saturation
-buys exactly three crossings — twelve exhaustion — and the third of them spends 0.4 of a point as
-though it were a whole one and lets the other 0.6 go.
-
-### Divergences left in place on purpose
-
-- **2.5% rather than Minecraft's 0.5%**, five times the rate, because a food nobody ever finds is
-  indistinguishable from a food that does not exist. The food values themselves are untouched.
-- **Every leaf block rolls.** Minecraft gates apples to oak and dark oak; jungle, birch and
-  spruce never drop one. There is one leaf block here, written by both the oak-shaped and the
-  jungle-shaped tree, so the 286-cell jungle canopy measured above rolls apples too. Gating it
-  would mean working out which tree a canopy belongs to, which has no honest answer for a canopy
-  overhanging a neighbour's chunk or for leaves the player set down by hand.
-- **Apples cannot be farmed.** There are no saplings, so the canopy is the only source and the
-  supply is whatever the forest that generated happens to hold. It is what keeps a 2.5% rate from
-  turning into an orchard.
-- **No other use at all.** Not fuel, not smeltable, not an ingredient. Food or nothing.
-
-### Notes for whoever picks this up next
-
-- Sum `count`, not entity length. An `itemEntities` entry is a stack: three apples on the ground
-  are one entry. Add the pack on top of that, because anything that lands within 2.5 m of the
-  player is already picked up by the time the trial looks.
-- Filter fresh drops by `serial`. Clearing the inventory does not clear the ground, and the
-  previous round's apples drift into this round's total.
-- A creeper sealed inside a leaf shell suffocates before it ever lights. The mob list goes quiet
-  about six and a half seconds later, not one block has moved, and the run reports an explosion
-  that destroyed nothing — which is exactly the shape of a false pass. Leave the cells within
-  about 1.2 m of both the creeper and the player open, and watch `fuse` rise rather than only
-  checking that the mob disappeared.
-- Scanning down from the top of the world for a tree finds the top of a canopy, after which the
-  trunk is always below where the scan started and never gets found. Walk up from
-  `sampleColumn(x, z).height` instead.
-
-## Water flow addendum — the sea runs when you break it
-
-Water used to be a statue. Dig one block into the side of a lake and the lake stayed exactly where
-it was, holding a wall of water up in the air where the shore should have slumped. This adds the
-level-based flow that was always meant to be under the block: water finds its own level, in the
-player's session rather than at generation time.
-
-### What changed
-
-- Depth is stored in the block id, the way wheat stores its growth stage. `WATER` is a source;
-  `WATER_FLOW_1..7` are resting sheets, rank 1 the deepest and 7 a film; `WATER_FALL_1..7` are
-  falling water carrying its own rank. Fifteen states in all, appended at the end of `BLOCKS` with
-  their ids appended at the end of `B` — ids are storage, so nothing may ever be inserted in the
-  middle.
-- One rule decides everything: **a cell's rank is the shortest path cost from a source, where a
-  step sideways costs a depth and a step down costs nothing.** A source hands depth 1 to whatever
-  falls into the cell below it, and a fall feeds nobody sideways — falling water is on its way
-  somewhere, it is not a supply. The pour threshold is rank ≤ 7, so a film ends instead of pouring
-  off the edge of the world.
-- Sources are placed, never bred. The usual "two flowing sources meeting make a source" shortcut
-  was tried and printed a permanent sea source into a shore notch on the very first dig, which then
-  flooded the notch forever. Worldgen and the player are the only things that make a source.
-- The simulation is reactive and never global. An edit queues the cells around it
-  (`queueWaterAround`, called from both `setBlock` and `setBlocksBatch`) and nothing else is ever
-  looked at, so the ocean that has stood for ten minutes costs nothing per frame. Resolution is
-  batched Jacobi: every read sees start-of-tick state and the whole batch of edits lands at once,
-  so the order cells come out of the queue cannot change the result.
-- Water only moves into air. Crops, torches and plants are never displaced, and solid ground is
-  never converted.
-- A cell whose neighbour chunk is not loaded retries twelve ticks and then leaves the queue without
-  leaving the simulation: it is parked against its own chunk (`parkWater`). Dropping it was a real
-  bug, not a corner case — a flood that ran off the edge of the loaded world stayed off it forever.
-- **A chunk arriving is a wake-up call.** `wakeWaterOnArrival` runs wherever a chunk finishes
-  generating and does two jobs. It re-queues parked cells, in the arriving chunk and its four
-  orthogonal neighbours — a cell can only ever wait on those, never on a diagonal one. And it wakes
-  saved water around the overrides the chunk restored, because a save taken mid-pour has water that
-  is genuinely flowing and a queue that was never saved: reload it and the pour is frozen where it
-  stopped. An `AIR` override only wakes its neighbourhood when it touches water, which is what keeps a
-  world the player drained by hand from waking itself on every chunk. Both halves cost nothing on an
-  untouched map, because watergen is already a fixed point: rousing all 6,508 loaded ocean sources in
-  a fresh world inserted 17,317 queue entries, ran 45 ticks and changed no cell, world hash
-  unmoved.
-- Drying a flow cell writes an `AIR` override rather than deleting the override, so the base map
-  stays untouched. That costs save bytes on purpose; `SAVE_SCHEMA` is still `v4`. Old saves keep
-  reading: id 42 changes meaning from "generic falling water" to "rank-1 falling water".
-
-### Why it is allowed to cost
-
-| Rig | Ticks | Cells changed |
-| --- | --- | --- |
-| Shelf over open sea, source at one end, pours off both | 16 | 273 |
-| 9×9 deck 20 blocks above the sea, source at the middle | 31 | 498, peak queue 140 |
-| Same deck left idle after settling | 1 | 0 |
-| Same deck, source removed | 29 | drains to nothing |
-| Sealed shaft, 5×5×10, source on top | 11 | 48 |
-| Source sealed in solid rock | 1 | 0 |
-
-The deck is the interesting row: 455.25 blocks of water poured out of one source cell and the
-volume was byte-identical when the same rig was left running afterwards, because a settled sheet
-with nothing feeding it is a fixed point. The sealed source is the other one worth reading — a
-source in rock never asks to be anywhere, so it costs one queue entry and nothing else, forever.
-
-The tick is 0.15 s with a budget of 512 cells, and remeshing after a flood is deferred through
-`world.flowRemesh`, drained when the queue is idle: a flood can touch a hundred cells and chunk
-meshes cost about 13 ms each, so meshing inline stalls the frame it happened in.
-
-The worst frame a flood can force is one tick. The frame loop clamps `dt` to 0.1 s and a tick is
-0.15 s, so `updateWater`'s catch-up loop can never reach more than one step in a frame however long
-the stall was. A 2,528-cell hole carved into the shore across nine chunks in one batch settled in 34
-ticks, with ticks averaging 11.5 ms and peaking at 14.3 — 512 cells of resolution plus two chunk
-meshes, so one dropped frame at 60 fps during a very large flood and nothing worse. The 141 ms that
-same dig spent inside `setBlocksBatch` is not the flow's doing: it is 2,500 edits, and it costs the
-same in dry stone.
-
-### Generation stays dry
-
-Caves are still air, and now nothing lets the simulation undo that from the other side.
-`cutOpensSea` refuses a carve at or below sea level when the cell overhead, or the neighbouring
-column, is flooded down to that height. Before that, generation could open a sea into a cave and
-the player's first visit would spend the next few seconds quietly draining the ocean underground.
-Measured afterwards: no untouched air cell between y16 and y48 touches a source any more (it was
-115 in the sample), and average chunk generation is 5.7 ms.
-
-### The renderer had to follow
-
-This is not polish, it is correctness: a rank-7 sheet drawn as a full cube is a staircase.
-
-- A cell draws its surface at `(8 − rank)/8` of the cell, and a grid corner takes the average of
-  the water cells that meet there. Both neighbours read the same number for a corner they share, so
-  a deep cell and a shallow one slope into each other instead of leaving a step.
-- Only the top of a body of water draws a surface. Resting water above a cell presses it up to its
-  ceiling and seals that ceiling, which is what makes a stack read as one surface.
-- A stream pouring past is the exception, twice over. It does not press the pool it lands in up to
-  a full block — that was a grey slab at the foot of every waterfall — and the pool keeps a surface
-  of its own, because a body with no surface at all is a window straight down to the seabed. Both
-  bugs were visible in the same screenshot.
-- A stream is drawn down to the surface it actually lands on, so the ribbon reaches the pool
-  instead of stopping a block short of it. Measured on the seam between a rank-7 fall and the film
-  it lands in: one skirt 49.000–49.125, the stream above it 49.125–51.000, meeting exactly.
-
-Verified as two invariants over the whole loaded world rather than by eye: 4,903 columns of water,
-every one of them with a surface drawn inside the span its water occupies; and 9,854 surfaces
-inside bodies, none of them below the top cell of the body that owns it. The second one is the one
-that matters with a transparent material — a plane buried inside a body shows up as a seam.
-
-### Where it under-fills, on purpose
-
-A fall feeds nobody sideways, so the only thing that carries water sideways is a resting sheet. That
-is paid for whenever a dig is deeper than one block. Cutting a five-by-three channel into the shore
-beside a source floods the floor row with the correct 1..6 gradient, sends a two-cell waterfall down
-the entry column, and leaves the rows above the floor dry — 5.125 blocks of water in fifteen cells of
-empty space below sea level, where Minecraft would fill the channel to the surface.
-
-It is left that way deliberately. Letting a fall feed sideways at its own rank would fill those rows,
-and rank would still be a shortest-path cost from a source, but it would also make every waterfall
-spray sideways off the wall it is pouring down, and an early version of that rule never converged at
-all — 163,000 changes in 1,200 ticks, because generic falling water reported itself as depth 1 and
-invented water at the bottom of every column. What the rule gives up is water in the wrong place. What
-it keeps is the part the player judges: nothing is ever left unsupported, nothing floods further than
-it should, and every dig reaches a fixed point. Pull the floor out from under a settled sheet and it
-runs off into the hole; plug a breach and the notch it was feeding drains back; settle a trench in two
-halves and it is byte-identical to the same trench dug in one.
-
-### The neck that would not settle
-
-A screenshot of water hanging frozen over a hole dug under the shoreline looked like the under-fill
-above, and was not: the water was caught mid-loop. A breach exactly two blocks deeper than the water
-standing over it leaves one cell of air between a source and the sheet beneath it, and that cell
-belonged to no rule in `desiredWaterLevel`. It was not the foot of a fall — a resting sheet was below
-it, not ground — it had no neighbour to thin from, and "a fall arriving overhead" did not cover a
-source, which is the very thing pouring. So it fell through to `return B.AIR` and deleted itself. The
-sheet it had been feeding was then a closed loop, thinned a rank a tick until it was a film and then
-air, and the fall re-formed to start again: four ticks, 0.6 s, forever. One cell changing per tick in a
-shaft, `queued` pinned at 95–117, and a chunk kept in `flowRemesh` so a 13 ms mesh rebuild came back
-into the frame budget every tick. A 13×3 trench blown out under the shore spent 15,069 changes on 120
-seconds of ticks and settled on nothing.
-
-Since the sea's sources only exist at and below `SEA_LEVEL`, this was specifically a below-sea-level
-bug: digging down under the shore hit it, digging one block deep never did.
-
-The fix is one clause: overhead counts as pouring in when it is a fall *or the source a fall came
-from* (`fallsIn`). The alternative, letting a fall feed sideways, is already ruled out above. Afterwards
-the same rigs settle in two or three ticks and stay: a two-deep shaft holds `source / fall / rank-1
-pool`, the trench holds a fall under each source with the row above the floor dry beside it and a `1..6`
-gradient along the floor, `queued`, `parked` and `remeshing` all reach zero, and 400 further ticks
-change nothing. Pull the sea out from over it and the whole flood leaves down to no water at all, which
-is the check that the fix invents none.
-
-`__voxelcraft.waterFlowCheck()` keeps it. It builds its rigs in a world of its own — `world.getBlock`
-is shadowed by a lookup into a map, the tick is replayed there, and no chunk, override or save is
-touched — and runs six cases: shafts one, two and three blocks under a source, a breach under the sea,
-the same breach draining when the sea is pulled out, and a sheet running off a shelf and over a ledge.
-Each has to reach a state it no longer wants to leave, in the shape it is supposed to reach, and the
-sealed shafts have to hold exactly the volume their ranks account for. It costs about 11 ms. Restoring
-the old `fallsIn` turns the two-deep shaft and the breach into cases that run out the 200-pass limit
-without settling, so the check fails on exactly the bug it was written for.
-
-### Verified at the edges
-
-- Reads below the world floor come back solid and reads above the ceiling come back air, so a source
-  placed on the bottom of the world rests there instead of pouring into the void, and one placed at
-  the very top pours down a shaft and pools at the bottom of it. Both converge and both are
-  idempotent.
-- Sky light reaches 15 all the way down a forty-five block column of falling water, exactly as it does
-  down the identical dry shaft beside it. That is the licence for flow edits skipping lighting
-  altogether: air and water are both transparent here, so neither can be the thing that changed the
-  light.
-- A sweep of every loaded water mesh — 21 chunks, 4,462 triangles — found no degenerate triangle and
-  no non-finite vertex, including at the lips where a deep sheet steps down into a shallow one. A
-  nineteen-cell falling column draws eight side triangles per cell and no interior surface at all.
-
-### Left for later on purpose
-
-Cosmetics: fresnel, foam at the waterline, animated UVs, caustics, the underwater tint. Flow first,
-because none of it is worth doing on a surface that is in the wrong place.
-
-## Bucket addendum — take it with you
-
-Buckets landed: smelt the iron, fold three ingots into a V, dip the empty in a
-source, carry the full one back and put the water down somewhere else.
-
-### What changed
-
-- Two items, `bucket` (stacks to 16) and `water_bucket` (one to a slot), painted
-  on the same silhouette so the only difference you have to read is the brim.
-- One shaped recipe, `['I.I', '.I.']` in the 3x3 — three ingots and no sticks,
-  the V that the painted item is drawn as. It is the last entry in `RECIPES`.
-  `matchRecipe` returns the first pattern that fits and its shapeless branch only
-  compares which ids are present, not how many, so a shapeless bucket would have
-  claimed three loose ingots off any grid that had them and starved the recipes
-  that want those ingots for themselves. Shaped, it cannot.
-- Water is still `breakable: false`, which is what it always was, so the bucket
-  is the only way to move it and a right click is the only way to fill one. That
-  is Minecraft's arrangement rather than a shortcut: you cannot mine the sea, you
-  dip a bucket in it. Nothing about the break path or the drop rolls changed.
-- Right click is dispatched to `tryUseBucket` from inside `tryPlaceSelectedBlock`,
-  after the hoe and the seeds, so an interactive block keeps first refusal: a
-  crafting table behind a puddle opens rather than flooding.
-
-### The water rules
-
-A bucket drinks only from a full source (`waterLevel === 0`). A ripple that has
-run out from its shore stays where it is, because lifting one of those would
-empty the wrong cell and leave the sheet hanging in the air behind it. Drinking
-from a source leaves the body itself alone — Minecraft takes a bucketful out of
-a lake and the lake does not notice — so a source with water beside it keeps its
-cell and fills the next bucket just as happily, and `waterBeside` reads exactly
-the six neighbours the flow code reads to decide whether that source is part of
-a body or a body all on its own. Only a source with no water beside it at all is
-the whole body: a puddle that fits in one bucket, and that one cell is the only
-thing a scoop lifts out of the world. A sealed well or a lone puddle is this
-case, and lifting it whole is what makes the difference between a bucket that
-drinks and a bucket that drains.
-
-Pouring puts a full source in the cell the crosshair points at, provided that
-cell is air or water already — the same room rule as any other placement. There
-is no test for whether that cell is the one you are standing in: pour at the face
-under your feet and the water arrives around your ankles, as it does in Minecraft,
-and the swimming code is there for exactly that. `world.setBlock` wakes the flood
-on its own, which is the whole reason a poured source starts spreading without a
-line added anywhere in the flow code. And a poured source is a source in every
-way the simulation cares about, so the same bucket will drink from it again.
-
-### Checked in the world
-
-Driven through `window.__voxelcraft` against a flat stone platform built for the
-purpose, one observation at a time:
-
-- Three ingots in a V at the table craft one bucket. The same grid minus the
-  middle ingot, laid out in the 2x2, still reads as shears, so the new pattern
-  shadows nothing that came before it.
-- Three empties in hand, dipped in a source: two left in the hand, the full one
-  gone into the next free slot. One empty in hand takes the water into its own
-  slot instead.
-- A level-7 sheet refuses the bucket and stays where it is, and so does dry
-  ground. A stone fence put between the hand and the source refuses it too, and
-  the very same aim works again the moment the fence is pulled out.
-- A poured bucket leaves a source in the cell over the face that was aimed at and
-  hands back an empty, and that fresh source is drunk again a moment later with no
-  complaint.
-- A pond scooped at its source hands over a full bucket and keeps its body: the
-  source cell keeps its water, the sheet around it keeps its ranks, and seconds of
-  ticks after the scoop change no cell at all. Three scoops in a row from the same
-  cell fill three buckets and the pond does not notice.
-- A source with no water touching it anywhere is the whole body, and a scoop lifts
-  that one cell out entirely: a sealed well goes dry, and a lone puddle can be
-  mopped up cell by cell.
-- A crafting table with water behind it opens the crafting screen and pours
-  nothing, which is the whole reason the bucket is asked last.
-
-### Divergences left in place on purpose
-
-- A bucket finds water with `raycastWater`, a second walk of the same ray that
-  the highlight uses. The block ray treats water as see-through, and the water is
-  exactly what the bucket wants to see, so it gets its own accept test over the
-  same grid walk. It stops at the first solid, so a pond under a plank is still
-  out of reach.
-- No lava bucket, because there is no lava in the world yet, and no water
-  bottle, because nothing in the game is drunk. `raw_iron` and the furnace were
-  already there, so the ingots the recipe wants cost nothing new.
-- Nothing in the world hands a bucket over: no mob, no chest, no ore, no
-  generated structure. `spawnItemDrop` is there and one `drops:` entry on a block
-  would change that, but for now a bucket is crafted or it is not.
-- Only a water bucket exists. When a second filled bucket arrives, `tryUseBucket`
-  is the table to grow rather than the dispatch inside `tryPlaceSelectedBlock`.
-
-### Notes for whoever picks this up next
-
-- `RECIPES` gained one entry and mine closes it; the bed that used to close it
-  now ends with a comma. The tool and armour recipes are pushed on after the
-  literal list, so the array is longer at runtime than it looks in the source.
-- The water addendum's model is untouched: a bucket only ever writes the source
-  id or takes it away — and it takes it away only from a source no water touches —
-  and the flow code never learns a bucket exists.
-- Two ids rather than one id and a flag, because the save record, `stacksMergeable`
-  and `tryUseBucket` all read the id. A metadata bit would have had to be
-  threaded through every one of them to mean what the id already means.
-- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
-
-### The pond that drank itself
-
-Scooping a bucket out of a pond took the pond with it. Not the cell the bucket
-dipped into — the whole sheet, every rank of it, a few ticks later: a source was
-lifted whole, the ring of flow beside it lost its feeder, and nothing in
-`desiredWaterLevel` can hold a resting cell to its rank once the supply behind it
-is gone. The rule reads a cell's neighbours and deepens every rank a step a tick
-when no deeper neighbour feeds it, which is correct — an orphaned sheet is meant
-to drain, and that is the rule the neck fix leaned on to prove it invented
-nothing. A pond's cells are orphaned the instant their source leaves, the ranks
-deepen past level 7 and fall out of the world as air, and one bucket had drunk a
-lake.
-
-The temptation was to make flow water remember, to let a resting cell hold its
-rank without a feeder. That is the rule this water model refuses on purpose —
-water that never leaves when its sea does is the frozen-sheet bug all over again
-— so the flow code stayed untouched and the bucket layer took the blame it
-actually deserved. Minecraft never promised that a bucket lifts the source block:
-it takes a bucketful out of the body and the body stays. The bucket was doing
-more than its promise, and the fix is that promise — `fillBucket` now asks
-`waterBeside`, the same six neighbours the flow code reads, and leaves the source
-cell in the world when any of them holds water. A source beside water is a body's
-mouth, not a bucketful of the body; only a source with nothing beside it is a
-puddle that fits in one bucket, and that lone cell still lifts whole, so sealed
-wells keep the dry-up a well-digger expects.
-
-Checked in the browser against a source poured on stone: the sheet spread to a
-seventy-five-cell pond, a bucket drank from the source itself, and the pond came
-out of sixty ticks byte-identical — same source, same ranks, `queued` at zero —
-and again after two more scoops from the same cell. A sealed source with its four
-walls still came up when the bucket found it, `waterFlowCheck` still passed all
-six rigs with `ok`, and the pour path poured.
-
-## Chest addendum — a box that keeps what you put in it
-
-Chests landed: eight boards ringed around an empty middle at the table, placed
-with the lock toward whoever placed it, and twenty-seven slots that wait for you
-to come back.
-
-### What changed
-
-- One block, `B.CHEST` (49): hardness 2.5, an axe is the fast tool, and no
-  `tier`, so a bare hand takes it apart in 3.75 s and still gets the box back —
-  0.625 s with an iron axe. That is Minecraft's arrangement rather than a
-  shortcut: a chest asks for no pickaxe, and the furnace next to it, which does,
-  is the contrast worth having in the world.
-- Structurally it is a furnace. `facings: true` turns the front tile to face the
-  placer, and `blockEntity: 'chest'` puts its contents in `world.blockEntities`
-  beside the furnaces rather than in a map of their own. One id and no lit
-  variant, because nothing about a box changes once it is set down.
-- Three tiles: `chest_top`, which is also the bottom, `chest_side` and
-  `chest_front`, all three painted from one shared body — lid boards lying flat
-  over a dark seam, upright planking below, corner battens down both edges and
-  along the foot. The front adds an iron strap running down from the lid's edge
-  into a lock plate with a keyhole punched through it, and the top tile carries
-  that strap's last two pixels along its own front edge, so the two faces line
-  up on the corner. The item icon needed no work: block items draw themselves as
-  the isometric cube, and that reads as a chest the moment the tiles exist.
-- One recipe, `['PPP', 'P.P', 'PPP']` in the 3x3, and it is the last entry in
-  `RECIPES` — the bucket's V now ends with a comma. Eight boards around a hollow
-  centre, because the box is all walls and the gap is how things get in. Like the
-  bed and the bucket it is three cells across, so the 2x2 in your pocket cannot
-  fold one.
-- Twenty-seven slots, opened by right click from the same place the crafting
-  table and the furnace are asked, ahead of any block placement. The panel puts
-  the box's three rows above Storage in the left column, the way Minecraft
-  stacks them, and keeps the armour column and the 2x2 grid every other screen
-  already carries. The 3x3 stays home: a chest screen that also opened a table
-  would be a second screen wearing the first one's clothes, and the box is the
-  thing being looked at.
-- Shift-click reads which hand it came from. From the pack it goes into the box
-  through `mergeStackInto`, the same helper the pack's own shift-click uses, so
-  it tops up what the chest already holds and then claims a free row for the
-  rest; only when the box has nowhere to put it does the stack stay in the pack,
-  rather than trading hotbar rows the way a shift-click with no chest open
-  would. From the chest it goes to the pack as it would from any container.
-  Armour shift-clicked out of a chest goes onto your back, which is what the
-  shift key already means for armour.
-- Two sounds, both one-shot noise. The lid is a bandpass rising from 480 to
-  1040 Hz over a low 128 Hz knock; the shut is one short falling lowpass knock
-  where that rise ended. Both are asked for at the block's centre with a 20 m
-  range, so a chest across the clearing opens quietly and one at your feet does
-  not, and each gets a small random pitch so the fifth one in a row is not the
-  first one again.
-- Breaking a chest hands over its contents and then itself.
-  `spillBlockEntityContents` — which was `spillFurnaceContents`, and is now the
-  same four lines for both kinds — dumps every slot as a real item drop before
-  the block's own `drops:` entry adds the box. A creeper owes the same roll as a
-  pickaxe, so the explosion path calls it too.
-- The save grows one sibling of the furnace list: `entities.chests`, one flat row
-  per box of `[x, y, z]` and then twenty-seven id and count pairs, 57 fields
-  whether the box holds one diamond or nothing at all. `SAVE_SCHEMA` stays at 4:
-  a world written before this addendum loads unchanged and simply has no chests
-  key, and a world written now carries one extra key.
-
-### Checked in the world
-
-Driven through `window.__voxelcraft` the way the bucket was, one observation at a
-time:
-
-- Eight planks in a ring at the table craft one chest. Seven do not, and the ring
-  missing its centre is what makes it a chest rather than nine.
-- Placing it against the top face of a block puts the box there with its front
-  normal pointing back at the placer, and the same aim from the other side
-  records the opposite normal. Two boxes in the world read back as two rows from
-  `chestList`, each with its own facing.
-- Shift-clicking 10 wheat into a chest holding 60 leaves 64 in the first slot, 6
-  in the next row and an empty hand. Filling all twenty-seven rows with cobble
-  and shifting a further 30 wheat at the box leaves the wheat where it was and
-  the box at twenty-seven used slots.
-- Shift-clicking an axe out of the box puts it in the pack; shift-clicking an
-  iron chestplate out of it puts it on, defence reading 6 afterwards. Clicking an
-  empty chest slot does nothing at all, which is worth writing down only because
-  it is the one click that moves nothing and still marks the save dirty.
-- Breaking it bare-handed yields cobblestone x40, iron_ingot x5 and the chest
-  itself as three separate drops on the ground, all three pickable, with nothing
-  left in `world.blockEntities` at that position.
-- A save with a chest in it writes 859 bytes, its chest row 57 fields long, and a
-  reload of that save brings the box back with its facing and both stacks in the
-  same rows they were left in.
-- The panel closes itself if the box goes away underneath an open screen —
-  measured by deleting the block and letting the next render notice, which left
-  no screen and, through `returnCursorStack`, handed back the three diamonds that
-  were still on the cursor from a gamepad pickup. Walking the pad cursor over a
-  chest screen starts at `chest:0`, walks the three rows nine wide, and steps off
-  the bottom of the lid into Storage rather than sideways into the armour column.
-- The furnace screen is untouched by all of this: three furnace slots, no chest
-  slots, its own title, and coal lighting raw iron with the burn counter running
-  while the screen sits open.
-
-### Divergences left in place on purpose
-
-- Nothing in the world hands a chest over. No mob carries one, no structure
-  generates one, no ore yields one, so the bucket addendum's line about there
-  being no chest to loot is still true in the only way it can be now: chests
-  exist, and the world gives you none of them for free. Loot chests want a
-  structure to sit in, and there are still no structures.
-- Contents do not ride on the item. A chest that comes back out of the ground is
-  an empty box, because its things were spilled as drops on the way out and are
-  lying there if you were quick enough. Carrying a loaded chest around in one
-  slot would want a stack payload, which is the same machinery a loot chest
-  would want, and neither is worth inventing before there is a reason.
-- No lid animation, no double chest, no lock. The lid is paint: the front tile is
-  drawn shut and stays shut, and the creak is the only thing that says otherwise.
-  Double chests want a merge rule for two neighbours that Minecraft itself only
-  approximates.
-- A chest never ticks. `updateFurnaces` became `updateBlockEntities` and still
-  looks only at things within `BLOCK_ENTITY_TICK_RANGE` (32) of the player, plus
-  the furnace whose screen is open; a chest's whole share of that work is the
-  stale-state sweep, which clears a box's contents if the block under it is gone.
-  Opening a chest screen therefore pauses the world the way the inventory does,
-  where the furnace screen alone keeps something running.
-- A schema-4 save written by this build will still load in a build from before
-  it — same schema, same seed — and that older build will silently forget what
-  was in the boxes, because it never reads a `chests` key. The schema number is
-  a compatibility promise in one direction only, and this is what breaking it
-  looks like. Bump `SAVE_SCHEMA` if chests ever have to be made load-bearing.
-
-### Notes for whoever picks this up next
-
-- A container screen has to register itself in five places, and this addendum
-  touched all five: `openScreen`'s accept list and its "is there still a block
-  here" guard, `screenGridFor`, `quickMoveStack`'s two direction tests,
-  `handleScreenSlotClick`'s `markSaveDirty` line, and `renderScreen` — plus
-  `padSections` for the D-pad and `buildStorageColumn(withChest)` for the grid
-  itself. A barrel wants the same list and nothing else.
-- `buildStorageColumn` is the only place the chest grid is drawn and
-  `padSections` the only place it is walked, so both know about the chest screen
-  by name. If a second container arrives, that pair is the thing to fold into a
-  table rather than to copy a third time.
-- A chest's contents survive only while the saved block diff still says a chest
-  stands at that position — the same witness rule the furnaces use, and for the
-  same reason: at load time the chunks are not made yet, so `world.overrides` is
-  the only thing that can answer the question.
-- A chest state created by an old save whose block has since gone is cleared the
-  first time the player comes within 32 m of the empty spot, and not before. Far
-  away, stale rows sit in `world.blockEntities` harmlessly, and they cost nothing
-  but the map entry.
-- `createBlockEntity` reads `CHEST_SLOTS`, which is declared a few hundred lines
-  later. That is safe only because worldgen and the game loop run at the end of
-  the file; moving the init block up would turn it into a temporal-dead-zone
-  error at the first chest.
-- The debug API grew `openChest(x, y, z)`, `chest(x, y, z)`, `chestList()` and
-  `setChestSlots(x, y, z, rows)`, where a row is either `'wheat'` or
-  `['wheat', 12]`. `setChestSlots` overwrites all twenty-seven slots rather than
-  merging into them, which is what makes it useful for setting up a check: pass
-  fewer than twenty-seven rows and the rest come back empty.
-- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
-
-## Audio addendum — a sound does not get to end the frame
-
-Added after the chest one, when a scripted run turned up a `TypeError` from
-`audioConnectOutput` on a frame where nothing about the sound was wrong.
-
-### What broke
-
-Every number the audio layer hands an `AudioParam` comes out of the position of
-something, and a position is the least trustworthy number in the game. An
-`AudioParam` rejects NaN and Infinity by throwing, and the throw is not local to
-the sound: it unwinds the update loop that happened to be asking for a footstep,
-so whatever else that frame owed is lost with it.
-
-Two ways in, both reproduced against the build before this one, where all
-fourteen named debug sounds threw in both states:
-
-- A non-finite `yaw` with the sound a few blocks away. The pan is a projection
-  onto the camera's right vector, so a broken heading makes the pan NaN and the
-  throw lands on `panner.pan.value`. A sound at the listener's own feet is safe,
-  which is why the `playSound` defaults never showed it.
-- A non-finite camera. Every `dx`/`dy`/`dz` goes NaN, the falloff goes NaN, the
-  level goes NaN, and the throw lands on `exponentialRampToValueAtTime` instead.
-
-### The rule now
-
-Nothing reaches a param raw. `audioNumber(value, fallback)` is a finite test with
-a default behind it, and it sits in front of the pan in `audioConnectOutput`, the
-duration/pitch/volume in `audioNoiseHit`, and the shape inputs in `audioTone`.
-`audioSpatial` is the one that actually knows what a bad number means, so it
-guarantees a finite `gain`, `pan` and `distance` for both sides of the
-relationship: the sound's own position, and the listener's. A listener that is no
-longer a place gets the voice at full level dead centre, which costs nothing that
-can be heard — the alternative is a NaN that ends the frame instead. `yaw` is
-handled the same way one step further down: a heading nobody can place by ear is
-worth the same as no heading at all.
-
-`range` gets the same treatment, because the falloff divides by it, so a NaN
-range was quietly a NaN gain with a perfectly good position on both sides.
-
-There is no `try`/`catch` around any of this on purpose. Falling back per number
-keeps the graph honest — a centred voice is still a voice, and it is obvious in
-the code which value was suspected — whereas swallowing a throw would hide which
-coordinate slipped and leave a silent voice that reads as the sound not working.
-
-### Where it still comes from
-
-The fix is in the ear, not in the coordinate. Whatever slipped once — physics
-that divided by a missing surface, a `look(NaN)` through the debug API — still
-leaves the camera non-finite from then on, and rendering, raycasting and mob
-steering see that just as plainly as the audio did. The chest checks ran into a
-second version of this: `teleport(NaN, …)` wedges the page outright, because the
-chunk loop around the player has no more opinion about NaN than the audio layer
-used to. That is the place to look if a non-finite camera turns up again; the
-audio is only where it used to show first.
-
-### Checked in the world
-
-- Before and after, same script: the previous build throws on all fourteen named
-  sounds with a broken heading and again with a broken camera; this one throws on
-  none of them, and plays them normally again afterwards.
-- Stereo is unchanged: a sound 6 m to the right pans +0.72, the mirrored one
-  −0.72, one directly behind 0. Distance is unchanged: the same break peaks at
-  0.287 one metre away and 0.042 fourteen metres away.
-- Bad inputs fall back rather than throw: NaN `pitch`, `durationScale`, `volume`
-  and `range` all sound like their defaults; NaN and infinite sound coordinates
-  are dropped the way the old NaN guard already dropped them.
-- Mute still mutes, and the mob groan/hurt path that goes through `audioSpatial`
-  outside the debug names is clean. No console errors on any of it, and
-  `tools/check-syntax.sh` passes.
-
-## Soil addendum — a furrow drinks from water within reach
-
-Milestone 11 asked for two things before a crop would grow: a hoe'd furrow and a
-seed in it. Minecraft asks for a third, and it is the one every farmer repeats —
-the soil has to be wet. Wheat now waits for water the way it waits for daylight.
-
-### What changed
-
-- `FARMLAND_WET_REACH = 4` and `isFarmlandWet(x, y, z)` sit beside the other crop
-  constants. `updateCrops` asks it one line after the light check, and a furrow
-  that fails is simply skipped.
-- No block id, no save field, no per-furrow moisture value. Wetness is a question
-  asked of the world every tick, so a field wets and dries in the same frame the
-  water moves and there is nothing to keep in step.
-- Sowing dry soil still works, with a toast that says what is waiting: "Dry soil —
-  crops wait for water within 4 blocks". The hoe and the seed keep doing exactly
-  what they did; only the growth tick learned a new condition.
-- `crops()` reports `wet` for every tracked crop and there is a new
-  `soilWet(x, y, z)` for any furrow, so the rule can be read rather than inferred
-  from what grew.
-
-### The wetness rule
-
-A furrow is wet when any liquid sits inside the 9x9 square centred on it, at the
-furrow's own level or one above. Chebyshev distance, so the corner of that square
-counts as much as the cell beside it, and one canal four blocks off keeps a whole
-field alive. Any liquid counts, source or the last ripple of a sheet that has run
-out from its shore, because the test looks at what is in the cell rather than at
-how it got there — the sea, a bucket poured along the headland, and a puddle left
-by a broken dam all water the same furrow.
-
-One above is in the rule because Minecraft puts it there: a ditch dug one layer
-over the tops of the furrows waters them, which is how a field is irrigated
-without drowning it. One below is not, and that is the asymmetry that makes a
-drained field mean something — water under the soil is a swamp, not irrigation.
-
-### Divergences left in place on purpose
-
-- Minecraft lets a bone-dry field creep along at a twenty-fifth of normal speed.
-  Here a dry furrow stops outright. The slow crawl is invisible to a player who is
-  timing nothing, and "it stopped because it is dry" is the rule people actually
-  learn.
-- Dry soil accepts the seed. Minecraft does the same, and refusing the click would
-  punish the player for a mistake they have not made yet — the toast is the nudge
-  instead, and it fires every time, including on a furrow that was wet a minute ago.
-- An unloaded furrow reads as air, so `isFarmlandWet` answers dry for a field whose
-  water is off-screen. That is the safe direction: `updateCrops` already skips
-  chunks the player walked away from, so the field waits rather than dying, and the
-  wetness test cannot be the thing that changes that.
-
-### Checked in the world
-
-Driven through `window.__voxelcraft` on a dirt platform built for the purpose at
-y=75, noon, sky light 15 at every crop. The hoe, the seeds and the bucket were all
-used through `tillDirt`, `plantSeed` and `use`, not by writing blocks:
-
-- Two furrows tilled and sown on dry ground read `wet: false`, and 1200 growth
-  ticks — twenty minutes of the crop clock — left both at stage 0. The same clock
-  ripens a watered furrow, which is the point.
-- A bucket poured into a hole four blocks off arrived as a source, handed back the
-  empty, and `soilWet` read true in the same call. Two seconds of flow left it a
-  single source with every neighbour still soil. That furrow went to stage 7 inside
-  1200 ticks; a second furrow twelve blocks off stayed at stage 0, `wet: false`,
-  the whole time.
-- The reach box, each time a source sealed in soil and read at one furrow: same
-  level four away wet, five away dry; four along z wet; corner four by four wet,
-  corner four by five dry; one above the furrow wet; one below dry; two below dry.
-  Nine by nine, two layers, no radius and no diagonal distance anywhere in it.
-- With one source in the middle of a row of furrows, every cell from four blocks
-  west of it to four blocks east read wet and the cell at five read dry — the
-  nine-wide strip, measured rather than asserted. Twelve cells sown that way came
-  up ripe: eight at stage 7 after 1000 ticks, and of the four sown on the far side
-  three were stage 7 and one stage 6 after their own 1000. The growth roll is a
-  chance per tick, so one lagging cell is noise, not reach. Three control cells at
-  five and six blocks sat at stage 0, `wet: false`, through all of it.
-- A half-grown crop stops and starts on cue. Watered, it reached stage 5 in 300
-  ticks; the source was scooped back up with an empty bucket and the furrow read
-  dry in the same call; 2000 further ticks left it at stage 5, same block id, still
-  tracked, no wither. The water went back and 600 ticks ripened it.
-- Standing 300 blocks away, `soilWet` on a watered furrow reads dry instead of
-  throwing, 3000 growth ticks with the field off-screen left all eighteen tracked
-  crops alive, and the walk back read it wet again.
-- The old rules are untouched: a stage 6 crop disappeared on the next tick once its
-  furrow was dug out from under it.
-- `save()` afterwards: 1120 edits, 9779 bytes, "World saved just now", no console
-  errors for the whole session, and `tools/check-syntax.sh` passes. Nothing in the
-  save record changed shape — there is no moisture to write.
-
-### Notes for whoever picks this up next
-
-- `soilWet(x, y, z)` answers false for anything that is not a furrow, so it reads
-  as "dry" when the real answer is "that is a dirt block". `crops()` carries the
-  same flag next to the ground id for exactly that reason.
-- `selectSlot(i)` goes through `selectHotbarSlot`, which folds with `i % HOTBAR_SIZE`.
-  A main-inventory index does not reach the main inventory: index 27 selects slot 0.
-  Scripted checks should stay inside 0..8 and read `heldItem().id` back.
-- `lookAt` sets a direction, not a target. From an eye 1.62 above a flat surface,
-  aiming at the centre of a block one cell away crosses the surface about 0.02 into
-  the intended cell, which flips to the neighbour whenever a float disagrees. Aim at
-  the lower half of the block instead and there is half a cell of margin.
-- A scripted player standing in a cell that holds something — ripe wheat, a leaf —
-  gets that very cell back from the raycast at distance 0, and every placement aimed
-  through it is refused. That, and not the reach, is why test platforms want their
-  working row clear to y=77.
-- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
-
-## Debug addendum — a shelf that hands out anything
-
-### What changed
-
-- **G** opens a debug screen, `Debug · Give Items`, that lists every entry in
-  `ITEMS` — placeable blocks first, then materials, food, tools and armour, in
-  definition order — as a nine-wide shelf of icons. Left click adds a whole
-  stack, right click adds one. The pad gets the same shelf: A whole, X one,
-  B close, D-pad and stick navigate it like any other menu.
-- The shelf is not a grid the player trades with. It has no cursor stack, it
-  never loses an item, and clicking it with something already on the cursor
-  leaves the hand alone. `giveFromShelf` goes through `addItemToInventory`,
-  so merge-then-fill ordering and durability stay exactly where they are.
-- A stack taken from the shelf is fresh: `makeStack` with no `dur`, which is
-  how every other full-durability tool enters the world.
-- A full pack swallows nothing and says so — `No room in your pack`. A partial
-  add names the item with a `— pack full` tail. Only a real add marks the save
-  dirty.
-
-### What it does not do
-
-- It is a debug option, not survival: the shelf never empties and the game
-  does not pretend it is fair. The control list says so plainly.
-- The hint line under the panel is now `#inv-hint`, set by `renderScreen` per
-  screen: the shelf's own text, the stock text restored for the others.
-
-### Checked in the world
-
-- 69 shelf entries rendered, first titled Grass Block, title and hint correct.
-- Left click a Diamond gave 64; a right click on the same cell made 65. An Iron
-  Pickaxe came out as one with no `dur`, i.e. fresh.
-- With the pack walled up with dirt, a right click on Apple added nothing and
-  the toast read `No room in your pack`.
-- Pad: A gave 64 grass, right moved the cursor to index 1, X added one, B
-  closed the screen.
-- Esc closed the shelf; E then opened the Inventory with the hint restored.
-- `__voxelcraft.openGive()` and `__voxelcraft.giveList()` report the shelf; the
-  old `give()` still works. `tools/check-syntax.sh` passes.
-
-## Stairs addendum — a staircase you walk up
-
-Two families of stairs, sawn out of the block they are named for, and the first
-shape in this game that is not a whole cell. The important part is not the
-geometry, it is the foot: a stair tread is half a block tall, so a staircase is
-something a player walks up rather than something they hop up, and that needed a
-step height the engine had only ever spent on swimming.
-
-### What changed
-
-- Two blocks, appended after the chest: `B.OAK_STAIRS` (50) and
-  `B.COBBLESTONE_STAIRS` (51). Both are hardness 2.0, which is what Minecraft
-  saws both out of — planks and cobblestone are the same hardness — and each
-  asks for its family's tool: oak wants an axe and carries no `tier`, so a bare
-  hand takes it apart in 3 s and still gets the stair back; cobblestone wants a
-  pickaxe and carries `tier: 1`, so a bare hand spends 10 s on it for nothing and
-  an iron pickaxe does it in 0.5 s. Measured, both families sit exactly on the
-  numbers their source block has. Oak joins the wood sound material; cobblestone
-  falls through the switch to `stone`, which is where cobblestone already lived.
-- Structurally they are chests. `facings: true` gives each family four
-  directions in the existing facings map, so it is one id per family and no new
-  save key — `SAVE_SCHEMA` stays at 4. The facing points at the low step, turned
-  towards whoever placed it the way the chest turns its latch, and the tall half
-  leans away from the placer, so a line of stairs climbs away from the person
-  standing at the bottom of it. `world.setBlock` already defaults an omitted
-  facing to `[0, 1]` and already drops the entry when something else takes the
-  cell, so placement and overwrite needed no new code.
-- `stairs: true` is the new shape flag, defaulted in the same finalising loop as
-  `bed` and `door` (`block.stairs ??= false`), and `blockInfo(id)` reports it.
-- **`cellCollidesAt` is the new collision primitive.** Every block in the game
-  used to answer "am I solid" with its whole cell; a stair answers with two
-  boxes — half a block tall across the whole cell, and the upper half over the
-  side away from the facing. `playerCollidesAt` and `mobCollidesAt` both stopped
-  flooring their boxes early: they keep the raw edges, walk the cells the box
-  touches, and hand the box to `cellCollidesAt`, which is exact for axis-aligned
-  facings. Nothing else in the world is sub-block, so this is the only place the
-  question gets asked.
-- `PLAYER_STEP_HEIGHT = 0.6`, and `tryStepUp` is how it is spent: when a frame's
-  horizontal move is blocked while the player is on the ground and out of water,
-  the frame's move is replayed from the same spot stood a little taller, in
-  lifts of 0.05 up to 0.6, and the first height that gets a blocked axis through
-  wins. Half-block lifts land exactly on a tread or a crest, so the feet finish
-  standing on the step instead of hovering over it. Anything taller than 0.6
-  still has to be jumped. Water keeps its own, taller mantle trick, which only
-  ever runs in water, so the two never compete for the same frame. The height the
-  feet rose is handed to the view as well, which is what keeps the climb from
-  reading as a stutter — see the follow-up below.
-- The step is drawn by `appendStairBoxes` on the opaque pass, eleven quads and
-  twenty-two triangles, wound outward like a cube rather than double-sided like
-  a leaf: it is a closed solid, and it reads the same from behind because there
-  is no inside to it. `tileRectSlice` cuts the family's tile in half
-  horizontally so the low walls wear the bottom half and the tall walls the top
-  half, which is what makes the two boxes read as one block sawn along the step
-  instead of two blocks stacked. Face shades are the same 1 / 0.85 / 0.55 as
-  every other face, passed flat per face the way the bed already does it.
-- The item icon for a stair family is the step in side elevation — the lower
-  half of the tile laid across the tread, the upper half over the tall end —
-  because the isometric cube the other block items draw would hide the one thing
-  the item is. The shelf grew from 69 entries to 71.
-- Two recipes, `['P..', 'PP.', 'PPP']` and the same V in cobblestone, six in and
-  four out, Minecraft's own pattern and numbers. The V is three cells across, so
-  the 2x2 in your pocket cannot fold a staircase any more than it can fold a
-  chest.
-
-### Checked in the world
-
-Driven through `window.__voxelcraft` on a cobble deck built for the purpose, and
-the player walked rather than teleported for the movement checks:
-
-- A stair alone in the air costs 22 triangles, and every one of them sits on an
-  exact plane: tread at +0.5 over the exposed half of the cell, crest at +1.0
-  over the far half, the base, and seven walls. No degenerate triangles, no
-  quad where the tall half stands on the tread.
-- Culling measured against a control: stair plus a full block beside it is 34
-  triangles, i.e. 22 + 12 with nothing dropped on either side, while two adjacent
-  full blocks are 20. The step's buried wall costs two hidden triangles, and the
-  ground next to a staircase keeps the face it needs, so the deck does not go
-  hollow when a stair is set against it.
-- Walking up: four stair cells at x=3 climbing −z, all facing `[0, 1]`, walked
-  with `simulate(1/60, { forward: 1 })`. Feet rose 81 → 85 in eight rises of
-  exactly 0.5, `onGround` true on every one of the 72 frames, `vel.y` 0.00 on
-  every frame, no jump input anywhere in it, health unchanged. That is the whole
-  point of the addendum and it is a straight line of half-blocks.
-- Walking down: the same staircase reversed. The walk steps off each crest and
-  drops onto the next tread (85 → 83.5 → 82 → 81 → flat ground), each fall
-  between 0.5 and 1.5 blocks because a walking pace crosses a half-block shelf
-  faster than gravity clears it. No clipping, no snagging, nothing to recover
-  from; the last step walks off the end of the stairs onto the deck like any
-  other ledge.
-- Mobs: a zombie dropped 0.8 above the deck landed and then climbed the same
-  staircase to the player in 2.8 s — 81 → 81.5 → 82 → an arc that peaked at
-  85.29 and settled at 85.0. The existing one-block hop does the work;
-  `mobCollidesAt` reading the stair boxes is what lets it take the half-block.
-- Placement through `place()`, not by writing blocks: aiming at a top face from
-  the +z side records `[0, 1]`, at a −z side face from the −z side records
-  `[0, -1]`, at a +x side face from the +x side records `[1, 0]`. Each placement
-  took one item out of the stack (5 → 4 → 3), and re-aiming at the stair just
-  placed put the next one on top of it, since the raycast reads the whole cell.
-- Breaking with `mine()` by hand removed an oak stair and dropped exactly one
-  `oak_stairs`, and `breakTime` re-read each family's source block: oak stairs
-  harvest in a bare hand the way planks do, cobblestone stairs refuse it the way
-  cobblestone does.
-- Crafting: both Vs preview and craft 4; a partial V previews null; four planks
-  in the 2x2 make a crafting table and never stairs; a mirrored V previews null,
-  which is how the matcher has always treated every other recipe too.
-- Persistence: `save()`, reload, and the placed facings came back as `[0, 1]`,
-  `[0, -1]` and `[1, 0]` with the step re-meshed the right way round.
-- Water: a stair placed into a flowing cell replaces the water and stays a stair
-  — no waterlogging — and the flow routes around the step and settles;
-  `waterFlowCheck()` still passes all six of its cases with a staircase in the
-  way.
-- Light: with a stair as the only block overhead, the cell under it reads sky
-  light 15, where a full block in the same place reads 14 (open air is 15).
-- Zero console errors for the session, and `tools/check-syntax.sh` passes.
-
-### Divergences left in place on purpose
-
-- **The raycast and the selection outline are still whole cells.** Aim at a stair
-  and the box around the entire cell lights up, and a placement goes into the
-  cell beside that rather than into the half you were looking at. Making the
-  picker sub-block means rewriting the DDA and the outline mesh for one block
-  family, and the mistake it would invite — placing into a cell you thought was
-  the empty corner — is worse than an outline a little too generous.
-- For the same reason `blockIntersectsPlayer` reads a stair as its whole cell. It
-  only guards placement and the bed/door checks, and a player cannot stand inside
-  a stair cell anyway: the tread fills the footprint and there is never half a
-  block of headroom in it.
-- The thing in your hand is still a cube. The pack and the shelf show a
-  staircase; the held-item view builds its mesh from the block's six faces, and
-  that is true of every block item in the game.
-- `opaque: false`, so light gets through the open corner and neighbours do not
-  cull against the step: 15 under a stair roof instead of 14. Minecraft shades a
-  staircase where the tread meets the riser; here the step carries flat per-face
-  shading and, not being opaque, it does not soften the corners of the blocks
-  around it either. The bed and the door made the same two choices first.
-- No upside-down stairs. There is no bottom-half state to store — facings are a
-  `[dx, dz]` pair and nothing more — and a step that hangs from a ceiling has no
-  place in a world where nothing needs it.
-- No waterlogging, for the same reason the bed has none: one cell, one block.
-- Stairs float where you put them, like every other block here. There is no
-  support rule to break.
-- Placing against a bottom face is refused. A plain cobble block aimed at the
-  same underside is refused too, so that is the engine's rule and not this
-  addendum's.
-
-### Follow-up: the staircase read as a stutter
-
-Reported after the fact: going up feels jerky, going down is fine. Both halves were
-true, and gravity is the reason in both. Going down, the foot steps off a crest and
-the fall is spread over the frames gravity needs to cross a half-block, so the eye
-travels the step as a slope for free. Going up, `tryStepUp` ends the frame standing
-on the tread — that is what a collider has to do — so the eye crossed half a block
-in a single frame: sixty blocks a second, at a walk that carries forwards at four
-and a half. The stride was never lost; only the view was.
-
-The easing went in the camera, where the note above said it belonged, as one number
-that only ever holds the view *below* the eyes: `cameraStepOffset`.
-
-- `tryStepUp` reports how far the feet rose, and the view is told it owes that much.
-- The debt is spent as an ease — `cameraStepOffset *= exp(-dt * CAMERA_STEP_GLIDE_RATE)`
-  — so the eye arrives on the tread as a slope. An ease rather than a fixed crawl
-  because the faster you walk, the thicker the lifts arrive: a rate that keeps up at
-  a sprint over-absorbs at a walk, and one tuned for a walk leaks jumps at a sprint.
-  An ease scales itself.
-- `syncCamera` and the camera-shake block both subtract it. `spawnPlayer`, respawn
-  (through it), `teleport`, the void rescue and the load path zero it: in all of
-  those the world the view was gliding over is gone.
-- `aimOrigin()` is the same eye without the glide, and everything that touches the
-  world reads it — the block ray, the water ray, the mob ray and the air-clearance
-  check behind it. The crosshair belongs to the player, not to the view.
-
-Measured on six oak stairs one cell apart and one block higher each, on a cobble
-deck with walls either side, driven with `simulate(1/120, …)`; the previous commit's
-file was served alongside as the control, so both columns read the same corridor at
-the same timestep. The eye is `stats().position`, the feet are `stats().feet`.
-
-| walking up six stairs | before | after |
-| --- | --- | --- |
-| biggest one-frame eye move | 0.5 blocks (60 blocks/s) | 0.068 blocks (8.2 blocks/s) |
-| frames where the eye moved more than 0.2 blocks | 11 | 0 |
-| eye speed, rms | 15.9 blocks/s | 4.6 blocks/s |
-| foot rises | 11 × 0.5 | 11 × 0.5 |
-| ground covered per frame | 0.0383 | 0.0383 |
-
-Those last two rows are the point: collision answers exactly as it did, and only
-the view moved.
-
-- Sprinting up the same flight: 0.5 in a frame and 12 jolt frames before, 0.086 and
-  none after.
-- Walking down: identical in every column, before and after (biggest eye move
-  −0.0771, 39 foot steps, rms 4.8, no jolt frames). Nothing in the descent was
-  touched, and the glide is only ever fed by a step *up*.
-- Leaning into the side wall while climbing was the other half of the report, and it
-  turned out to be a bug rather than feel. The old `tryStepUp` asked both axes at
-  once and refused the lift unless both went clear, so a blocked sideways move
-  cancelled the forward one: forward-plus-right against the wall froze the walk on
-  the first stair, 186 of 199 frames moving less than 0.004 blocks, ending at 81.99
-  after a single rise. One sweep now takes the smallest height that frees either
-  blocked axis and keeps whatever the other one managed: all nine rises are taken,
-  0 stalled frames, and the eye still never moves more than 0.064 in a frame. An
-  earlier attempt at that ran a sweep per axis, which let the second one re-sweep
-  from a lower height, drop the feet and drive the offset negative — the reason it is
-  one sweep.
-- Aim while gliding: at three samples with the view 0.169, 0.423 and 0.200 below the
-  eyes, `target()` returned the same block, face and distance as a standing read from
-  the same spot (1.9421, 2.1754, 1.4088); `place()` put cobblestone at target plus
-  normal and `mine()` removed the stair under the crosshair.
-- Across the up, lean, down and sprint runs — 587 frames — the view never sat inside
-  a solid cell, and it never fell further behind than 0.59 of a block at a walk and
-  0.75 at a sprint. Teleport, respawn and reload return the eye to where the feet
-  are (0.169 → 0), plain walking on flat ground moves not at all (eye step 0.0), and
-  there are no console errors.
-
-### Notes for whoever picks this up next
-
-- `opaque: false` on the stair is load-bearing, not a preference. Flip it to true
-  and a full block beside a staircase stops drawing the shared wall — the audit
-  above would drop from 34 triangles to 30 — and the hole that leaves is visible
-  from the far side, where the step does not reach the cell's corner.
-- `cellCollidesAt` is now the answer to "does this cell get in the way". Anything
-  new that asks that question — item drops, a snow layer, a door that wants to
-  know if it can swing — should go through it, or it will disagree with the
-  player about where the world is.
-- `tryStepUp` replays a frame's horizontal move up to twelve times, but only on a
-  frame whose move was already blocked, so the cost is a few extra collision
-  sweeps on the frames that bump something. Raising `PLAYER_STEP_HEIGHT` is the
-  dial for "how tall a step do you walk up"; above 1.0 it starts clearing full
-  blocks and the game loses the jump.
-- The glide rate is not a knob to guess at. The view is pure arithmetic on the
-  lifts — add each lift, then decay — so a recorded feet series replays any rate
-  offline instead of reloading the page once per value. Replayed over a walk and a
-  sprint, rates 7 through 16 all leave zero jolt frames and the eye's rms speed
-  only moves from 4.1 to 4.8, while how far the view falls behind runs from 0.89
-  down to 0.53: the rate buys lag, not smoothness, and 13 sits at the smooth end
-  of that plateau.
-- `CAMERA_STEP_GLIDE_CAP` being two treads is not tuning either. A cap that binds
-  hands the lift it refuses straight back to the eye as a jump, which is the thing
-  being smoothed away; the first version capped at one tread and leaked ten jolt
-  frames at a sprint for exactly that reason. The cap only exists to catch lifts
-  arriving faster than the ease spends them.
-- The coordinate readout reads the camera, so the `Y` in the corner dips by half a
-  block for a fifth of a second after a step up. `stats().feet` is the ground
-  truth, and so is everything the player does to the world.
-- Upside-down stairs would need a real state field. The facings map carries a
-  direction, not a flip, so it is a third box, a save value and a second mesh
-  dispatch, not a tweak to `appendStairBoxes`.
-- Scripting the player: `simulate(seconds, input)` is the one that takes input.
-  `tick()` runs the world with an idle player, so a scripted `tick()` never moves
-  anybody and looks like a bug in the walk code. An open screen freezes input the
-  same way — if the feet will not move no matter what the pad says, check
-  `screen()` and `closeScreen()` first. `target()` answers
-  `{ x, y, z, id, name, normal, distance }`, so the cell a placement lands in is
-  target plus normal.
-- `mobs()` returns plain info objects and `mobInfo` wants the live mob, not a
-  serial, so tracking one scripted mob means `mobs().find(e => e.serial === s)`.
-  Mobs also only set `onGround` on a frame that starts while descending, which
-  means a mob spawned with its feet exactly on a surface never gets it and will
-  stand at the foot of a staircase without hopping. Spawn a hand's breadth above
-  the ground and let it land; the quirk is older than stairs and unrelated to
-  them, a stair is just the first place in the world small enough to notice it.
-- `tools/check-syntax.sh` is still the only check in the repo, and it passes.
-
-## Ladder addendum — a way up that is also a way down
-
-One block, and the first in this game that a player can stand inside of. The
-stairs made part of a cell solid; a ladder makes a cell climbable and nothing
-else, which turned "what stops you" and "what holds you" into two questions
-where the engine had only ever asked one.
-
-### What changed
-
-- `B.LADDER` (52), appended after the cobblestone stairs. Minecraft's own
-  numbers: hardness 0.4, an axe with no `tier`, so a bare hand still harvests it
-  and still gets one back. `solid: false, opaque: false, cutout: true` — a ladder
-  stops nothing and light goes through it as through a doorway.
-- Structurally it is a chest: `facings: true` puts the wall it leans on in the
-  existing facings map, so one id covers four walls and `SAVE_SCHEMA` stays 4.
-  `ladder: true` is the new shape flag, defaulted in the same finalising loop as
-  `bed`, `door` and `stairs`, and `blockInfo` reports it.
-- **The facing is the wall's, not the placer's.** Every other oriented block
-  here turns towards whoever set it down. A ladder is nailed to a face, so
-  `ladderFacingFor` reads the clicked face instead: the side of a solid block
-  gives its normal, and the top or bottom of a ladder already hanging there
-  borrows that ladder's facing if the wall carries on past it — which is what
-  lets a column be built upwards without threading the crosshair between rungs.
-  No wall, no placement: a toast says `A ladder needs a wall to hang on` and the
-  item stays in the pack.
-- Drawn by `appendLadderPlate` on the cutout pass: one double-sided quad, two
-  triangles, full width and height, standing `LADDER_PLANK = 1 / 16` off the
-  wall. The new `ladder` atlas tile is two rails in columns 0–1 and 14–15 and
-  four rungs in rows 1–2, 5–6, 9–10 and 13–14, transparent everywhere else so
-  the wall shows between them. It is appended to the end of the hand-written
-  `TILE_ORDER` (tile 34), ahead of the crack and wheat stages pushed on after
-  it.
-- **`ladderHolding` is the new question.** Minecraft's ladder slab is 3/16 of a
-  block thick, but its climb check is the cell at the climber's feet, and a fall
-  down a shaft catches wherever in the shaft it happens. This follows the cell:
-  the feet cell decides, with a hundredth of upward slack so that standing on
-  the block at the foot of a ladder counts as standing in the cell above it
-  (collision leaves the feet a ten-thousandth under the surface). It returns the
-  ladder's facing, and `player.onLadder` holds that — the whole of the climb
-  state, with no mode to enter. Deliberately *not* in `cellCollidesAt`: a ladder
-  stops nothing.
-- In `updatePlayer` the ladder branch comes before the water branch: gravity is
-  set to zero, `jump` climbs at `LADDER_CLIMB_SPEED = 2.3572` (Minecraft's own
-  number), `forward < 0` descends at the same speed, and while descending the
-  component of velocity carrying the climber *away* from the wall is removed, so
-  backing at a ladder is a climb down instead of a way off it. `fallPeakY` is
-  reset on every ladder frame, so touching a ladder mid-fall cancels the fall.
-- The item icon and the held-model view use the flat tile, like the torch and
-  the door, rather than the isometric cube every block item draws: thirty-two
-  pixels wide by sixty tall, which is the shape of the thing. The debug shelf
-  grew from 71 entries to 72 by itself.
-- Recipe `['S.S', 'SSS', 'S.S']` of sticks into 3 ladders, Minecraft's pattern
-  and count. Three cells wide, so it wants the crafting table like the chest and
-  the stairs, and the pattern is its own mirror.
-- Wood to the ear: `blockSoundMaterial` returns `wood`, so placing and breaking
-  use the same knock as planks.
-- The controls list gains one row: `S` climbs down a ladder, since that is where
-  the backward walk already points when you are facing one.
-
-### Checked in the world
-
-Driven through `window.__voxelcraft` on a stone deck built for it at y=80, with a
-stone wall along one side; the feet are `stats().feet`, the eye
-`stats().position`.
-
-- Placement through `place()`: aiming at a +x wall face recorded `[1, 0]` and put
-  the ladder in the cell beside the stone; aiming at a +z face recorded
-  `[0, 1]`. Aiming at the room-facing side of a ladder was refused — a ladder is
-  not a wall — as was the top of one whose wall stopped beneath it; both said
-  their piece and consumed no item. Aiming at the top of a ladder with stone
-  behind it placed the next at `[1, 0]`, and at the bottom likewise, so a column
-  grows both ways.
-- Climbing from the middle of the cell, one second of `jump`: feet 80 → 82.3572.
-  One second of nothing: 82.3572 → 82.3572, `onGround` false — it hangs. One
-  second of `forward: -1`: 82.3572 → 80.0000 at the same speed, with the x axis
-  unmoved, so the descent stays on the wall. Half a second from the far side of
-  the cell rose 1.1786, because the cell and not the plank is what holds you.
-- Walking is unaffected: aimed at the wall and walked forward for 1.2 s, the
-  player crossed the ladder cell and stopped at x=56.2999 — at the stone, not at
-  the ladder. Nothing in the collider ever sees it.
-- Falling: dropped from feet 90 into a one-cell shaft of ladders, the player was
-  caught in the top cell at feet 84.75 with 20/20 health. The same drop one cell
-  to the side landed at 80.0 and cost 6 points, with regen turned off so nothing
-  was healed back.
-- Light: sky light 15 in a ladder cell with nothing overhead but the ladder,
-  block light 0. The cutout leaves the cell open to the sky.
-- Breaking by hand: `breakTime('ladder')` 0.6 s, harvested, no tool wear, and one
-  `ladder` dropped into the pack.
-- Crafting: the recipe reads back as `S.S/SSS/S.S` → 3; seven sticks in the 3×3
-  preview 3 and craft 3.
-- Persistence: `save()`, reload, and `getBlock`/`facingAt` at the placed cell
-  came back 52 and `[1, 0]`, re-meshed on the right wall.
-- Water: in a one-cell stone channel, a source flowed to the cell beside the
-  ladder and stopped there; the ladder cell stayed a ladder, nothing appeared
-  above it, and `waterFlowCheck()` still passes all six of its cases.
-- The wall test: pulling the stone out from behind a ladder left the ladder
-  hanging and still climbing (81 → 82.1786 in half a second).
-- Zero console errors for the session; `tools/check-syntax.sh` passes.
-
-### Divergences left in place on purpose
-
-- **No support pop.** Remove the wall and the ladder stays, the way a torch stays
-  when its wall goes. Minecraft drops the ladder; this game has never had a
-  support rule and one block is not the place to grow it.
-- **The plank has no collision.** Minecraft's ladder stops you 3/16 short of the
-  wall; here you walk until the wall itself stops you and stand inside the cell.
-  The climb rule is the cell, as in Minecraft, so the slab would only ever have
-  been a 3/16 push — and it would have made placing a ladder while standing in
-  its cell impossible.
-- **No waterlogging.** One cell, one block: a ladder set into water replaces it,
-  and not being air the water cannot flow into the cell either. The bed and the
-  door made the same choice.
-- **Climb down is backward.** There is no sneak key to hold here — Shift, Ctrl
-  and B latch the sprint — so `forward < 0` is the descend input, and the
-  away-from-wall velocity is cancelled to keep that from becoming "let go". A
-  player who backs into a ladder they are facing will descend it.
-- **Mobs do not climb.** `ladderHolding` is asked by the player controller only.
-  Mob pathing has no use for a vertical rung yet and would need a climb intent,
-  not a collider.
-- The raycast and the selection outline are whole cells, as they are for the
-  stairs: aim at a ladder and the whole cell lights up, which is also the cell
-  the placement check and the break use.
-- No ladder on a ceiling, no ladder lying flat, no trapdoor. One id, four walls.
-
-### Notes for whoever picks this up next
-
-- `ladderHolding` is not the collider and must not become one. It answers "does
-  this cell hold me", which is a different question from "does this cell stop
-  me", and `cellCollidesAt` is the one that must stay false for a ladder.
-- The hundredth of slack in the feet cell is load-bearing. Collision leaves the
-  feet 1e-4 under a surface, so without it a ladder at the foot of a wall could
-  never be grabbed from a standing start: the feet cell would read as the ground
-  block, not the ladder.
-- The facing is the direction from the wall to the ladder, so the wall cell is
-  `x - facing[0]`, `z - facing[1]`. Both `ladderFacingFor` and `appendLadderPlate`
-  read it that way; anything else that wants the wall — a future support rule,
-  say — has to as well.
-- The mesh skips the `FACES` loop on purpose: a ladder is not a cube, and a new
-  sub-cell shape wants its own `append*` on the pass its material belongs to,
-  not a sixth face kind.
-- `fallPeakY` is reset on every ladder frame, and that reset is the whole of why
-  a catch cancels the drop. It has to happen while the climber is still on the
-  ladder: move it after the fall-peak branch and a shaft remembers the height it
-  was entered from.
-- The climb speed is a plain speed, not a force: the branch sets `vel.y` outright
-  every frame, so a ladder overrides gravity, water and a jump in the air alike.
-  A future block that wants buoyancy plus a climb needs a branch of its own.
-- `tools/check-syntax.sh` was the only check in the repo at that point, and it passes.
-
-## Audio addendum — a sampled bank with a synthesizer behind it
-
-The brief above asked for procedural sound and no external audio. The audio
-layer is now the one deliberate exception: the active bank is CC0 recordings
-from Kenney, OpenGameArt, and SpritePilot, and the original synthesizer stays
-as the runtime fallback. The reason is repetition. A synthesizer can make one
-convincing break; two hundred footsteps from the same envelope sound like a
-machine. Four variants per material, three per break, and runtime pitch/level
-jitter are what stop that.
-
-Two active slots are sampled from a synthesized source. The heartbeat was always
-better generated, and the creeper fuse needs a sputtering, cracking burn that
-no CC0 pack in the bank matches. `tools/generate-audio.mjs` writes the fuse to
-the reference bank, and `tools/build-cc0-bank.py` copies that slot into the
-active bank; everything else in the bank is a recording.
-
-Five events have no bank slot at all and are synthesized when the game runs:
-picking an item up, crafting, jumping, and opening and closing a screen. Each is
-one short dry sine, chosen because those five fire far more often than anything
-else and every recording tried for them was too bright or too long to survive
-that much repetition. See the mute-event addendum at the end of this document.
-
-### What is in the banks
-
-`assets/audio/` is the active CC0 bank: 108 mono 16-bit WAVs, 7.7 MB in total:
-
-- 28 footsteps (7 materials × 4)
-- 24 breaks (8 materials × 3) and 16 places (8 × 2)
-- 11 mob voices
-- 24 event one-shots
-- 5 ambient beds, no music loops
-
-The synthesized fallback/reference bank — 116 slots, 9.3 MB — is no longer
-committed. The game never loaded it; the code synthesizer is the runtime
-fallback. It keeps the eight slots the active bank dropped — the pickup pair,
-the crafting mix, the jump woosh, the screen open and close pair, and two
-retired music loops — because the synthesizer still has a profile for each,
-and it stays reproducible by running `tools/generate-audio.mjs`, which writes
-it to `assets/audio-generated/` or to a `--out` directory.
-
-The active bank comes from CC0 packs listed in `CREDITS.md`; the slot-by-slot
-mapping is in `tools/build-cc0-bank.py`. The source files are converted to mono
-WAV, trimmed and faded for one-shots, and resampled to 22.05 kHz for loops.
-`tools/generate-audio.mjs` writes only to its own output directory, never to
-`assets/audio/`, so running it cannot overwrite the active CC0 bank.
-
-WAV rather than Ogg was deliberate: `decodeAudioData` handles it everywhere, it
-has no encoder delay to break a loop, and 7.7 MB is well inside the GitHub Pages
-budget. The `AUDIO_ASSETS` manifest in `src/audio.js` is the list of keys and
-files. `loadAudioAssets()` fetches six at a time, decodes each with
-`decodeAudioData`, and groups the variants under the name callers ask for. The
-ambient beds and music are fetched first, so the world can start breathing
-before the one-shot bank has finished decoding; until a sample is ready, the
-synth fallback covers it.
-
-### The hybrid
-
-`audioSample(name, options)` is the first attempt for every one-shot. It returns
-false when the active bank is not loaded, the name is missing, the page is on
-`file://`, or the voice pool is full; the caller then runs the old
-`audioNoiseHit`/`audioTone` path. The generated bank is not part of this
-fallback chain; it is a reference artifact. This is why the game is never
-silent: a partial deploy or a blocked fetch degrades to the synthesizer instead
-of ending the frame. `audioStatus().assets` reports
-`{total, loaded, failed, ready}`, and the debug `audio()` hook exposes it.
-
-### The mix
-
-- `voice → sfx/ambient/ui/music bus → low-pass muffler → master gain →
-  compressor → destination`. The three effect-ish buses are driven by the sound
-  effects slider and the music bus by the music slider, so the master slider is
-  the only thing that pulls everything together.
-- A `DynamicsCompressorNode` (threshold −18 dB, knee 20, ratio 5, 3 ms attack,
-  250 ms release) catches the explosion-plus-footsteps case.
-- A generated stereo impulse response feeds a `ConvolverNode`; each one-shot
-  opens a small send. Ambient beds bypass the reverb.
-- The muffler is the underwater switch: 20 kHz in air, 620 Hz when the head is
-  in water, ramped over 160 ms.
-- `audioSpatial` still returns the same distance-squared gain and yaw pan, and
-  now also returns a cutoff: distant sounds are duller. `audioOcclusion` walks
-  the voxel line from camera to source; two solid cells are needed to count.
-- `audioBeginVoice` is priority-based and stops the weakest voice instead of
-  dropping the new sound. Footsteps are priority 0, blocks/UI 1, mobs 2, player
-  hurt 3, explosions 4.
-
-### Ambient mix
-
-`updateAmbient(dt)` runs every 0.5 s and sets five environmental loop gains: wind
-(height/outdoors), water (a 9 × 9 × 5 water sample around the feet), cave (no
-solid sky above, deeper is louder), fire (nearest torch or burning furnace
-within 9 blocks) and underwater. The loops fade with
-`setTargetAtTime`, and a paused or dead player ducks the world.
-`audioStatus().ambient` is the snapshot the checks read.
-
-### Music
-
-Music is scheduled by the in-game clock rather than by the environment, so
-`musicTrackForClock(clockHours())` is the whole rule. The clock picks one of
-four slots, and each slot is a folder of songs under `assets/music/` whose
-files are listed in `AUDIO_ASSETS` (`music/dawn/`, `music/noon/`,
-`music/dusk/`, `music/midnight/`):
-
-- 06:00–12:00 — a random song from dawn, once
-- 12:00–18:00 — a random song from noon, once
-- 18:00–24:00 — a random song from dusk, once
-- 00:00–06:00 — a random song from midnight, once
-
-`updateAmbient` resolves the slot each pass and, when it differs from the one
-already playing, fades the old bed out with `audioStopLoop` and opens the new one
-at 0.16 in open sky, 0.12 under a roof, 0.04 with the head underwater, and 0 when
-the player is dead; paused keeps the ×0.55 duck the rest of the world gets. Each
-song plays straight through once and then the window is silent until the next one
-opens: the slot only asks for its bed while the fade timer has not yet cleared it,
-and once the bed ends the pass stops calling `audioSetLoop` for it. Music has no
-synthesizer behind it, so over `file://` the beds and one-shots degrade to the
-synthesizer and the music simply is not there.
-
-`audioStartLoop` routes any name starting with `music_` to the music bus instead
-of the ambient bus, which is what lets the music slider move the score without
-touching wind or footsteps, and it draws the song at random from the slot's
-loaded buffers, rerolling when it lands on the same one it played last so dusk
-does not repeat a song every evening while four are waiting. Ambient beds keep
-their endless loop; a music slot sets `source.loop = false` so the song ends when
-the file ends. The scheduled tracks are the Suno-generated files staged under
-`assets/music/`, fetched whole rather than through the bank, so they keep their
-own endings. The two Kenney loops they replaced are out of the bank and out of
-`CREDITS.md`. `audioStatus()` reports the current slot as
-`musicTrack`, the index of the song playing inside it as `musicVariant` (null
-once the window has fallen silent), and `musicPlayed` — true once this window has
-played, false only right after the window opened.
-
-`audioStopLoop` fades the bed and arms a 900 ms stop. `audioSetLoop` cancels that
-timer when the world asks for the bed again at a positive level — a scrub back
-across the window boundary inside the fade revives the same song rather than
-killing the window outright, since a finished one-shot music bed would never
-restart. The stop and its clearing only fire if the entry still holds the slot, so
-a dying source never clears a living one.
-
-### Level and EQ passes
-
-Three sounds were retuned against the recorded bank:
-
-- The jump was once the Kenney woosh sample, retuned to play at `pitch: 0.84`
-  through an 850 Hz low-pass because its energy sat around 500–1000 Hz with a
-  hissy top. That slot has since been dropped: jumping is synthesized as a
-  300 → 430 Hz sine over 0.12 s at 0.05 gain, dry, with no recording behind it.
-- The creeper is a lit fuse rather than a breath: 1.55 s of high-passed sizzle
-  with a randomly stepping gain, 38 later-biased crackles and a low brown bed,
-  synthesized in `tools/generate-audio.mjs` and copied into the active bank. The
-  fuse timer is the same 1.55 s, so the sound ends as it detonates.
-- The explosion sample is sub-heavy and quiet, so the sampled hit runs at 1.04
-  gain over a 58-block range with a heavier reverb send (0.38), and gains a
-  1500 → 500 Hz band-passed crack plus a 74 → 30 Hz sine drop on top of it.
-  Camera shake, flash and particles were deliberately left alone.
-
-### Passive animals
-
-Passive animals are deliberately background. Each one waits 15–35 s between
-idle calls, a shared 4–8 s gap keeps a herd from firing at once, and the idle
-call is 0.22 gain at a 20-block range. The recorded animal
-sounds are much louder than the old synthesizer, so these numbers keep a cow or
-sheep from dominating the mix. Hostile cadence has the same shape and a higher
-rate; see the paragraph on it below.
-
-Pain is scaled per species rather than at one level: `MOB_HURT_GAIN` in
-`src/audio.js` multiplies the 0.85 the hurt call is played at — cow 0.53, chicken
-0.6, pig and sheep 0.7, hostiles 1. The recordings are nowhere near one level
-(`mob_cow_1` is 1.5 s at RMS 0.138, `mob_sheep_2` is RMS 0.204), and a killing
-blow has no sound of its own, so that gain is also the death cry.
-
-Hostile cadence follows the same shape as the animals' and at a higher rate: a
-per-mob roll of 11–24 s and a shared 6–11 s gap, so a pack has one voice at a
-time. It used to be a roll of 4.5–11 s with **no shared gap**, which meant the
-calls simply added up — three zombies in range groaned 23 times a minute, each
-groan 1.2 s of sample, and a crowd at the hostile cap groaned twice a second.
-Measured against that, the new rule gives a lone zombie about one groan every
-17 s and caps a pack at about 6 a minute however large it is. Sunlight is the
-other half of the complaint: a burning hostile took a hurt call on every 0.65 s
-burn tick, so `damageMob` now takes a `soundGap` and the burn tick asks for 2.6 s
-instead of 0.55 s. The burn itself is untouched — 2 damage every 0.65 s under
-open sky.
-
-### Settings
-
-- Three sliders live in the pause panel: **Master** (default 70%), **Sound
-  effects** (100%, drives the sfx, ambient and ui buses together) and **Music**
-  (70%, drives the music bus). They persist as `:volume`, `:sfx` and `:music`
-  under `voxelcraft:audio:v1`. `M` still mutes the master.
-- The pause panel is a click-to-resume surface, so each slider stops
-  `click`/`pointerdown` from propagating, and `updateAudioHud` will not overwrite
-  a slider the pointer is on.
-- `__voxelcraft.setVolume(value)`, `setSfxVolume(value)`, `setMusicVolume(value)`
-  and `audio()` are the debug hooks; `audio()` reports `sfxVolume`,
-  `musicVolume` and `musicTrack`.
-- The tab suspends the context on `visibilitychange` and resumes it on return.
-
-### GitHub Pages
-
-- The game is still a static page. `assets/audio/` is fetched with relative
-  paths, so it works at `https://user.github.io/repo/`.
-- `.nojekyll` is committed so Jekyll leaves the audio folder alone.
-- Do not use Git LFS for either bank: Pages serves the pointer, not the sample.
-  The published site limit is 1 GB, each git file is capped at 100 MiB, and the
-  soft bandwidth limit is 100 GB/month. The active bank is 7.7 MB and the
-  generated reference bank is 9.3 MB, both comfortably inside the limits.
-- `file://` cannot fetch local assets. Opening `index.html` directly still runs
-  the game, but the synth fallback is what you hear. Serve it with
-  `python3 -m http.server` (or Pages) to hear the bank.
-- No server code, no build step, and no CORS setup. The same files work on
-  Cloudflare Pages or any static host.
-
-### Checks run for this change
-
-- `tools/check-syntax.sh` passes.
-- `tools/check-audio.sh` passes both banks: active 116 files, 11 MB; generated
-  116 files, 9.3 MB; every file decodes.
-- In the in-app browser at `http://127.0.0.1:8765`:
-  - 116/116 active assets loaded, 0 failed, 0 console errors.
-  - All 35 named `playSound` entries returned true at close range on the
-    recorded bank, and the original procedural names still resolve.
-  - Spawned passive mobs exposed `soundTimer` values of 17.97 s and 33.52 s,
-    inside the 15–35 s window; the cow, pig, sheep, and chicken sounds all
-    resolved.
-  - A broken heading (`look(NaN)`) and a broken camera did not throw; the voice
-    pool dropped or rejected low-priority sounds as designed.
-  - Water at (-21, 47.2, 0) produced `underwater: true`, `under: 0.22`,
-    `nearWater: true`; a cave at (3, 20, 24) produced `openSky: false`,
-    `cave: 0.127`; a shore at (-22, 49, 0) produced `nearWater: true`,
-    `water: 0.066`; a torch two blocks away produced
-    `fireDistance: 2.00`, `fire: 0.075`. All six ambient loops started.
-  - Volume 25% → 45% and mute/unmute persisted through `localStorage`. The
-    sound effects and music sliders drive their own buses, report through
-    `audio()`, and survive a reload; scrubbing the clock back across a music
-    window inside the 900 ms fade leaves exactly one copy of the bed running.
-- At `http://127.0.0.1:8123` the music windows were read through
-  `__voxelcraft.audio()`: 07:00 opened `music_dawn`, 13:00 `music_noon`,
-  19:00 `music_dusk`, and 01:00 `music_midnight`, each as the only live
-  `music_*` loop once the previous bed's 900 ms fade cleared its slot. All
-  seven tracks under `assets/music/` fetched and decoded
-  (`assets.failed === 0`), including the Opus-in-MP4 `.m4a` container, and the
-  retired Kenney WAVs were never requested. Six dusk re-entries drew variants
-  0, 1, 3, 1, 0, 3 — every song in the folder played, none back to back.
-- The one-shot pass: opening a window started exactly one bed and twenty more
-  simulated seconds did not restart or redraw it (`musicPlayed` true,
-  `musicVariant` unchanged). Scrubbing out and back inside the 900 ms fade
-  revived the same bed — it survived the point where the stop timer would have
-  fired — and leaving for good cleared the slot entirely while
-  `ambient_wind` kept looping. Midnight through dawn and dawn through dusk
-  each left exactly one live `music_*` loop. Music beds set `loop = false`;
-  the natural end of a song falls silent through the same `onended` path that
-  clears the slot, which minutes of real playback confirmed only by code
-  path, not by clock. One regression surfaced and was fixed here: the bus
-  choice had been tied to `looping`, which put music on the ambient bus and
-  ambient beds on the music bus; it keys on the `music_` prefix again. No
-  console errors.
-
-### Notes for whoever picks this up next
-
-- The active bank is built from CC0 packs. Change a slot in
-  `tools/build-cc0-bank.py`, rerun it with the source packs staged, and update
-  `CREDITS.md` if the source changes. The mapping is the authority, not a
-  hand-edited WAV.
-- The synthesized reference bank is not committed. Edit `tools/generate-audio.mjs`
-  and run it to render it again; it writes to `assets/audio-generated/` or a
-  `--out` directory and cannot overwrite the active bank.
-- The bank count and the `AUDIO_ASSETS` manifest must move together. If you add
-  a variant, add the file and the manifest entry, then rerun
-  `tools/check-audio.sh`.
-- The active ambient loops come from SpritePilot and the OpenGameArt underwater
-  pad and are already seamless — do not crossfade them again. The two active
-  *music* loops are the exception: the Kenney tracks are folded tail-over-head
-  by `convert_loop` in `tools/build-cc0-bank.py`, which is the only loop build
-  that takes a crossfade argument. The generated bank's loops, including its own
-  sad and retro music reference slots, are crossfaded from a render one second
-  longer than the loop length.
-- The generated heartbeat in `assets/audio/event_heartbeat_1.wav` and the
-  creeper fuse in `assets/audio/mob_creeper_1.wav` are rendered on demand:
-  `tools/build-cc0-bank.py` runs `tools/generate-audio.mjs --out <tmp>` and
-  takes those two files from the result.
-- The fallback is not dead weight. It is the `file://` path, the partial-deploy
-  path, and the test path; keep it working.
-- `tools/check-syntax.sh` and `tools/check-audio.sh` are the two checks in the
-  repo; both pass.
-
-## Addendum: the source tree
-
-The game was one `index.html` with a single module script for its whole life. It
-is now that page plus `src/`, one file for each thing the game is made of. There
-is still no build step: the page loads a module script whose only line is
-`import './src/main.js';`, and the browser's own module loader follows the imports
-from there. GitHub Pages serves it exactly as before.
+| Coal / Charcoal | 80 | 8 |
+| Oak Planks / Oak Log / Crafting Table | 15 | 1.5 |
+| Stick | 5 | 0.5 |
+
+The furnace screen has input, fuel, and output slots with a burn indicator, and keeps
+cooking while open.
+
+## Farming: wheat, soil and apples
+
+- Seeds come from breaking grass: 25% for 1–2. That, plus the apple, is how a player
+  with no farm gets food started
+- A hoe turns grass or dirt into farmland; a seed sown on it starts at stage 0
+- Wheat has eight growth stages (block ids 21–28), drawn as two crossed quads that grow
+  taller, leaf out, and turn gold at the tip
+- Growth: one attempt per crop per second at a 1.2% chance, only where sky or block
+  light reaches 9 — roughly ten real minutes in the open. A crop's furrow also has to
+  be wet: any liquid (source or ripple) inside the 9×9 square centred on the furrow
+  (`FARMLAND_WET_REACH = 4`, Chebyshev distance) at the furrow's own level or one
+  above. One above is in the rule because a ditch running over the tops of furrows
+  waters them; one below is not, so water under the soil is a swamp, not irrigation.
+  A dry furrow simply stops — no slow crawl — and sowing dry soil works but says so:
+  *Dry soil — crops wait for water within 4 blocks*
+- Harvest: ripe wheat drops 1 wheat and 1–2 seeds; an unripe crop gives back its seed
+  and the furrow stays tilled; digging farmland out from under a crop destroys the crop
+- Wetness is a question asked of the world each tick, never a stored value: a field
+  wets and dries in the same frame the water moves, and an unloaded furrow just reads
+  dry and waits
+- Apples hang in every canopy: a broken leaf rolls one at 2.5%, five times Minecraft's
+  rate, because a food nobody ever finds is indistinguishable from one that does not
+  exist. A leaf gives up nothing else — no leaf block, ever. The roll is a drop entry
+  on the leaf block itself, so every path that destroys a block owes it — a creeper
+  crater included. Apples cannot be farmed (there are no saplings), and have no other
+  use: food or nothing
+
+## Water flow
+
+Water is fifteen block states: a source (`WATER`, id 8), seven resting levels
+(`WATER_FLOW_1..7`, rank 1 deepest, 7 a film), and the same seven carrying their own
+rank while falling (`WATER_FALL_1..7`). Depth lives in the id the way wheat growth does.
+
+One rule decides everything: **a cell's rank is the shortest path cost from a source,
+where a step sideways costs a depth and a step down costs nothing.** A source hands
+depth 1 to the cell below it; a fall feeds nobody sideways — falling water is on its way
+somewhere, not a supply. A cell pours sideways only while its rank is ≤ 7, so a film
+ends instead of running off the edge of the world. The one exception feeding a cell from
+above: overhead counts as pouring in when it is a fall *or the source a fall came from*.
+Sources are never bred — worldgen and the bucket are the only sources — because
+two-flows-make-a-source printed permanent sea into shore notches and flooded them
+forever.
+
+The model accepts under-filling on purpose: digging a channel deeper than one block
+floods its floor with the correct gradient and leaves the rows above dry, where
+Minecraft would fill to the surface. Letting falls feed sideways sprays every waterfall
+off its wall and historically never converged. What the rule guarantees is what the
+player judges: nothing is left unsupported, nothing floods further than it should, and
+every edit reaches a fixed point.
+
+The simulation is reactive, never global:
+
+- An edit queues the cells around it (`queueWaterAround`, called from `setBlock` and
+  `setBlocksBatch`); nothing else is ever looked at, so an untouched ocean costs
+  nothing per frame
+- Resolution is batched Jacobi — every read sees start-of-tick state, so queue order
+  cannot change the result. The tick is 0.15 s with a 512-cell budget
+- Water only moves into air: crops, torches and plants are never displaced
+- A cell waiting on an unloaded neighbour retries twelve ticks, then parks against its
+  own chunk rather than being dropped
+- A chunk arriving is a wake-up call: parked cells re-queue, and saved water around
+  restored overrides re-joins the queue, so a save taken mid-pour resumes the pour.
+  Worldgen water is already a fixed point, so waking it changes nothing
+- Drying a flow cell writes an `AIR` override rather than deleting one
+- Remeshing after a flow is deferred through `flowRemesh` with per-tick and idle
+  budgets, so a hundred-cell flood cannot stall a frame; worst case the frame loop ever
+  runs is one water tick (dt is clamped below the tick length)
+- Reads below the world floor are solid and above the ceiling are air, so sources at
+  either extreme converge
+
+Generation stays dry from the other side too: caves are never carved open under water
+(`cutOpensSea`), so the player's first visit never drains the sea underground.
+
+The renderer follows the levels: each cell draws its surface at `(8 − rank)/8` of the
+cell, shared grid corners average the water cells that meet there so neighbouring
+levels slope into each other, and only the top of a body of water draws a surface —
+resting water presses the cell below up to its ceiling and seals it. A pouring stream
+neither presses the pool it lands in nor loses the pool's own surface, and is drawn
+down to the surface it actually lands on. Flow edits skip lighting: air and water are
+both transparent, so neither can be what changed the light.
+
+Cosmetics — fresnel, foam, animated UVs, caustics, an underwater tint beyond the audio
+muffle — are deliberately unmade until the surfaces stop moving.
+
+### Buckets
+
+Smelt the iron, fold three ingots into a V (`I.I` / `.I.`), dip the empty bucket in a
+source, carry it, pour it elsewhere. Two item ids — `bucket` (stacks to 16) and
+`water_bucket` (never stacks) — rather than a flag, because the save, drops, and the
+merge rule all read the id.
+
+- A bucket drinks only from a full source. A ripple that has run out from its shore
+  stays where it is
+- A source with water beside it is a body's mouth, not a bucketful: it keeps its cell
+  and refills the next bucket, leaving the body's ranks untouched. Only a source with
+  no water in its six neighbours at all is a whole body — a lone puddle or sealed well —
+  and that one cell lifts whole
+- Pouring puts a source in the aimed cell if it is air or already water; the flow code
+  wakes on its own. There is no test for whether that cell is the one you stand in —
+  pour under your feet and the water arrives around your ankles
+- Water is still `breakable: false`: the bucket is the only way to move water, and
+  right click is the only way to fill one. The bucket is dispatched inside placement,
+  after the hoe and the seeds, so an interactive block keeps first refusal: a crafting
+  table behind a puddle opens rather than flooding. The bucket finds water with its own
+  walk of the ray (`raycastWater`), stopping at the first solid
+- No lava bucket (no lava), no water bottle (nothing to fill), and nothing in the world
+  hands out a free bucket
+
+## Containers
+
+Right-click opens containers ahead of any block placement, and each screen keeps the
+armour column and the 2×2 grid alongside the player's own rows.
+
+**Chest** (id 49): eight boards ringed around an empty middle at the table, placed with
+the latch toward whoever placed it, 27 slots that wait for the player to come back.
+Hardness 2.5 with an axe and no tier, so a bare hand takes it apart in 3.75 s and still
+gets the box back. It is structurally a furnace: one id, its facing in the facings map,
+contents in a block entity. Breaking it spills its contents as real item drops and then
+the box — the explosion path owes the same roll as a pickaxe. A chest never ticks
+beyond a stale-state sweep that clears a box whose block is gone; opening a chest
+pauses the world the way the inventory does. Contents do not ride on the dropped box;
+there are no loot chests, because there are still no structures.
+
+## Doors and beds
+
+A wooden door is one item across two cells (ids 29–32): the open pair are separate ids
+that are non-solid, which is what makes a doorway walk-through. Right-click swings it,
+whatever is held. Six planks make three doors at the table. Breaking either half takes
+the whole door with it and pays out one item.
+
+A bed (ids 33/34) is the same two-cell arrangement: the foot takes the aimed cell, the
+head sits one step along a facing pointed away from the placer, both cells carry the
+facing, and both are solid — you walk on a bed, not through it. Three wool over three
+planks makes one at the table. Breaking either half clears the other outright, so a bed
+never pays out twice. It is drawn as geometry: a half-tall mattress across both cells,
+blanket red with a wooden rail, plank ends, and a pillow at the far end of the head.
+
+Right-clicking either half claims the bed, whatever else is held:
+
+- Daytime, or the hour before dusk: the spawn point moves to the bed; the clock is
+  untouched
+- Night (the same test the sky uses, sun below −0.04): the spawn point moves, the
+  screen fades to black over 0.7 s, and the world wakes 1.4 s later at `DAY_START`
+  (0.22, 11:16) with a `Good morning` toast. It is a blackout, not a fast-forward —
+  nothing else is paused, so mobs that were close when you lay down are close when you
+  get up
+- The respawn point outlives the bed: the save carries a `spawn: { x, z }` beside the
+  player's own position; a world without one keeps the world spawn. Because the bed is
+  solid, waking and dying both put the player standing on top of it
+
+## Stairs and ladders
+
+Oak and cobblestone stairs (ids 50/51) are the first shape in the game that is not a
+whole cell: hardness 2, oak asks an axe, cobblestone a pickaxe at tier 1; six boards in
+a V saw four stairs, Minecraft's pattern and numbers. The facing points at the low step,
+turned toward the placer, so a line of stairs climbs away from whoever stood at the
+bottom. Structurally they are facing blocks like the chest — one id per family, no new
+save key.
+
+- `cellCollidesAt` is the collision primitive: a stair answers with two boxes — half a
+  block tall across the whole cell, and the upper half over the side away from the
+  facing — and the player and mobs both walk their raw boxes through it. Combined with
+  `PLAYER_STEP_HEIGHT = 0.6`, a staircase is something a player walks up and a mob
+  hops up; nothing else in the world is sub-block
+- The step is drawn on the opaque pass (eleven quads) with the tile sliced, so the two
+  boxes read as one block sawn along the step. Stairs are `opaque: false`: light gets
+  through the open corner and neighbours do not cull against the step. Item icons show
+  the step in side elevation rather than an isometric cube
+- Deliberate limits: the raycast and outline are whole cells, one cell one block (no
+  waterlogging), no upside-down state (facings carry a direction, not a flip), stairs
+  float where you put them, and placing against a bottom face is refused — the
+  engine's rule for every block
+
+Ladders (id 52) are the other half of sub-block: a cell that is climbable and blocks
+nothing. Hardness 0.4 with an axe; `solid: false, opaque: false, cutout: true`; drawn
+as one double-sided quad standing 1/16 off the wall, wearing the runged tile. Seven
+sticks make three ladders.
+
+- The facing is the wall's, not the placer's: `ladderFacingFor` reads the clicked face,
+  and the top or bottom of an existing ladder borrows that ladder's facing when the
+  wall carries on, so columns build upward. A ladder with no wall refuses placement:
+  *A ladder needs a wall to hang on* — and removing the wall never drops the ladder:
+  this game has no support rule anywhere
+- `ladderHolding` is a question about the feet cell (with a hundredth of upward
+  slack), never a collider. On a ladder the player climbs at Minecraft's 2.3572
+  blocks/s with jump, descends at the same speed with the backward key (this game has
+  no sneak key — Shift latches sprint), gravity is off, the away-from-wall velocity is
+  cancelled while descending, and touching a ladder mid-fall cancels the fall
+- Mobs do not climb; the raycast and outline are whole cells; the plank itself has no
+  collision
+
+## Animals and mobs
+
+Mobs are entities separate from the voxel grid, built from box geometry with
+16×16 procedural textures: head, body, four legs, leg-swing walk and head bob. They
+feel gravity and block collision, hop one block (and take the stairs' half-blocks),
+flee briefly when hit, burst into particles and drop items when killed, and take
+player attacks with knockback.
+
+Population is a budget:
+
+- `MOB_CAP` 32 total, split into `PASSIVE_CAP` 10 and `HOSTILE_CAP` 16 that add up to
+  no more than the total with no reservations — a healthy herd can never decide how
+  dangerous the night is
+- Passive animals — cows, pigs, sheep, chickens — spawn on grass in plains, forest, and
+  rainforest as chunks load. They are deliberately scarce: fewer than half of grassy
+  chunks hold a herd (38%), a herd is a lone animal 80% of the time and a pair 20%, and
+  the refill sweep runs every 5 s. There is no breeding and passives never despawn on a
+  roll, so these knobs are the whole supply: meat is a find, not a stipend, and the
+  wheat field is the reliable half of the food economy. A chunk's herd roll is spent
+  only while the player is close enough to have seen it, so herds arrive as the player
+  travels
+- Zombies spawn on solid ground at night or in dark places — the light level at the
+  spot below a threshold, so unlit caves spawn zombies even at noon and torch-lit
+  areas are safe — in a band 20 to 48 blocks around the player. Night arrives in
+  batches: up to three hostiles per 1.4 s after dark (one per 3.6 s by day), with the
+  night's candidates weighted 85% to the surface. Creepers spawn rarely under the same
+  conditions
+- Zombies walk directly at the player within detection range (step-up steering, no full
+  pathfinding) and deal contact damage on a cooldown. Creepers approach, then hiss,
+  flash, and explode on a 1.55 s fuse lit at about 2.5 blocks in three dimensions with
+  clear sight — leaves and water do not break the sight line, walls and closed doors
+  do — destroying nearby non-bedrock blocks, which drop as items. A creeper sealed
+  too tight suffocates before it lights
+- Hostile mobs burn under open sky at dawn (sheltered in darkness they stay) and keep
+  giving up and vanishing on a roll — 25% every 5 s once idle and 32+ blocks away in
+  three dimensions — so a cave under the player's base cannot hold the entire hostile
+  budget. Everything despawns at 96 blocks in three dimensions
+
+Drops: cows, pigs and sheep drop Raw Beef (and Leather from cows); a woolly sheep
+drops one wool on top of its meat, a shorn one meat only; chickens drop feathers.
+Raw beef must be cooked. Shearing is the other way to take wool — see Shearing.
+
+## Shearing
+
+Shears (2×2, two ingots point-to-point) are the one tool with no tier: they match no
+block's tool, mine at hand speed, and spend no durability while mining. 64 uses, stack
+of 1. Either button shears — right click is the deliberate use, but the left button
+answers to it too, and shears never wound a sheep at all on either path; killing one
+for its fleece takes any other tool. A woolly sheep under the crosshair comes off
+whole: 1–3 wool, one durability, the animal bleats and trots away bare. An already
+shorn sheep says so and costs nothing; on any other mob the left button swings like a
+generic tool (2 damage, 2 durability) and the right click says *Nothing to shear
+here*.
+
+Reach is judged for the animal on its own ray, with clear air required to the fleece —
+a sheep on a slope is not disowned because the ground in front of it is nearer — and a
+nearer block still wins a right click outright: a crafting table with a cow pressed
+behind it opens. Holding the left button down answers once, then swings in silence.
+
+Fleece never grows back: a fleecy hillside is worth fencing. The shorn model drops the
+fleece layer and shows bare skin. Wool's only use is the bed.
+
+## Block changes and persistence
+
+Edited blocks override generated terrain and persist across reloads:
+
+- Destroyed and placed blocks are stored by world coordinate ("x,y,z" keys) and applied
+  after procedural generation whenever a chunk regenerates
+- Block entities (furnaces, chests) and facings live in their own maps keyed by
+  position; block contents survive only while the saved block diff still says the block
+  stands there — at load time the chunks are not made yet, so the override is the only
+  witness
+- Saves go to `localStorage` under `voxelcraft:world:v4` (`SAVE_SCHEMA` 4): seed, block
+  diff, block entities (furnace rows; `entities.chests`, one 57-field row per box),
+  player position, hunger/saturation/exhaustion, and the optional `spawn: { x, z }`.
+  Autosave runs every 25 s over dirty state; a death-and-respawn marks the save dirty
+  so a fed stomach survives a closed tab
+- Old saves are not migrated. A save under any older key boots a fresh world and says
+  so on screen; the legacy keys are cleared
+- Stored hunger counters are pulled back inside their invariants on load (saturation
+  clamped to the food it cushions, out-of-range exhaustion reset)
+
+## Rendering and performance
+
+- Each chunk builds a small number of meshes grouped by pass: opaque, cutout
+  (leaves, glass, doors, beds, ladders, torches, crops), and water. Sub-cell shapes —
+  stairs, the ladder plate, water surfaces at partial height — get their own `append*`
+  on the pass their material belongs to
+- Hidden faces between solid blocks are not drawn; only faces exposed to air, water,
+  leaves, or transparent blocks are. Water is drawn at the height its level fills and
+  blends across shared grid corners
+- Chunk meshes rebuild on edits, including neighbours across chunk borders; light
+  updates and remeshes are incremental and localized so a torch never hitches a frame
+- Chunk loading is incremental: a time budget (8 ms) per frame, a queue prioritized
+  closest-first, geometries and materials disposed on unload, frustum culling, fog at
+  the render edge. Several hundred loaded chunks stay smooth on typed-array per-chunk
+  data
+- Target: smooth 60 fps in modern Chrome and Firefox
+
+## Lighting and atmosphere
+
+Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
+
+- Sky light: 15 open to the sky, propagating down and spreading into overhangs and cave
+  mouths with falloff; deep caves fade to near-black
+- Block light: torches emit 14, lit furnaces 13, spreading by flood fill losing one
+  level per block; brightness is the max of sky and block light
+- The sky contribution scales with the clock, so the surface darkens at night while
+  torch light stays constant; crops need light 9 or more
+- Water and non-opaque blocks pass light: a column of falling water reads sky 15 top to
+  bottom; light comes through the open corner of a stair
+- Light updates stay incremental: placing a torch updates the affected area and rebuilds
+  only those chunk meshes
+- Plus ambient light, directional sunlight, fog matching the sky, a sky gradient, and
+  sun and moon discs in the sky
+
+## Day/night cycle
+
+- One full cycle is 20 real minutes, Minecraft's length: about 10 up, 10 down, half a
+  minute of dusk and dawn at each end. `DAY_START` is 0.22 (11:16 on the in-game clock)
+- Sky, fog and ambient light transition through sunset colours to dark navy; the sun
+  and moon cross the sky
+- Night triggers hostile spawning; dawn burns exposed hostiles away
+- Sleeping in a bed at night skips to `DAY_START` — see Doors and beds
+
+## HUD and UI
+
+- Crosshair; hotbar with icons, counts and selection; heart bar; hunger shanks with a
+  jitter animation; ten armour shields (hidden when empty); durability bars; FPS
+  counter and current chunk coordinates for debugging; toasts for every refusal and
+  confirmation
+- Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
+  (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
+  debug give shelf
+- A brief instructions overlay on first load — click to lock, WASD, mouse, Space,
+  Shift/Ctrl sprint, left break/attack, right place/use, 1–9 and wheel for the hotbar,
+  E for inventory — dismissed by the click that locks the pointer
+- A pause panel carries the volume sliders (Master / Sound effects / Music) and the
+  control list; it is click-to-resume
+- A `G` debug shelf lists every item — blocks first, then materials, food, tools and
+  armour — as a nine-wide grid of icons: left click adds a whole stack, right click
+  one, on mouse and pad alike. It is a debug option, not a shop: the shelf never
+  empties, and a full pack says *No room in your pack*
+- `M` mutes audio; the debug stack reads sprint state and sound state
+
+## Particles and feedback
+
+- Block destroyed: removed at once, with small colored cubes scattering outward and
+  fading, colored to match the block
+- Mobs: hit particles and a brief red flash on damage; creeper explosion particles
+  (with camera shake and a flash); occasional ember flickers above torches and the
+  mouth of a burning furnace
+
+## Audio
+
+Every sound goes through the Web Audio API, as three layers:
+
+- The active CC0 bank in `assets/audio/`: 108 mono 16-bit WAVs (7.7 MB) built by
+  `tools/build-cc0-bank.py` from Kenney, OpenGameArt and SpritePilot packs — 28
+  footsteps (7 materials × 4 variants), 24 breaks (8 materials × 3), 16 places
+  (8 × 2), 11 mob voices, 24 event one-shots, and 5 ambient beds. `CREDITS.md`
+  records pack, author and slot mapping; `AUDIO_ASSETS` in `src/audio.js` is the
+  manifest. Two slots — the heartbeat and the creeper fuse — are sampled from the
+  synthesizer because no CC0 pack matches them
+- The synthesized reference bank (116 slots, 9.3 MB) is not committed;
+  `tools/generate-audio.mjs` renders it on demand and never touches `assets/audio/`
+- The procedural synthesizer, the runtime fallback: `audioSample` returns false when
+  the bank is not loaded, a name is missing, the page is on `file://`, or the voice
+  pool is full, and the caller plays the old synthesized voice instead. The game is
+  never silent on a partial deploy
+
+Five events are always synthesized — pickup, crafting, jump, and the screen
+open/close pair — one short dry sine each at a fixed pitch, because a sampled attack
+plus random variants plus detune is harshness at thirty repetitions a minute. Every
+sampled one-shot plays at `AUDIO_SAMPLE_TRIM` (0.5, −6 dB); the trim skips the
+synthesizer, the ambient beds and the music.
+
+| Event | Contour | Length | Gain | Bus |
+| --- | --- | --- | --- | --- |
+| Jump | 300 → 430 Hz | 0.12 s | 0.05 | sfx |
+| Pickup | 540 → 500 Hz | 0.14 s | 0.055 | ui |
+| Screen open | 420 → 640 Hz | 0.18 s | 0.065 | ui |
+| Screen close | 640 → 420 Hz | 0.18 s | 0.065 | ui |
+| Crafting | 680 Hz held | 0.22 s | 0.06 | ui |
+
+The graph is `voice → sfx/ambient/ui/music bus → low-pass muffler → master gain →
+compressor → destination`, with a generated stereo impulse response feeding a convolver
+send on one-shots (ambient bypasses it). The muffler is the underwater switch: 20 kHz
+in air, 620 Hz with the head in water. `audioSpatial` gives distance-squared gain, a
+yaw pan and a duller cutoff with distance; `audioOcclusion` walks the voxel line —
+two solid cells occlude. The voice pool is priority-based (footsteps 0, blocks/UI 1,
+mobs 2, player hurt 3, explosions 4) and stops the weakest voice rather than dropping
+the new sound. Nothing reaches an `AudioParam` unguarded: `audioNumber` puts a finite
+fallback in front of every pan, gain, pitch and distance, so a NaN coordinate sounds
+centred instead of throwing mid-frame.
+
+Ambient beds mix every 0.5 s from the environment: wind by height/outdoors, water by a
+9×9×5 sample around the feet, cave by the lack of open sky and depth, fire by the
+nearest torch or burning furnace within 9 blocks, and underwater.
+
+Music is scheduled by the in-game clock, not the environment: each six-hour window —
+dawn, noon, dusk, midnight — draws one random song from its folder under
+`assets/music/` and plays it once, then silence until the next window. Music rides its
+own bus, plays through once (`loop = false`), has no synthesizer behind it, and re-rolls
+to avoid repeating last night's song.
+
+Animal and hostile calls are quiet on purpose: each passive idles 15–35 s with a shared
+4–8 s gap at 0.22 gain; hostiles roll 11–24 s with a shared 6–11 s gap; pain is scaled
+per species (`MOB_HURT_GAIN`: cow 0.53, chicken 0.6, pig/sheep 0.7, hostiles 1) since
+the hurt call is also the death cry; a burning mob's hurt calls are gapped to 2.6 s
+even though the burn ticks every 0.65 s.
+
+Settings: three sliders in the pause panel — Master (70%), Sound effects (100%), Music
+(70%) — persisted under `voxelcraft:audio:v1`; `M` mutes the master; the context
+suspends when the tab hides. For GitHub Pages: relative fetch paths, a committed
+`.nojekyll`, never Git LFS (Pages serves the pointer, not the sample), the whole bank
+far inside the Pages budget; `file://` runs the game on the synthesizer alone.
+
+## Technical requirements and source tree
+
+The game is `index.html` plus a graph of native ES modules — no build step between the
+repository and the page:
 
     index.html          the document: canvas, overlays, screen furniture, the
                         three import map, and one import
+    styles.css          HUD, screens, overlays
     src/main.js         the composition root (see below)
     src/config.js       every tuning number and the block ids
     src/noise.js        hashing and gradient noise
@@ -2826,7 +832,7 @@ from there. GitHub Pages serves it exactly as before.
     src/drops.js        item entities
     src/farming.js      farmland and crops
     src/aim.js          the crosshair's block ray and crack
-    src/interaction.js  mining, placing, doors, buckets, hoes, seeds
+    src/interaction.js  mining, placing, doors, beds, buckets, hoes, seeds
     src/combat.js       the crosshair's mob ray, swings and shearing
     src/mob.js          animals, hostiles, spawning, explosions
     src/fx.js           particles, embers, ambient sound
@@ -2838,125 +844,55 @@ from there. GitHub Pages serves it exactly as before.
     src/input.js        keyboard, mouse, pointer lock, the pad, the walk
     src/save.js         the record, the restore, autosave
     src/say.js          one way for any layer to tell the player something
+    assets/audio/       the active CC0 bank
+    assets/music/       the scheduled music, one folder per clock window
+    tools/              the bank builders, the checks, and the snapshot harness
+    CREDITS.md          source and licence record for the active bank
 
-### The one rule
+**The one rule: imports point down.** `main.js` imports everything; nothing imports
+`main.js`. A module never imports a module that imports it, and no module's state is
+touched from outside its subject: the pack is `inventory.js`'s, the crosshair is
+`aim.js`'s, the held stack is `cursor.js`'s. When two layers need each other, `main.js`
+is where they meet, through seams: a module declares a small contract object whose
+verbs default to doing nothing and exports a `set…` for it; `main.js` registers the
+real verbs at bootstrap. A layer that only needs to read something small gets a verb
+(`mobTarget()`, `cursorCarried()`, `screen()`) rather than an import it might write.
+`main.js` is the only file that knows the order things happen in: the world boots, the
+seams are handed out, time starts.
 
-Imports point down. `main.js` imports everything; nothing imports `main.js`. A
-module never imports a module that imports it, and nothing outside a module's own
-subject knows its state: the pack is `inventory.js`'s, the crosshair is
-`aim.js`'s, the held stack is `cursor.js`'s, and everything else asks.
+Standing invariants:
 
-When two layers need each other, the page used to be the place they met. Now
-`main.js` is, through a seam: a module declares a small contract object whose
-verbs default to doing nothing, and exports a `set…` for it. `main.js` registers
-the real verbs at bootstrap. The contracts are `setAudioListener`, `setFxView`,
-`setHungerPainter`, `setHealthPainter`, `setDamageFlash`, `setArmorPainter`,
-`setPackPainter`, `setItemPickup`, `setAimBlocked`, `setInteractionView`,
-`setCursorView`, `setSaveArrival`, `setSaveSpawn`, `setBlockEntityView`,
-`setMobWorld`, `setDeathView`, `setRespawnArrival`, `setInputView`,
-`registerSpeaker`, and `heldFrame`. A layer that only needs to *read* something
-small gets a verb instead — `mobTarget()`, `aimAllowed()`, `cursorCarried()`,
-`screen()` — rather than an imported binding it might write.
+- Block ids are appended and never renumbered, enforced at runtime
+- `cellCollidesAt` is the answer to "does this cell get in the way"; anything sub-block
+  routes through it. `ladderHolding` answers "does this cell hold me" and must never
+  become a collider
+- A container screen registers in one place per concern — the screen list, its block
+  guard, its grid, quick-move, the pad sections, the storage column — so a future
+  barrel wants the same table, not a third copy
+- The bank and the `AUDIO_ASSETS` manifest move together with the build script's
+  recipes and `CREDITS.md`
 
-`main.js` is therefore the only file where two distant subjects are named in the
-same sentence, and the only file that knows the order things happen in: the world
-boots, then the seams are handed out in one block, then time starts.
-
-### Checks
+Checks in the repository:
 
     ./tools/check-syntax.sh    every module parses
     ./tools/check-imports.sh   no module uses a name it does not import
-    ./tools/check-audio.sh     the bank and the manifest agree
+    ./tools/check-audio.sh     the banks and the manifest agree
 
-`tools/split-modules.mjs` was the tool that carved sections out of the page one
-at a time; it now reports that the page is a loader and there is nothing left to
-split. `tools/js-scope.mjs` still holds the rules for what counts as a name and a
-reference, and the import checker still uses them.
+`tools/snapshot-check.js` compares a live world against `tools/snapshot-baseline.json`,
+and a change that moves code between files is expected to keep the game runnable at
+every commit and leave that digest alone. The game must run without console errors in
+modern Chrome and Firefox.
 
-A change that moves code between files is still expected to keep the game
-runnable at every commit and to leave the digest alone: `tools/snapshot-check.js`
-compares a live world against `tools/snapshot-baseline.json`.
+## Debug surface
 
-## Muting the repeated events — addendum
-
-Five events were retuned against the mix by taking their recordings away
-altogether: picking an item up, crafting, jumping, and opening and closing a
-screen. Each is now one `audioTone` sine with no reverb send, played at the same
-pitch every time, because a sampled attack plus a random variant plus ±3% detune
-is audible harshness when the sound fires thirty times a minute.
-
-| event | contour | length | gain | bus |
-|---|---|---|---|---|
-| jump | 300 → 430 Hz | 0.12 s | 0.05 | sfx |
-| pickup | 540 → 500 Hz | 0.14 s | 0.055 | ui |
-| screen open | 420 → 640 Hz | 0.18 s | 0.065 | ui |
-| screen close | 640 → 420 Hz | 0.18 s | 0.065 | ui |
-| crafting | 680 Hz, held | 0.22 s | 0.06 | ui |
-
-The contours carry the meaning: the screen pair is one tone run forwards and
-backwards, the jump rises where a pickup falls, and crafting is the only one that
-does not glide at all — a held note, longer than the rest, so finishing a recipe
-is not mistaken for another mark. Measured against what they replaced, the pickup
-blip is 19.8 dB below the confirmation chime it displaced, the craft tone 18.7 dB
-below the chime-and-click mix, the screen pair 14 dB below the click-and-rattle
-pair, and the jump 11.7 dB below the woosh.
-
-Landing thuds, block interactions, footsteps, mob voices and the UI click stay
-sampled. Only the five sounds above were quietened, and the landing thud staying
-a heavy spatial sample is what lets the jump stay a light self-sound.
-
-Pain is now scaled per species through `MOB_HURT_GAIN`, described under *Passive
-animals*, because the animals' hurt call — which is also their death cry — was
-playing at the hostile level.
-
-### The sampled layer came down too
-
-With five of the most frequent sounds reduced to single tones, the remaining
-recordings were carrying the mix on their own, so every sampled one-shot is now
-played 6 dB quieter through `AUDIO_SAMPLE_TRIM` (0.5). It is applied once,
-inside `audioSample`, rather than at the twenty-odd call sites: one multiplier
-keeps the shaping of the bank intact — a footstep still under a block break, a
-block break under an explosion — and only moves the floor they are all measured
-against.
-
-It reaches footsteps, breaks, places, mining ticks, landing thuds, mob and
-animal voices, hurts, eating, chests, doors, buckets, shears, hoes, furnaces,
-splash, swimming, the explosion sample and the UI click. It deliberately does
-not reach the procedural fallbacks, the five ambient beds or the scheduled
-music, so `file://` still plays the synthesizer at its own levels and the world
-keeps breathing at the volume it had.
-
-Two sounds layer synthesis on top of a sample and keep those layers at their old
-gain: the explosion's band-passed crack plus 74 → 30 Hz drop, and the 64 → 46 Hz
-bed under the creeper's fuse. Both now sit higher in their own sound than they
-used to. Trimming those `audioTone` gains by the same 0.5 is the fix if it
-reads wrong.
-
-### What came out of the bank
-
-Eight slots with no caller were deleted rather than left to be fetched and
-ignored: `event_pickup_1/2`, `event_craft_1`, `event_jump_1`,
-`event_ui_open_1`, `event_ui_close_1`, and the two retired Kenney music loops.
-The active bank went from 116 files and 11 MB to 108 files and 7.7 MB, and
-`tools/build-cc0-bank.py` lost the recipes for them along with the Kenney Music
-Loops pack, which nothing uses any more. The Interface pack is still credited
-for the UI click, though its confirmation file is now used by nothing.
-`CREDITS.md` no longer credits packs whose files are gone, and records
-the five synthesized events instead.
-
-`tools/check-audio.sh` now checks the two banks against different counts —
-`EXPECTED_ACTIVE` and `EXPECTED_GENERATED` — because the reference bank still
-carries every slot the synthesizer has a profile for, including the ones the
-active bank dropped. A slot removed from `AUDIO_ASSETS` wants its recipe removed
-from the build script in the same change, or the next bank rebuild puts the file
-back and the count check fails.
-
-### Checks run for this change
-
-- `tools/check-syntax.sh` and `tools/check-imports.sh` pass.
-- `tools/check-audio.sh` passes: active 108 files, 7.7 MB; generated 116 files,
-  9.3 MB; every file decodes.
-- `python3 -m py_compile tools/build-cc0-bank.py` parses the pruned builder.
-- The pickup, screen and jump levels were measured by decoding the samples they
-  replaced and rendering the same envelope the `audioTone` path produces; the
-  dB figures above are RMS ratios of those two.
+`window.__voxelcraft` exposes the whole game to the console and to scripted checks:
+`screenshot`-grade hooks for the world (`getBlock`, `setBlocksBatch`, `sampleColumn`),
+the player (`stats()`, `teleport`, `look`, `hunger`, `eat`, `armour`, `equip`,
+`sprintState`), mining (`breakTime`, `mine`, `give`, `durability`), containers
+(`openFurnace`, `furnace`, `chest`, `chestList`, `setChestSlots`), farming (`tillDirt`,
+`plantSeed`, `crops`, `soilWet`), water (`waterFlowCheck` — six rigs replayed in a
+shadow map, which fails if the settlement rule is broken), mobs (`mobs`, `mobInfo`,
+`spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), time and
+simulation (`setTime`, `setTimeScale`, `tick`, `simulate(seconds, input)`), screens and
+the shelf (`screen`, `openGive`, `giveList`), and audio (`audio`, `setVolume`).
+The `G` give shelf is the human-facing half of the same door.
