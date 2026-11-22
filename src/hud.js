@@ -1631,11 +1631,36 @@ export function showTransmission(lines) {
 }
 
 /**
+ * The line noise that makes a transmission spotty: some of the words arrive
+ * with one letter lost and a printable character in its place. Never more than
+ * one per word, never in a word too short to survive losing one, never at the
+ * start or the end of it — a word keeps its first and last letter and a reader
+ * still holds its shape. The swap keeps the line exactly as long as it was, so
+ * nothing re-wraps halfway through being typed.
+ */
+const TRANSMISSION_GLITCH_CHARS = '#%&*+?@~^$![]{}=<>|/';
+const TRANSMISSION_GLITCH_ODDS = 0.18;
+const TRANSMISSION_GLITCH_MAX_PER_LINE = 3;
+
+function spotTransmissionLine(line) {
+  let lost = 0;
+  return line.replace(/[A-Za-z]{4,}/g, (word) => {
+    if (lost >= TRANSMISSION_GLITCH_MAX_PER_LINE) return word;
+    if (Math.random() >= TRANSMISSION_GLITCH_ODDS) return word;
+    lost++;
+    const at = 1 + ((Math.random() * (word.length - 2)) | 0);
+    const noise = TRANSMISSION_GLITCH_CHARS[(Math.random() * TRANSMISSION_GLITCH_CHARS.length) | 0];
+    return word.slice(0, at) + noise + word.slice(at + 1);
+  });
+}
+
+/**
  * Types one line into the panel, a character at a time, until the transmission
  * it belongs to is superseded or closed. Spaces are silent — nothing clicks when
  * the thumb hits the space bar — and a full stop costs the typist a beat.
  */
-function typeTransmissionLine(said, text, token) {
+function typeTransmissionLine(said, line, token) {
+  const text = spotTransmissionLine(line);
   const p = document.createElement('p');
   const caret = document.createElement('span');
   caret.className = 'transmission-caret';
