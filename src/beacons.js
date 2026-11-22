@@ -27,7 +27,7 @@ import { BLOCKS } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { setRecipesTransmitted } from './crafting.js';
 import {
-  B, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_TARGET_DISTANCES, CHUNK_SIZE,
+  B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_TARGET_DISTANCES, CHUNK_SIZE,
   DIFFICULTY_MAX, DIFFICULTY_XZ_STEP, DIFFICULTY_Y_STEP, SEA_LEVEL, WORLD_HEIGHT,
   WORLD_SEED, blockIndex, clamp
 } from './config.js';
@@ -317,7 +317,7 @@ export function tryLightBeacon(x, y, z) {
   markWorldDirty();
 
   raiseBeaconBeam(site);
-  spawnBurstParticles(x + 0.5, y + 1.2, z + 0.5, 0x7fe3ef, 24, 4.2);
+  spawnBurstParticles(x + 0.5, y + 1.2, z + 0.5, beaconColor(site.index), 24, 4.2);
   playBeaconSound();
 
   deliverTransmission(TRANSMISSIONS[index]);
@@ -350,28 +350,58 @@ export function restoreBeaconProgress(activated) {
    in any chunk: its position is known whether or not the monument's column is
    in memory, and a beam the renderer only sees when the ground is loaded
    would be a beam that flickers on a long walk home. */
+/* The colour this monument wears when it runs. A mission with more monuments
+   than there are colours keeps the original teal rather than going colourless. */
+function beaconColor(index) {
+  return BEACON_COLORS[index] ?? 0x8fe8f2;
+}
+
 const beams = new Map();
-let beamGeometry = null;
-let beamMaterial = null;
+const beamMaterials = new Map();
+let beamGeometries = null;
+
+/* One pair of materials per colour, shared by whichever monument wears it. The
+   wide shell adds its light over everything behind it, and the narrower core is
+   the part whose hue survives a bright daytime sky: additive alone washes an
+   orange column to near-white against the blue, which is how all five beams
+   used to read the same. */
+function beamMaterialsFor(color) {
+  const cached = beamMaterials.get(color);
+  if (cached) return cached;
+  const pair = {
+    glow: new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+    }),
+    core: new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.62, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.NormalBlending, fog: false
+    })
+  };
+  beamMaterials.set(color, pair);
+  return pair;
+}
 
 function raiseBeaconBeam(site) {
   const key = site.x + ',' + site.z;
   if (beams.has(key)) return;
-  if (!beamGeometry) {
-    // An open-ended cylinder from the emitter to the top of the world: eight
-    // faces, double-sided, additive over everything it passes through.
-    beamGeometry = new THREE.CylinderGeometry(0.45, 0.45, WORLD_HEIGHT, 8, 1, true);
-    beamMaterial = new THREE.MeshBasicMaterial({
-      color: 0x8fe8f2,
-      transparent: true,
-      opacity: 0.32,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: false
-    });
+  if (!beamGeometries) {
+    // Open-ended cylinders from the emitter to the top of the world: eight
+    // faces each, double-sided, and shared by all five monuments.
+    beamGeometries = {
+      glow: new THREE.CylinderGeometry(0.45, 0.45, WORLD_HEIGHT, 8, 1, true),
+      core: new THREE.CylinderGeometry(0.24, 0.24, WORLD_HEIGHT, 8, 1, true)
+    };
   }
-  const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+  const materials = beamMaterialsFor(beaconColor(site.index));
+  const beam = new THREE.Group();
+  const glow = new THREE.Mesh(beamGeometries.glow, materials.glow);
+  const core = new THREE.Mesh(beamGeometries.core, materials.core);
+  // The core is drawn last so the hue sits inside the bloom rather than under
+  // it, whichever order the renderer decides to walk the transparent list in.
+  glow.renderOrder = 1;
+  core.renderOrder = 2;
+  beam.add(glow, core);
   beam.position.set(site.x + 0.5, site.y + 1 + WORLD_HEIGHT / 2, site.z + 0.5);
   scene.add(beam);
   beams.set(key, beam);

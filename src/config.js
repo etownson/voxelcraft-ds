@@ -224,6 +224,15 @@ export const BEACON_COUNT = 5;
 export const BEACON_TARGET_DISTANCES = [40, 120, 220, 340, 470];
 /** One essence per this many blocks from SP0; the purse opens at beacon 1's price. */
 export const BEACON_ESSENCE_PER_BLOCK = 4;
+/**
+ * The colour each monument wears once it runs, in mission order: the walk out
+ * from SP0 steps through the spectrum, so a lit beacon says which one it is
+ * from the far side of the world. The beam and the burst an activation throws
+ * both wear it; the machine's own shell stays cast metal either way.
+ */
+export const BEACON_COLORS = Object.freeze([
+  0xff8a2e, 0xffd23b, 0x4bd06a, 0x3d8bff, 0x6a5cff
+]);
 
 /**
  * Enemy difficulty reads three axes off the ground a mob spawns on: its X and
