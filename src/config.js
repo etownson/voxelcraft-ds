@@ -217,13 +217,31 @@ export const B = Object.freeze({
 /** The five monuments the mission runs between, beacon 1 nearest the spawn. */
 export const BEACON_COUNT = 5;
 /**
- * How far from SP0 each monument aims to stand. These are targets rather
- * than exact figures: the chosen column must be dry, flat and cave-free, so
- * the search walks outward from here until the ground agrees.
+ * How far each monument stands from the one before it, in blocks: the mission
+ * is a chain of legs, 40 out to 600, rather than a set of rings around the
+ * spawn. Beacon 1 keeps its small first hop so the walker learns the machine
+ * before they leave home ground. The chain runs outward from SP0, so the sum
+ * of these is roughly how far the last monument stands from where they fell,
+ * and the price follows that distance.
  */
-export const BEACON_TARGET_DISTANCES = [40, 120, 220, 340, 470];
-/** One essence per this many blocks from SP0; the purse opens at beacon 1's price. */
-export const BEACON_ESSENCE_PER_BLOCK = 4;
+export const BEACON_TARGET_HOPS = [40, 200, 300, 400, 600];
+/**
+ * The monuments march outward: each beacon's bearing is the direction the
+ * chain is already travelling, wobbling by no more than this either side. Kept
+ * narrow on purpose. Wide enough and the chain curls back on itself, so a late
+ * beacon sits closer to the spawn than an early one and the price curve folds;
+ * narrow enough and the far end of the mission is genuinely the far end of the
+ * world.
+ */
+export const BEACON_OUTWARD_BEARING = (26 * Math.PI) / 180;
+/**
+ * One essence per this many blocks from SP0; the purse opens at beacon 1's
+ * price. The divisor is deliberately mean. A beacon should cost enough that
+ * the walker has to live in the band they have already unlocked — farm it,
+ * fortify it, learn it — rather than walk up to the next monument and pay for
+ * it out of the walk there.
+ */
+export const BEACON_ESSENCE_PER_BLOCK = 1.5;
 /**
  * The colour each monument wears once it runs, in mission order: the walk out
  * from SP0 steps through the spectrum, so a lit beacon says which one it is
@@ -238,12 +256,20 @@ export const BEACON_COLORS = Object.freeze([
  * Enemy difficulty reads three axes off the ground a mob spawns on: its X and
  * Z distance from SP0 always, and its depth below sea level on top of that,
  * because the design only charges for the dark once the player has left the
- * surface. One unit of difficulty per this many blocks of travel.
+ * surface. One unit of difficulty per this many blocks of travel. The step is
+ * wide because the mission now runs a long way out: at 300 the ramp is still
+ * climbing when the walker reaches the last monument, rather than saturating
+ * halfway to the second one.
  */
-export const DIFFICULTY_XZ_STEP = 64;
+export const DIFFICULTY_XZ_STEP = 300;
 export const DIFFICULTY_Y_STEP = 48;
-/** A ceiling on the total, so the far corners stay survivable rather than absurd. */
-export const DIFFICULTY_MAX = 3;
+/**
+ * A ceiling on the total, so the far corners stay survivable rather than absurd.
+ * It is set to be reached out past the last monument, which leaves the far end
+ * of the chain the harshest ground in the world rather than the same ground as
+ * the band before it.
+ */
+export const DIFFICULTY_MAX = 6;
 /** Health, attack and essence multiply by 1 + this times the difficulty. */
 export const DIFFICULTY_HEALTH_SCALE = 0.6;
 export const DIFFICULTY_DAMAGE_SCALE = 0.5;

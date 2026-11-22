@@ -139,7 +139,11 @@
       sp0: b.sp0.x + ',' + b.sp0.z,
       activated: b.activated,
       sites: b.sites.map(function (s) {
-        return s.index + '@' + s.at.join(',') + '/' + s.distance + 'blocks/' + s.cost + 'essence/' + (s.lit ? 'lit' : 'dark');
+        // The hop is the leg that reaches this monument and the distance is how
+        // far it stands from home: the mission's pacing lives in both numbers,
+        // so a placement change that quietly shortens a leg shows up here.
+        return s.index + '@' + s.at.join(',') + '/hop' + s.hop + '/' + s.distance +
+          'blocks/' + s.cost + 'essence/' + (s.lit ? 'lit' : 'dark');
       }),
       next: b.next ? b.next.at.join(',') + '/' + b.next.cost : 'none'
     };

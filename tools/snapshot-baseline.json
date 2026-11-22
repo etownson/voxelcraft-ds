@@ -1,5 +1,5 @@
 {
-  "note": "Golden state for the module refactor. Produced by tools/snapshot-harness.js through window.__voxelcraft on a wiped world (WORLD_SEED 20261116, version 0.1.0-milestone-13): the mission sections insist on a world that has heard no transmission, so a restored save cannot stand in. The strict block must reproduce byte for byte across a pure code move; a mismatch names the section, which names the commit. Field by field: stream is loaded/meshed chunks and the player's feet, columns is a lattice of world generation, blockDefs is the block table, build is setBlock plus light propagation, clock is the day cycle, inventory is the item table, recipes is the recipe table with the beacon that transmits each one and whether the walker has heard it yet, beacons is SP0 with the five monument columns and what each wants, beaconGate is the lock a fresh world is under plus beacon 1 lit by a real right click, crafting/smelting/farming are the item systems, physics is movement and fall damage, water is the flow self-check, vitals is combat and hunger maths, save is persistence. `loose` fields (fps, triangles, mobCount, savedAt) are deliberately absent: they depend on real elapsed time and on mob AI's Math.random.",
+  "note": "Golden state for the module refactor. Produced by tools/snapshot-harness.js through window.__voxelcraft on a wiped world (WORLD_SEED 20261116, version 0.1.0-milestone-13): the mission sections insist on a world that has heard no transmission, so a restored save cannot stand in. The strict block must reproduce byte for byte across a pure code move; a mismatch names the section, which names the commit. Field by field: stream is loaded/meshed chunks and the player's feet, columns is a lattice of world generation, blockDefs is the block table, build is setBlock plus light propagation, clock is the day cycle, inventory is the item table, recipes is the recipe table with the beacon that transmits each one and whether the walker has heard it yet, beacons is SP0 with the five monument columns, the leg that reaches each and what each wants, beaconGate is the lock a fresh world is under plus beacon 1 lit by a real right click, crafting/smelting/farming are the item systems, physics is movement and fall damage, water is the flow self-check, vitals is combat and hunger maths, save is persistence. `loose` fields (fps, triangles, mobCount, savedAt) are deliberately absent: they depend on real elapsed time and on mob AI's Math.random.",
   "strict": {
     "stream": "361/289/3.500,78.240,24.500",
     "columns": [
@@ -192,13 +192,13 @@
       "sp0": "3,24",
       "activated": 0,
       "sites": [
-        "0@-29,76,49/41blocks/10essence/dark",
-        "1@-81,53,-62/120blocks/30essence/dark",
-        "2@-79,72,-180/220blocks/55essence/dark",
-        "3@-228,62,-225/340blocks/85essence/dark",
-        "4@-369,57,311/470blocks/117essence/dark"
+        "0@-43,74,30/hop46/46blocks/31essence/dark",
+        "1@-194,80,-102/hop201/234blocks/156essence/dark",
+        "2@-396,51,-324/hop300/529blocks/353essence/dark",
+        "3@-687,67,-599/hop400/930blocks/620essence/dark",
+        "4@-1118,71,-1016/hop600/1529blocks/1019essence/dark"
       ],
-      "next": "-29,76,49/10"
+      "next": "-43,74,30/31"
     },
     "beaconGate": [
       "planks:shut",
@@ -206,9 +206,9 @@
       "iron_pickaxe:shut",
       "diamond_boots:shut",
       "journal:0",
-      "stood:2.5/1.62/1",
-      "target:54@-29,76,49/2.85",
-      "purse:10+10->10",
+      "stood:2.5/1.62/0",
+      "target:54@-43,74,30/4.12",
+      "purse:31+31->31",
       "lit:1",
       "journal:13",
       "forward:4/48"
@@ -273,7 +273,7 @@
     "save": {
       "key": "voxelcraft:world:v6",
       "schema": 6,
-      "bytes": 1877,
+      "bytes": 1847,
       "edits": 93,
       "error": null
     }

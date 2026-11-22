@@ -27,7 +27,8 @@ import { BLOCKS } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { setRecipesTransmitted } from './crafting.js';
 import {
-  B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_TARGET_DISTANCES, CHUNK_SIZE,
+  B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_OUTWARD_BEARING,
+  BEACON_TARGET_HOPS, CHUNK_SIZE,
   DIFFICULTY_MAX, DIFFICULTY_XZ_STEP, DIFFICULTY_Y_STEP, SEA_LEVEL, WORLD_HEIGHT,
   WORLD_SEED, blockIndex, clamp
 } from './config.js';
@@ -139,63 +140,81 @@ function monumentGround(x, z) {
 }
 
 /**
- * One monument column per beacon, chosen as a pure function of the seed, SP0
- * and the beacon number. Each beacon aims for its target distance from SP0,
- * and the search rings tighten and widen around that target until the ground
- * agrees. The bearing starts random and drifts no more than a half turn
- * beacon to beacon, so the chain walks outward instead of doubling back.
+ * One monument column per beacon, a pure function of the seed, SP0 and the
+ * beacon number. The mission is a chain of legs: beacon 1 stands its hop from
+ * SP0, and each monument after it stands its hop from the one before. The
+ * bearing starts at random and swings no more than BEACON_OUTWARD_BEARING off
+ * the direction the chain is already heading, so the line of monuments runs
+ * outward instead of curling back over ground the walker has worked.
  */
 function chooseMonumentColumns() {
   const chosen = [];
+  let from = { x: spawnPoint0.x, z: spawnPoint0.z };
   let bearing = null;
 
   for (let index = 0; index < BEACON_COUNT; index++) {
     const rand = mulberry32(hash3i(
       spawnPoint0.x, index, spawnPoint0.z, (WORLD_SEED ^ 0xBEA90001) >>> 0
     ));
-    const target = BEACON_TARGET_DISTANCES[index];
-    const jitter = (rand() - 0.5) * Math.PI;
+    const hop = BEACON_TARGET_HOPS[index];
+    const jitter = (rand() - 0.5) * BEACON_OUTWARD_BEARING * 2;
     if (bearing === null) bearing = rand() * Math.PI * 2;
     const base = bearing + jitter;
 
     let placed = null;
-    // Walk the rings out from the target: one step nearer, one farther, and
-    // so on, six blocks at a time, sampling each ring every quarter turn or so.
-    for (let ring = 0; ring < 24 && !placed; ring++) {
-      const radius = target + (ring % 2 === 0 ? -1 : 1) * Math.ceil(ring / 2) * 6;
+    // Walk the rings out from the leg's length: one step nearer, one farther,
+    // and so on, six blocks at a time, sampling each ring every quarter turn or
+    // so. The samples drift by the ring number so a ring the ground refuses
+    // does not keep offering the same four columns.
+    for (let ring = 0; ring < 28 && !placed; ring++) {
+      const radius = hop + (ring % 2 === 0 ? -1 : 1) * Math.ceil(ring / 2) * 6;
       if (radius < 12) continue;
-      const samples = Math.max(10, Math.round(radius / 3));
+      const samples = Math.max(12, Math.round(radius / 3));
       for (let i = 0; i < samples && !placed; i++) {
         const angle = base + (i / samples) * Math.PI * 2 + ring * 0.7;
-        const x = Math.round(spawnPoint0.x + Math.cos(angle) * radius);
-        const z = Math.round(spawnPoint0.z + Math.sin(angle) * radius);
+        const x = Math.round(from.x + Math.cos(angle) * radius);
+        const z = Math.round(from.z + Math.sin(angle) * radius);
         const ground = monumentGround(x, z);
         if (!ground) continue;
-        const distance = Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z);
-        placed = {
-          index, x, z, y: ground.height,
-          distance: Math.round(distance),
-          cost: Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK))
-        };
+        placed = monumentSite(index, from, x, z, ground.height);
       }
     }
     // A seed that refuses every column cannot stop the mission: fall back to
-    // the exact target distance on the chosen bearing and let the platform
-    // stand where it stands.
+    // the exact leg length on the chosen bearing, and accept wet ground before
+    // the platform fails to exist at all.
     if (!placed) {
-      const x = Math.round(spawnPoint0.x + Math.cos(base) * target);
-      const z = Math.round(spawnPoint0.z + Math.sin(base) * target);
-      const ground = sampleColumn(x, z);
-      placed = {
-        index, x, z, y: Math.max(ground.height, SEA_LEVEL + 1),
-        distance: target,
-        cost: Math.max(4, Math.round(target / BEACON_ESSENCE_PER_BLOCK))
-      };
+      for (let step = 0; step < 8 && !placed; step++) {
+        const radius = hop + (step === 0 ? 0 : (step % 2 === 0 ? -1 : 1) * step * 12);
+        const x = Math.round(from.x + Math.cos(base) * radius);
+        const z = Math.round(from.z + Math.sin(base) * radius);
+        const ground = step < 5 ? monumentGround(x, z) : sampleColumn(x, z);
+        if (!ground) continue;
+        placed = monumentSite(index, from, x, z, Math.max(ground.height, SEA_LEVEL + 1));
+      }
     }
     chosen.push(placed);
-    bearing = Math.atan2(placed.z - spawnPoint0.z, placed.x - spawnPoint0.x);
+    // The chain keeps its heading: the next leg leaves from this monument,
+    // pointed the way the last one travelled.
+    bearing = Math.atan2(placed.z - from.z, placed.x - from.x);
+    from = { x: placed.x, z: placed.z };
   }
   return chosen;
+}
+
+/**
+ * What a monument knows about itself: where it stands, the leg that reaches it
+ * and the price asked there. Price reads distance from SP0, not the length of
+ * the leg, because the design charges for how far the walker has come from
+ * home, and a chain that curls back toward the spawn should not pay them for
+ * the trip.
+ */
+function monumentSite(index, from, x, z, height) {
+  const hop = Math.round(Math.hypot(x - from.x, z - from.z));
+  const distance = Math.round(Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z));
+  return {
+    index, x, z, y: height, hop, distance,
+    cost: Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK))
+  };
 }
 
 /** The five monument columns, computed once per world. */
@@ -421,6 +440,7 @@ export function beaconReport() {
     sites: beaconSites().map((site) => ({
       index: site.index,
       at: [site.x, site.y + 1, site.z],
+      hop: site.hop,
       distance: site.distance,
       cost: site.cost,
       lit: site.index < beaconsActivated
