@@ -140,6 +140,21 @@ const ANIMAL_SOUND_GAP_MIN = 4;
 const ANIMAL_SOUND_GAP_MAX = 8;
 let animalSoundCooldown = 0;
 
+/**
+ * Hostiles need to be heard — a groan out of the dark is the warning — but they
+ * used to be heard constantly. Each one rolled a fresh 4.5–11 s, and unlike the
+ * animals there was no shared gap, so the calls simply added up: three zombies in
+ * range meant a 1.2-second groan every 2.6 s on average, and a night crowd near
+ * the hostile cap groaned about twice a second. The per-mob roll is longer now
+ * and a shared gap follows the animal rule, so the pack has one voice at a time
+ * however many are awake.
+ */
+const HOSTILE_SOUND_MIN = 11;
+const HOSTILE_SOUND_MAX = 24;
+const HOSTILE_SOUND_GAP_MIN = 6;
+const HOSTILE_SOUND_GAP_MAX = 11;
+let hostileSoundCooldown = 0;
+
 const MOB_DEFS = {
   cow: {
     hostile: false, health: 10, speed: 1.15, width: 0.82, height: 1.42,
@@ -531,7 +546,7 @@ export function spawnMob(type, x, y, z, options = {}) {
     burnTimer: 0,
     audioCooldown: 0,
     soundTimer: def.hostile
-      ? 1.4 + Math.random() * 4.5
+      ? 3 + Math.random() * 7
       : ANIMAL_SOUND_MIN + Math.random() * (ANIMAL_SOUND_MAX - ANIMAL_SOUND_MIN),
     // Staggered so a fresh herd does not take all its despawn rolls on the
     // same frame.
@@ -585,7 +600,7 @@ function killMob(mob) {
   dropMobLoot(mob);
 }
 
-export function damageMob(mob, amount, knockX = 0, knockZ = 0) {
+export function damageMob(mob, amount, knockX = 0, knockZ = 0, options = {}) {
   if (!mob || mob.dead) return false;
   mob.health -= amount;
   mob.hurtFlash = 0.22;
@@ -594,7 +609,10 @@ export function damageMob(mob, amount, knockX = 0, knockZ = 0) {
     0xc84242, 6, 2.6
   );
   if (mob.audioCooldown <= 0) {
-    mob.audioCooldown = 0.55;
+    // Sunlight burns a hostile in ticks a little over half a second apart, and
+    // a hurt call on every one of them turns a burning zombie into a siren. A
+    // hit asks for the usual gap; fire asks for a long one.
+    mob.audioCooldown = options.soundGap ?? 0.55;
     playMobHurtSound(mob.type, mob.pos.x, mob.pos.y + mob.def.height * 0.6, mob.pos.z);
   }
 
@@ -825,7 +843,7 @@ function updateMobBurning(mob, dt) {
       mob.pos.x, mob.pos.y + mob.def.height * 0.55, mob.pos.z,
       0xff9b36, 5, 1.8
     );
-    damageMob(mob, 2, 0, 0);
+    damageMob(mob, 2, 0, 0, { soundGap: 2.6 });
   }
 }
 
@@ -845,13 +863,19 @@ function updateMobAI(mob, dt) {
 
   if (mob.soundTimer <= 0) {
     mob.soundTimer = def.hostile
-      ? 4.5 + Math.random() * 6.5
+      ? HOSTILE_SOUND_MIN + Math.random() * (HOSTILE_SOUND_MAX - HOSTILE_SOUND_MIN)
       : ANIMAL_SOUND_MIN + Math.random() * (ANIMAL_SOUND_MAX - ANIMAL_SOUND_MIN);
     if (distance < 26 && Math.abs(dy) < 14 && !mob.dead) {
       if (mob.type === 'zombie') {
-        playZombieGroan(mob.pos.x, mob.pos.y + def.height * 0.7, mob.pos.z);
+        if (hostileSoundCooldown <= 0) {
+          hostileSoundCooldown = HOSTILE_SOUND_GAP_MIN +
+            Math.random() * (HOSTILE_SOUND_GAP_MAX - HOSTILE_SOUND_GAP_MIN);
+          playZombieGroan(mob.pos.x, mob.pos.y + def.height * 0.7, mob.pos.z);
+        }
       } else if (mob.type === 'creeper') {
-        if (mob.fuse < 0 && Math.random() < 0.4) {
+        if (mob.fuse < 0 && Math.random() < 0.4 && hostileSoundCooldown <= 0) {
+          hostileSoundCooldown = HOSTILE_SOUND_GAP_MIN +
+            Math.random() * (HOSTILE_SOUND_GAP_MAX - HOSTILE_SOUND_GAP_MIN);
           playMobHurtSound('creeper', mob.pos.x, mob.pos.y + def.height * 0.7, mob.pos.z);
         }
       } else if (animalSoundCooldown <= 0) {
@@ -1002,6 +1026,7 @@ export function updateMobs(dt) {
   if (dt <= 0) return;
 
   if (animalSoundCooldown > 0) animalSoundCooldown -= dt;
+  if (hostileSoundCooldown > 0) hostileSoundCooldown -= dt;
 
   for (let i = mobs.length - 1; i >= 0; i--) {
     const mob = mobs[i];

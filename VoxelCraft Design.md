@@ -2675,13 +2675,26 @@ Passive animals are deliberately background. Each one waits 15–35 s between
 idle calls, a shared 4–8 s gap keeps a herd from firing at once, and the idle
 call is 0.22 gain at a 20-block range. The recorded animal
 sounds are much louder than the old synthesizer, so these numbers keep a cow or
-sheep from dominating the mix. Hostile cadence is unchanged.
+sheep from dominating the mix. Hostile cadence has the same shape and a higher
+rate; see the paragraph on it below.
 
 Pain is scaled per species rather than at one level: `MOB_HURT_GAIN` in
 `src/audio.js` multiplies the 0.85 the hurt call is played at — cow 0.53, chicken
 0.6, pig and sheep 0.7, hostiles 1. The recordings are nowhere near one level
 (`mob_cow_1` is 1.5 s at RMS 0.138, `mob_sheep_2` is RMS 0.204), and a killing
 blow has no sound of its own, so that gain is also the death cry.
+
+Hostile cadence follows the same shape as the animals' and at a higher rate: a
+per-mob roll of 11–24 s and a shared 6–11 s gap, so a pack has one voice at a
+time. It used to be a roll of 4.5–11 s with **no shared gap**, which meant the
+calls simply added up — three zombies in range groaned 23 times a minute, each
+groan 1.2 s of sample, and a crowd at the hostile cap groaned twice a second.
+Measured against that, the new rule gives a lone zombie about one groan every
+17 s and caps a pack at about 6 a minute however large it is. Sunlight is the
+other half of the complaint: a burning hostile took a hurt call on every 0.65 s
+burn tick, so `damageMob` now takes a `soundGap` and the burn tick asks for 2.6 s
+instead of 0.55 s. The burn itself is untouched — 2 damage every 0.65 s under
+open sky.
 
 ### Settings
 
