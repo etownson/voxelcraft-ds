@@ -48,6 +48,16 @@ const head = html.slice(0, headAt + HEAD.length);
 const tail = html.slice(tailAt);
 const body = html.slice(headAt + HEAD.length, tailAt).split('\n');
 
+/* The page used to hold the sections; now it is a loader that imports the
+   composition root, and there is nothing left to split. Say so rather than
+   pretend, and refuse a spec that still asks for a section — a silent no-op
+   would look like a move that did not happen. */
+if (!body.some((line) => /^\/\* ={10,}$/.test(line))) {
+  if (spec.length) throw new Error('the page is a loader; there are no sections left to move');
+  console.log('the page is a loader: src/main.js is the composition root, nothing to split');
+  process.exit(0);
+}
+
 /* ---------- the rules for what counts as a name and a reference ---------- */
 
 /* Which names a file declares and which it merely spells out loud is the same
