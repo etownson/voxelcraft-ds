@@ -134,8 +134,8 @@
 import * as THREE from 'three';
 
 import {
-  clearTarget, crackMesh, currentTarget, hideTargetOutline, rayDirection, setAimBlocked,
-  shownCrackStage, targetOutline, updateTarget
+  aimAllowed, clearTarget, crackMesh, currentTarget, hideTargetOutline, rayDirection,
+  setAimBlocked, shownCrackStage, targetOutline, updateTarget
 } from './src/aim.js';
 import { atlasCanvas } from './src/atlas.js';
 import {
@@ -202,8 +202,9 @@ import {
   setMobWorld, spawnMob, trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './src/mob.js';
 import {
-  addExhaustion, aimOrigin, aimPlayer, applyLook, exhaustForMovement, paintHealth, paintHunger,
-  player, setDamageFlash, setHealthPainter, setHungerPainter, turnPlayer, view
+  addExhaustion, aimOrigin, aimPlayer, applyLook, clearDamage, exhaustForMovement, fadeDamage,
+  flashDamage, paintHealth, paintHunger, player, setDamageFlash, setHealthPainter,
+  setHungerPainter, turnPlayer, view
 } from './src/player.js';
 import { camera, renderer, scene, skyDome } from './src/render.js';
 import {
@@ -863,11 +864,7 @@ document.addEventListener('mousedown', (event) => {
     updateMobTarget();
     // Shears snip rather than strike, and the attack button is no exception:
     // a player who means to hit an animal has anything else in hand.
-    if (tryShearMob('swing')) {
-      player.attackCooldown = 0.38;
-    } else if (currentMobTarget) {
-      attackMob(currentMobTarget);
-    }
+    swingAtMob();
     if (fallbackControls) {
       fallbackLooking = true;
       fallbackDragMoved = false;
@@ -1195,11 +1192,7 @@ function beginPadMining() {
   triggerHeldSwing();
   updateTarget();
   updateMobTarget();
-  if (tryShearMob('swing')) {
-    player.attackCooldown = 0.38;
-  } else if (currentMobTarget) {
-    attackMob(currentMobTarget);
-  }
+  swingAtMob();
 }
 
 /** Shared dispatch so real presses and the debug API behave identically. */
@@ -1316,72 +1309,32 @@ function updateGamepad(dt) {
    14. PLAYER HEALTH, COMBAT, AND DEATH
    ============================================================ */
 
-const healthBarEl = document.getElementById('health');
-const damageFlashEl = document.getElementById('damage-flash');
-const sleepFadeEl = document.getElementById('sleep-fade');
-const deathScreenEl = document.getElementById('death-screen');
-const deathCauseEl = document.getElementById('death-cause');
-const respawnButton = document.getElementById('respawn-button');
-
-let damageFlashTimer = 0;
 let regenTimer = 0;
 /** Counts up to Java's half-second saturation boost at a completely full bar. */
 let saturationBoostTimer = 0;
-let currentMobTarget = null;
 
-/* The red wash that follows a hit is not a wound, it is the screen's way of
-   saying one landed. The body only says when to put one up, how much of it has
-   drained away, and when to take it away — at a death, or at a new life. */
-function showDamageFlash() {
-  damageFlashTimer = 0.5;
-  damageFlashEl.style.opacity = '1';
+/* Dying and coming back are the screen's business as much as the body's: one
+   leaves the world behind a message, the other puts the player back into it, at
+   a spawn the world may have unloaded while they were away. The body says which
+   happened and why, and never touches an element or a chunk. */
+const deathView = {
+  depart() {},
+  show() {},
+  hide() {}
+};
+
+function setDeathView(verbs) {
+  Object.assign(deathView, verbs);
 }
 
-function fadeDamageFlash(dt) {
-  if (damageFlashTimer <= 0) {
-    damageFlashEl.style.opacity = '0';
-    return;
-  }
-  damageFlashTimer = Math.max(0, damageFlashTimer - dt);
-  damageFlashEl.style.opacity = String(clamp(damageFlashTimer * 2.4, 0, 1));
-}
+const respawnArrival = {
+  clearRun() {},
+  place() {},
+  resume() {}
+};
 
-function clearDamageFlash() {
-  damageFlashTimer = 0;
-  damageFlashEl.style.opacity = '0';
-}
-
-function renderHealth() {
-  const hearts = healthBarEl.children;
-  const points = clamp(player.health, 0, player.maxHealth);
-  const full = Math.floor(points / 2);
-  // Armour leaves health with fractions on it, so a heart counts as half as
-  // soon as a full point of it is left, rather than only on exact halves.
-  const half = points % 2 >= 1;
-
-  for (let i = 0; i < hearts.length; i++) {
-    const heart = hearts[i];
-    heart.classList.toggle('dark', i >= full + (half ? 1 : 0));
-    heart.classList.toggle('half', half && i === full);
-  }
-}
-
-/**
- * Draws the shield row above the hearts. Minecraft spends one shield per two
- * defence points and hides the whole row when nothing is worn.
- */
-function renderArmorBar() {
-  const points = Math.min(ARMOR_MAX_DEFENSE, armorDefense());
-  armorEl.classList.toggle('hidden', points <= 0);
-  const shields = armorEl.children;
-  const full = Math.floor(points / 2);
-  const half = points % 2 === 1;
-
-  for (let i = 0; i < shields.length; i++) {
-    const shield = shields[i];
-    shield.classList.toggle('dark', i >= full + (half ? 1 : 0));
-    shield.classList.toggle('half', half && i === full);
-  }
+function setRespawnArrival(verbs) {
+  Object.assign(respawnArrival, verbs);
 }
 
 function damagePlayer(amount, cause = 'unknown') {
@@ -1402,7 +1355,7 @@ function damagePlayer(amount, cause = 'unknown') {
   player.hurtCooldown = 0.35;
   player.regenDelay = 6;
   regenTimer = 0;
-  showDamageFlash();
+  flashDamage();
   playPlayerHurtSound();
   paintHealth();
 
@@ -1426,34 +1379,19 @@ function playerDie(cause) {
   player.vel.set(0, 0, 0);
   player.sprinting = false;
   playDeathSound();
-  clearSprintLatch();
-  releaseMiningButton();
-  hideMiningFeedback();
-  hideTargetOutline();
-  currentMobTarget = null;
-  if (activeScreen) closeScreen();
-  clearDamageFlash();
+  deathView.depart();
+  clearDamage();
   paintHealth();
   // Dead players stop being hungry on screen: this drops the saturation jitter.
   paintHunger();
-
-  const messages = {
-    fall: 'You fell too far.',
-    zombie: 'A zombie got you.',
-    creeper: 'A creeper found you.',
-    starving: 'You starved with nothing to eat.'
-  };
-  deathCauseEl.textContent = messages[cause] || 'The world got the better of you.';
-  deathScreenEl.classList.remove('hidden');
-  overlayEl.classList.add('hidden');
-  if (document.pointerLockElement === canvas) document.exitPointerLock();
+  deathView.show(cause);
 }
 
 function respawnPlayer() {
   player.dead = false;
   player.health = player.maxHealth;
   player.sprinting = false;
-  clearSprintLatch();
+  respawnArrival.clearRun();
   player.hurtCooldown = 0;
   player.regenDelay = 0;
   player.fallPeakY = 0;
@@ -1473,33 +1411,13 @@ function respawnPlayer() {
   // the refilled stomach has to be written: without this, closing the tab before
   // the next autosave brings back the empty bar the save was holding.
   markWorldDirty();
-  clearDamageFlash();
-  deathScreenEl.classList.add('hidden');
+  clearDamage();
+  deathView.hide();
   paintHealth();
 
-  spawnPlayer(spawnColumn);
-  // The spawn area was almost certainly unloaded while the player was out
-  // exploring, so mesh it here: without this they come back to an empty sky and
-  // a world that streams in a second later around them.
-  prepareSpawnChunks(
-    Math.floor(spawnColumn.x / CHUNK_SIZE),
-    Math.floor(spawnColumn.z / CHUNK_SIZE)
-  );
-  syncHeldAngles(view.yaw, view.pitch);
-  ensurePlayerChunks();
-  world.updateStreaming(player.pos.x, player.pos.z);
-  updateTarget();
-  updateMobTarget();
-  updateDebug();
-
-  if (!fallbackControls) requestLock();
-  else controlHintEl.classList.remove('hidden');
+  respawnArrival.place();
+  respawnArrival.resume();
 }
-
-respawnButton.addEventListener('click', (event) => {
-  event.preventDefault();
-  respawnPlayer();
-});
 
 let starveTimer = 0;
 /** Seconds left before another bite can be taken. */
@@ -1576,25 +1494,6 @@ function updateHunger(dt) {
   starveTimer = 0;
 }
 
-function renderHunger() {
-  const points = clamp(player.hunger, 0, HUNGER_MAX);
-  const haunches = hungerBarEl.children;
-  const full = Math.floor(points / 2);
-  const half = points % 2 >= 1;
-
-  for (let i = 0; i < haunches.length; i++) {
-    const haunch = haunches[i];
-    haunch.classList.toggle('dark', i >= full + (half ? 1 : 0));
-    haunch.classList.toggle('half', half && i === full);
-  }
-  // The bar jitters while saturation is gone but there is still food to lose,
-  // which is Minecraft's only tell for the hidden counter.
-  hungerBarEl.classList.toggle(
-    'jitter',
-    !player.dead && player.hunger > 0 && player.saturation <= 0
-  );
-}
-
 function updateHealth(dt) {
   if (dt <= 0) return;
 
@@ -1604,7 +1503,7 @@ function updateHealth(dt) {
   if (player.regenDelay > 0) {
     player.regenDelay = Math.max(0, player.regenDelay - dt);
   }
-  fadeDamageFlash(dt);
+  fadeDamage(dt);
 
   if (player.dead) return;
 
@@ -1654,6 +1553,32 @@ function updateHealth(dt) {
   } else {
     regenTimer = 0;
   }
+}
+
+let currentMobTarget = null;
+
+/** The mob the crosshair is on, for the few callers outside this layer that
+ *  want to strike it. */
+function mobTarget() {
+  return currentMobTarget;
+}
+
+/** Forgets the mob the crosshair was on, at a death or a new life. */
+function clearMobTarget() {
+  currentMobTarget = null;
+}
+
+/**
+ * The attack button coming down, from either device: shears snip rather than
+ * strike, and anything else hits whatever the crosshair is on.
+ */
+function swingAtMob() {
+  if (tryShearMob('swing')) {
+    player.attackCooldown = 0.38;
+    return true;
+  }
+  if (!currentMobTarget) return false;
+  return attackMob(currentMobTarget);
 }
 
 /**
@@ -1721,7 +1646,7 @@ function raycastMob(origin, direction, maxDistance) {
 }
 
 function updateMobTarget() {
-  if (activeScreen || player.dead) {
+  if (!aimAllowed()) {
     currentMobTarget = null;
     return null;
   }
@@ -1824,7 +1749,7 @@ function airClearTo(distance) {
  * wall stays out of reach until the player walks in.
  */
 function mobUnderCrosshair() {
-  if (activeScreen || player.dead) return null;
+  if (!aimAllowed()) return null;
   camera.getWorldDirection(rayDirection);
   const hit = raycastMob(aimOrigin(), rayDirection, FOCUS_REACH);
   if (!hit || !airClearTo(hit.distance)) return null;
@@ -1870,10 +1795,10 @@ function tryShearMob(mode = 'use') {
   return true;
 }
 
-function updateCombat(dt) {
+function updateCombat(dt, held) {
   if (dt <= 0) return;
   if (player.attackCooldown > 0) player.attackCooldown -= dt;
-  if (player.dead || activeScreen || !isMiningHeld()) return;
+  if (!aimAllowed() || !held) return;
 
   updateMobTarget();
   // 'held', so holding the button on a sheep already shorn costs nothing but a
@@ -1912,6 +1837,94 @@ const controlHintEl = document.getElementById('control-hint');
 const padStatusEl = document.getElementById('pad-status');
 const padSensitivityEl = document.getElementById('pad-sens-value');
 const sprintStateEl = document.getElementById('sprint-state');
+const healthBarEl = document.getElementById('health');
+const damageFlashEl = document.getElementById('damage-flash');
+const sleepFadeEl = document.getElementById('sleep-fade');
+const deathScreenEl = document.getElementById('death-screen');
+const deathCauseEl = document.getElementById('death-cause');
+const respawnButton = document.getElementById('respawn-button');
+
+let damageFlashTimer = 0;
+/* The red wash that follows a hit is not a wound, it is the screen's way of
+   saying one landed. The body only says when to put one up, how much of it has
+   drained away, and when to take it away — at a death, or at a new life. */
+function showDamageFlash() {
+  damageFlashTimer = 0.5;
+  damageFlashEl.style.opacity = '1';
+}
+
+function fadeDamageFlash(dt) {
+  if (damageFlashTimer <= 0) {
+    damageFlashEl.style.opacity = '0';
+    return;
+  }
+  damageFlashTimer = Math.max(0, damageFlashTimer - dt);
+  damageFlashEl.style.opacity = String(clamp(damageFlashTimer * 2.4, 0, 1));
+}
+
+function clearDamageFlash() {
+  damageFlashTimer = 0;
+  damageFlashEl.style.opacity = '0';
+}
+
+function renderHealth() {
+  const hearts = healthBarEl.children;
+  const points = clamp(player.health, 0, player.maxHealth);
+  const full = Math.floor(points / 2);
+  // Armour leaves health with fractions on it, so a heart counts as half as
+  // soon as a full point of it is left, rather than only on exact halves.
+  const half = points % 2 >= 1;
+
+  for (let i = 0; i < hearts.length; i++) {
+    const heart = hearts[i];
+    heart.classList.toggle('dark', i >= full + (half ? 1 : 0));
+    heart.classList.toggle('half', half && i === full);
+  }
+}
+
+/**
+ * Draws the shield row above the hearts. Minecraft spends one shield per two
+ * defence points and hides the whole row when nothing is worn.
+ */
+function renderArmorBar() {
+  const points = Math.min(ARMOR_MAX_DEFENSE, armorDefense());
+  armorEl.classList.toggle('hidden', points <= 0);
+  const shields = armorEl.children;
+  const full = Math.floor(points / 2);
+  const half = points % 2 === 1;
+
+  for (let i = 0; i < shields.length; i++) {
+    const shield = shields[i];
+    shield.classList.toggle('dark', i >= full + (half ? 1 : 0));
+    shield.classList.toggle('half', half && i === full);
+  }
+}
+
+function renderHunger() {
+  const points = clamp(player.hunger, 0, HUNGER_MAX);
+  const haunches = hungerBarEl.children;
+  const full = Math.floor(points / 2);
+  const half = points % 2 >= 1;
+
+  for (let i = 0; i < haunches.length; i++) {
+    const haunch = haunches[i];
+    haunch.classList.toggle('dark', i >= full + (half ? 1 : 0));
+    haunch.classList.toggle('half', half && i === full);
+  }
+  // The bar jitters while saturation is gone but there is still food to lose,
+  // which is Minecraft's only tell for the hidden counter.
+  hungerBarEl.classList.toggle(
+    'jitter',
+    !player.dead && player.hunger > 0 && player.saturation <= 0
+  );
+}
+
+/* The button on the death screen is the only way back into the world. */
+respawnButton.addEventListener('click', (event) => {
+  event.preventDefault();
+  respawnPlayer();
+});
+
 
 let cursorX = window.innerWidth / 2;
 let cursorY = window.innerHeight / 2;
@@ -3350,6 +3363,61 @@ setSaveArrival({
   placeCamera: syncCamera
 });
 
+/* Death and respawn, as the screens and the world know them. The body says the
+   player is gone, or back; everything else is somebody else's: the run latch,
+   the held button, the mining feedback, the crosshair's block, the open screen,
+   the words on the death screen, the pointer, the spawn column and the chunks
+   around it, which may have unloaded while the player was away. */
+setDeathView({
+  depart() {
+    clearSprintLatch();
+    releaseMiningButton();
+    hideMiningFeedback();
+    hideTargetOutline();
+    clearMobTarget();
+    if (activeScreen) closeScreen();
+  },
+  show(cause) {
+    const messages = {
+      fall: 'You fell too far.',
+      zombie: 'A zombie got you.',
+      creeper: 'A creeper found you.',
+      starving: 'You starved with nothing to eat.'
+    };
+    deathCauseEl.textContent = messages[cause] || 'The world got the better of you.';
+    deathScreenEl.classList.remove('hidden');
+    overlayEl.classList.add('hidden');
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+  },
+  hide() {
+    deathScreenEl.classList.add('hidden');
+  }
+});
+
+setRespawnArrival({
+  clearRun: clearSprintLatch,
+  place() {
+    spawnPlayer(spawnColumn);
+    // The spawn area was almost certainly unloaded while the player was out
+    // exploring, so mesh it here: without this they come back to an empty sky and
+    // a world that streams in a second later around them.
+    prepareSpawnChunks(
+      Math.floor(spawnColumn.x / CHUNK_SIZE),
+      Math.floor(spawnColumn.z / CHUNK_SIZE)
+    );
+    syncHeldAngles(view.yaw, view.pitch);
+    ensurePlayerChunks();
+    world.updateStreaming(player.pos.x, player.pos.z);
+    updateTarget();
+    updateMobTarget();
+    updateDebug();
+  },
+  resume() {
+    if (!fallbackControls) requestLock();
+    else controlHintEl.classList.remove('hidden');
+  }
+});
+
 /* The cursor's picture, its refusals, and the grid its screen is using. */
 setCursorView({
   screen: () => activeScreen,
@@ -3553,10 +3621,12 @@ window.__voxelcraft = {
   attack() {
     updateTarget();
     updateMobTarget();
-    return currentMobTarget ? attackMob(currentMobTarget) : false;
+    const target = mobTarget();
+    return target ? attackMob(target) : false;
   },
   mob() {
-    return currentMobTarget ? this.mobInfo(currentMobTarget) : null;
+    const target = mobTarget();
+    return target ? this.mobInfo(target) : null;
   },
   mobInfo(mob) {
     return {
@@ -4123,7 +4193,7 @@ window.__voxelcraft = {
     for (let i = 0; i < frames; i++) {
       updateTarget();
       updateMobTarget();
-      updateMining(dt, !currentMobTarget);
+      updateMining(dt, !mobTarget());
       updateItemEntities(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
@@ -4524,7 +4594,7 @@ window.__voxelcraft = {
       updateMobTarget();
       // Combat belongs here as much as it belongs in the frame loop: without it
       // there is no way to assert what the left button does while it is held.
-      updateCombat(dt);
+      updateCombat(dt, isMiningHeld());
       updateMobs(dt);
       updateHealth(dt);
       updateHunger(dt);
@@ -4742,8 +4812,8 @@ function animate(now) {
     updateTarget();
     updateMobTarget();
     const canMine = isMiningHeld() && !player.dead && isPlayable();
-    updateMining(dt, canMine && !currentMobTarget);
-    updateCombat(dt);
+    updateMining(dt, canMine && !mobTarget());
+    updateCombat(dt, isMiningHeld());
     updateMobs(dt);
     updateHeldItem(dt, heldFrame());
     updateHealth(dt);

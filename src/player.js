@@ -146,6 +146,12 @@ export function setDamageFlash(verbs) {
   Object.assign(damageFlash, verbs);
 }
 
+/* What the layers above this one are allowed to say about the wash. The body
+   owns the event, the screen owns the picture. */
+export function flashDamage() { damageFlash.flash(); }
+export function fadeDamage(dt) { damageFlash.fade(dt); }
+export function clearDamage() { damageFlash.clear(); }
+
 /**
  * Spends exhaustion the way Minecraft does: every full 4.0 points takes one point
  * of saturation if there is any left, and only then one point of food. That order

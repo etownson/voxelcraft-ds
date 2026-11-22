@@ -189,6 +189,12 @@ let aimBlocked = () => false;
 /** Handed once, at bootstrap, who says the aim is not in use. */
 export function setAimBlocked(test) { aimBlocked = test; }
 
+/** The same answer, asked as a question rather than a refusal. Anything that
+ *  lives on the crosshair — pointing at an ore, picking a sheep, striking what
+ *  is in front of it — is off while a screen has the controls or the player is
+ *  dead, and none of those layers should have to know why. */
+export function aimAllowed() { return !aimBlocked(); }
+
 export function updateTarget() {
   if (aimBlocked()) {
     clearTarget();
