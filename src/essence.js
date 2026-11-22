@@ -48,6 +48,8 @@ const BUBBLE_FADE = 3;
 const BUBBLE_REACH = 0.9;
 const BUBBLE_REACH_BELOW = 0.4;
 const BUBBLE_REACH_ABOVE = 2.2;
+/** A bubble's drawn size, in world units. Half a block across. */
+const BUBBLE_SCALE = 0.21;
 
 /* ---------- The running total ---------- */
 
@@ -152,7 +154,7 @@ function spawnEssenceBubble(amount, x, y, z) {
   if (amount <= 0) return null;
   const material = sharedBubbleMaterial();
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(0.42, 0.42, 1);
+  sprite.scale.set(BUBBLE_SCALE, BUBBLE_SCALE, 1);
   sprite.visible = false;
 
   const entity = {
@@ -271,7 +273,7 @@ export function updateEssenceBubbles(dt) {
     const fading = Math.min(1, (BUBBLE_LIFETIME - entity.age) / BUBBLE_FADE);
     entity.mesh.visible = true;
     entity.mesh.material.opacity = arriving * fading;
-    const scale = 0.42 * arriving;
+    const scale = BUBBLE_SCALE * arriving;
     entity.mesh.scale.set(scale, scale, 1);
     entity.mesh.position.set(
       entity.pos.x,
