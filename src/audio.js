@@ -130,8 +130,11 @@ const AUDIO_ASSETS = {
   music_midnight: ['music/midnight/Midnight Pulse 1.m4a'],
   // The arrival song is not a clock window: `playSpawnSong` puts it down at
   // the end of the arrival sequence, and the schedule below stays quiet while
-  // it runs. See the spawn-song block above the ambient mix.
-  music_first_spawn: ['music/first-spawn/first-spawn.m4a']
+  // it runs. See the mission-song block above the ambient mix.
+  music_first_spawn: ['music/first-spawn/first-spawn.m4a'],
+  // Nor is the finale: `playMissionCompleteSong` puts it down when the fifth
+  // beacon's transmission has been read, on the same terms as the arrival song.
+  music_mission_complete: ['music/mission-complete/mission-complete.m4a']
 };
 
 const audioStateEl = document.getElementById('audio-state');
@@ -201,7 +204,7 @@ let audioAmbientTimer = 0;
 let audioAmbientSnapshot = {
   underwater: false, openSky: true, nearWater: false, fireDistance: Infinity,
   wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0, musicTrack: null,
-  spawnSong: false, arrivalHold: false
+  missionSong: false, arrivalHold: false
 };
 let audioUnderwaterShown = false;
 let audioHudText = '';
@@ -1008,15 +1011,17 @@ function ambientNearFire() {
   return best;
 }
 
-/* ---------- The first-spawn song, and the hold that precedes it ---------- */
+/* ---------- The mission's own songs, and the hold before the first of them ---------- */
 
 /**
- * The arrival song rides the music bus and plays straight through once, exactly
- * like a scheduled song, but it outranks the clock: while it runs no window's
- * bed is asked for, and the next scheduled song takes the world back when this
- * one ends.
+ * Two songs belong to the mission rather than to the clock: the walker's own
+ * arrival song, and the song that answers the last beacon. Both ride the music
+ * bus and play straight through once, exactly like a scheduled song, but they
+ * outrank the clock: while one runs no window's bed is asked for, and the next
+ * scheduled song takes the world back when it ends. Only one mission song is
+ * ever on the bus, so a second takes the slot off the first.
  */
-let audioSpawnSong = null;
+let audioMissionSong = null;
 
 /**
  * A fresh world's schedule is held from boot until the arrival sequence is
@@ -1035,18 +1040,32 @@ export function setArrivalHold(on) {
   }
 }
 
+/** The song a fresh world hears at the end of its arrival. */
 export function playSpawnSong() {
-  if (!audioCtx) return false;
-  audioSpawnSong = 'music_first_spawn';
-  // A clock window may have opened its bed before the hold came down — dawn
-  // always starts half a second after the context wakes. The arrival song
-  // clears the slot before taking it, so the world hears one song, not two.
-  if (audioMusicTrack && audioLoops.has(audioMusicTrack)) audioStopLoop(audioMusicTrack);
-  return !!audioSetLoop(audioSpawnSong, 0.2, 9000);
+  return playMissionSong('music_first_spawn');
 }
 
-function spawnSongIsRunning() {
-  return !!audioSpawnSong && audioLoops.has(audioSpawnSong);
+/** The song the world sings once the fifth beacon's transmission is read. */
+export function playMissionCompleteSong() {
+  return playMissionSong('music_mission_complete');
+}
+
+/**
+ * Puts a mission song on the music bus, and it alone: whatever the mission sang
+ * last, and whatever bed the clock had open, go before it, so the world hears
+ * one song instead of two. A clock window may have opened its bed a half second
+ * after the context woke — the mission song clears the slot on its way in.
+ */
+function playMissionSong(track) {
+  if (!audioCtx) return false;
+  if (audioMissionSong && audioLoops.has(audioMissionSong)) audioStopLoop(audioMissionSong);
+  audioMissionSong = track;
+  if (audioMusicTrack && audioLoops.has(audioMusicTrack)) audioStopLoop(audioMusicTrack);
+  return !!audioSetLoop(audioMissionSong, 0.2, 9000);
+}
+
+function missionSongIsRunning() {
+  return !!audioMissionSong && audioLoops.has(audioMissionSong);
 }
 
 /** The four scheduled music windows, in the same clock the HUD shows. */
@@ -1110,11 +1129,11 @@ export function updateAmbient(dt) {
   // Ride the level with the environment while the song is running, but once
   // its one playthrough has ended, leave the window in silence: starting it
   // again is the next window's job. And the schedule does not open at all
-  // while the arrival sequence holds it or the arrival song runs — a fresh
-  // world gets one song, and it is the one the teleport paid for.
-  const spawnSong = spawnSongIsRunning();
-  if (spawnSong || audioArrivalHold) music = 0;
-  if (!spawnSong && !audioArrivalHold &&
+  // while the arrival sequence holds it or a mission song runs — a fresh world
+  // gets one song at its start, and the mission gets one at its end.
+  const missionSong = missionSongIsRunning();
+  if (missionSong || audioArrivalHold) music = 0;
+  if (!missionSong && !audioArrivalHold &&
       (!audioMusicPlayed || audioLoops.has(musicTrack))) {
     if (audioSetLoop(musicTrack, music, 6000)) audioMusicPlayed = true;
   }
@@ -1122,7 +1141,7 @@ export function updateAmbient(dt) {
 
   audioAmbientSnapshot = {
     underwater, openSky, nearWater, fireDistance,
-    wind, water, cave, fire, under, music, musicTrack, spawnSong,
+    wind, water, cave, fire, under, music, musicTrack, missionSong,
     arrivalHold: audioArrivalHold
   };
 }
@@ -2315,6 +2334,7 @@ export function audioStatus() {
     sfxVolume: audioSfxVolume,
     musicVolume: audioMusicVolume,
     musicTrack: audioMusicTrack,
+    missionTrack: audioMissionSong,
     musicVariant: (audioLoops.get(audioMusicTrack) || {}).variant ?? null,
     musicPlayed: audioMusicPlayed,
     activeVoices: audioVoices.size,

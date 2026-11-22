@@ -25,8 +25,8 @@ import {
 } from './aim.js';
 import { atlasCanvas } from './atlas.js';
 import {
-  audioCtx, audioStatus, playSound, playSpawnSong, setArrivalHold, setAudioMusicVolume,
-  setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
+  audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong, setArrivalHold,
+  setAudioMusicVolume, setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './audio.js';
 import {
   ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock,
@@ -35,7 +35,7 @@ import {
 } from './blocks.js';
 import {
   SPAWN_TRANSMISSION, beaconReport, beaconSites, beaconsActivatedCount, clearBeaconBeams,
-  plantBeaconMonuments, restoreBeaconProgress, setBeaconPainter, setSpawnPoint0,
+  nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconPainter, setSpawnPoint0,
   setTransmissionDeliverer, spawnPoint, startingEssence
 } from './beacons.js';
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
@@ -248,9 +248,16 @@ setEssencePainter(() => {
 });
 
 /* The beacon layer speaks through the page too: the mission line under the
-   readout, and the panel the transmissions arrive in. */
+   readout, and the panel the transmissions arrive in. The page also keeps
+   which block of words went up, because one of them is the block the finale
+   song waits on. A beacon is lit before its words arrive, so the transmission
+   that leaves no beacon to point at is the fifth one. */
+let finaleSongWaiting = false;
 setBeaconPainter(renderMission);
-setTransmissionDeliverer(showTransmission);
+setTransmissionDeliverer((lines) => {
+  finaleSongWaiting = nextBeacon() === null;
+  showTransmission(lines);
+});
 
 /* And the key that skips the walk: the HUD asks, the page moves the walker. */
 setBeaconJumper(tourDebugStops);
@@ -487,15 +494,23 @@ if (!loadedSave) {
 }
 renderMission();
 
-/* The arrival song lands when the transmitter stops talking: the last line
-   typed out, or the panel closed early. It is the tail of the arrival
-   sequence, so it only answers once — to the line the spawn point sends —
-   and it hands the schedule back to the clock when it goes. */
+/* Both mission songs land when the transmitter stops talking: the last line
+   typed out, or the panel closed early. The arrival song is the tail of the
+   arrival sequence, so it only answers once — to the line the spawn point
+   sends — and it hands the schedule back to the clock when it goes. The finale
+   answers to the fifth beacon's block, which is the transmission that left the
+   mission with nowhere to point next. */
 setTransmissionFinisher(() => {
-  if (!arrivalSongWaiting) return;
-  arrivalSongWaiting = false;
-  setArrivalHold(false);
-  playSpawnSong();
+  if (arrivalSongWaiting) {
+    arrivalSongWaiting = false;
+    setArrivalHold(false);
+    playSpawnSong();
+    return;
+  }
+  if (finaleSongWaiting) {
+    finaleSongWaiting = false;
+    playMissionCompleteSong();
+  }
 });
 
 // A world written by an older build stays in storage but cannot be read, so

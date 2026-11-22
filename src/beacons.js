@@ -71,7 +71,7 @@ export const TRANSMISSIONS = [
   [
     'You lit it. 💠 The grid stirs. I have recipes queued — they are in your journal now.',
     'I am sorry. 💔 You are flesh in that world: it will want feeding, and it can be hurt.',
-    'The creatures are worst after dark. Do not hide from them. Essence is what they pay.',
+    'The creatures are worst after dark and grow stronger the further you venture. Do not hide from them. Essence is what they pay.',
     'Find the second beacon. Build a shelter before you light it. Promise me. 🤝'
   ],
   [
@@ -93,7 +93,7 @@ export const TRANSMISSIONS = [
     'Find it. Finish it. 🔥'
   ],
   [
-    'Five! ... All five! 🎉 ... 🎉 ... 🎉 ... 🎉!',
+    'Five! All five! 🎉🎉🎉🎉!',
     'The teleport lattice is whole. You can go home a hero, and the way stays open.',
     'Or stay. Finish the base. Make it ready for the colonizers behind you. 🏠',
     'Whatever you choose: thank you. 🙏'

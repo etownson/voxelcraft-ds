@@ -820,6 +820,14 @@ walker's own song, `assets/music/first-spawn/`, plays through on the music bus, 
 clock's windows take the world back when it ends. The morning bed and the arrival song
 can never be up together. A saved world never hears the hold or the song.
 
+The mission breaks it again at the other end. The page notes which block of words went
+up, and the block that leaves the mission with no beacon to point at next is the fifth
+one; when that transmission is read, `assets/music/mission-complete/` plays through on
+the music bus on the same terms as the arrival song, and the clock's windows take the
+world back when it ends. Only one mission song is on the bus at a time — the finale
+takes the slot off anything still playing — and a world loaded with all five already
+lit hears nothing, because the song belongs to the moment, not to the state.
+
 The arrival has nothing on screen but a fade lifting off black, so the teleport is told
 by ear alone: three synthesised gestures hung across the fade as shares of it — a
 carrier climbing out of the transmitter's range, three detuned pulses of beam held
