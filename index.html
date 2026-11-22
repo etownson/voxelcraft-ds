@@ -190,7 +190,8 @@ import {
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
   consumeSelectedItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
-  inventoryHasRoom, paintPack, selectSlot, setPackPainter, unequipSlot
+  inventoryHasRoom, paintArmorBar, paintPack, selectSlot, setArmorPainter, setPackPainter,
+  unequipSlot
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -198,7 +199,7 @@ import {
   setMobWorld, spawnMob, trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './src/mob.js';
 import {
-  addExhaustion, aimOrigin, aimPlayer, applyLook, exhaustForMovement, player,
+  addExhaustion, aimOrigin, aimPlayer, applyLook, exhaustForMovement, paintHunger, player,
   restorePlayerLook, setHungerPainter, turnPlayer, view
 } from './src/player.js';
 import { camera, renderer, scene, skyDome } from './src/render.js';
@@ -3342,6 +3343,22 @@ function updateDebug() {
    20. WORLD PERSISTENCE (SAVE & LOAD)
    ============================================================ */
 
+/* Putting a saved body back into a world that has not been built yet is nobody
+   in the save's business to know: which chunks to make before anything around the
+   player can be trusted, what height to fall to when the saved cell turns out to
+   be inside solid ground, how the camera's glide is caught up, and where the view
+   is set. Whoever is walking the player hands all four over at bootstrap. Until
+   they do, a save still loads its edits, its furnaces and its pack, and the
+   player simply starts where the world says they should. */
+const saveArrival = {
+  makeChunks: () => {},
+  groundUnder: () => 0,
+  resetStep: () => {},
+  placeCamera: () => {}
+};
+
+function setSaveArrival(coming) { Object.assign(saveArrival, coming); }
+
 function restoreSavedPlayer(save) {
   const p = save.player;
   if (!p) return false;
@@ -3349,13 +3366,13 @@ function restoreSavedPlayer(save) {
   player.vel.set(0, 0, 0);
   player.onGround = false;
   // Wherever the view was left mid-glide, the world it was gliding over is gone.
-  resetCameraStep();
+  saveArrival.resetStep();
   // Nothing around a restored position exists yet, so nothing can be trusted
   // until its chunks are made: an older build could write the player into solid
   // ground, and a read that sees only air would keep them buried there.
-  ensurePlayerChunks();
+  saveArrival.makeChunks();
   if (playerCollidesAt(player.pos.x, player.pos.y, player.pos.z)) {
-    player.pos.y = safeGroundY(Math.floor(player.pos.x), Math.floor(player.pos.z));
+    player.pos.y = saveArrival.groundUnder(Math.floor(player.pos.x), Math.floor(player.pos.z));
     player.onGround = true;
   }
   restorePlayerLook(p);
@@ -3371,9 +3388,9 @@ function restoreSavedPlayer(save) {
   // A counter that has already reached a whole bite cannot be trusted: it would
   // spend a point the instant the world opened, so it starts over instead.
   if (player.exhaustion >= EXHAUSTION_THRESHOLD) player.exhaustion = 0;
-  renderHunger();
+  paintHunger();
   applyLook();
-  syncCamera();
+  saveArrival.placeCamera();
   syncHeldAngles(view.yaw, view.pitch);
   return true;
 }
@@ -3391,7 +3408,7 @@ function restoreSavedArmour(save) {
     if (item.kind !== 'armor' || item.armorSlot !== ARMOR_SLOTS[i]) continue;
     armorSlots[i] = restored;
   }
-  renderArmorBar();
+  paintArmorBar();
 }
 
 const saveStatusEl = document.getElementById('save-status');
@@ -3525,6 +3542,17 @@ setInteractionView({
   showSleepFade: () => sleepFadeEl.classList.add('active'),
   hideSleepFade: () => sleepFadeEl.classList.remove('active'),
   paintReadout: updateDebug
+});
+
+/* What the body looks like, and where it stands: the armour bar redraws from the
+   worn slots, and a save that has just put a player down hands them to whoever is
+   walking about in the world. */
+setArmorPainter(renderArmorBar);
+setSaveArrival({
+  makeChunks: ensurePlayerChunks,
+  groundUnder: safeGroundY,
+  resetStep: resetCameraStep,
+  placeCamera: syncCamera
 });
 
 /* The held item's frame: the view model reads the game only through this. */

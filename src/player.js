@@ -108,9 +108,18 @@ export function aimOrigin() {
 /* The food bar belongs to whoever is showing it, and this is the only way the
    body can tell it to redraw. The page hands one over at bootstrap; until then
    spending exhaustion moves the counters and nobody hears. */
-let paintHunger = () => {};
+let hungerPainter = () => {};
 
-export function setHungerPainter(paint) { paintHunger = paint; }
+export function setHungerPainter(paint) { hungerPainter = paint; }
+
+/**
+ * Redraws the food bar. Anything that has just moved the body's reserves calls
+ * this rather than naming the bar, which is why a save can put hunger back
+ * without knowing there is a picture of it at all.
+ */
+export function paintHunger() {
+  hungerPainter();
+}
 
 /**
  * Spends exhaustion the way Minecraft does: every full 4.0 points takes one point

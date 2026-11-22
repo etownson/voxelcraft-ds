@@ -107,6 +107,18 @@ export function paintPack() {
   packPainter();
 }
 
+/* The armour bar is a second picture of the same slots: what is worn, and how much
+   of it is left. The page hands this painter over at bootstrap too, so putting
+   armour back from a save does not have to know the bar exists. */
+let armorPainter = () => {};
+
+export function setArmorPainter(paint) { armorPainter = paint; }
+
+/** Redraws the armour bar wherever it is being shown. */
+export function paintArmorBar() {
+  armorPainter();
+}
+
 export function inventoryHasRoom(itemId, count) {
   const def = ITEMS.get(itemId);
   if (!def) return false;
