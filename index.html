@@ -349,6 +349,24 @@ function slotInfo(stack) {
   };
 }
 
+/* The layer that uses a block with what is in hand is the one that has to say
+   something back to the player, and everything it says belongs to whoever is
+   showing the game: the toast above the hotbar, the screen a furnace or chest
+   opens into, the black that covers a night of sleep, the readout the HUD keeps,
+   and the column of ground a death returns you to. All five come down as one
+   view at bootstrap. Until they do, a pickaxe still breaks and a bucket still
+   pours, and nothing else notices. */
+const interactionView = {
+  toast: () => {},
+  openScreen: () => {},
+  placeSpawn: () => {},
+  showSleepFade: () => {},
+  hideSleepFade: () => {},
+  paintReadout: () => {}
+};
+
+function setInteractionView(shown) { Object.assign(interactionView, shown); }
+
 function blockIntersectsPlayer(bx, by, bz) {
   const playerMinX = player.pos.x - PLAYER_HALF_WIDTH;
   const playerMaxX = player.pos.x + PLAYER_HALF_WIDTH;
@@ -491,7 +509,7 @@ function wearHeldTool(amount = 1) {
   const item = ITEMS.get(stack.id);
   emptyHand();
   playToolBreakSound();
-  showToast(((item && item.name) || 'Tool') + ' broke');
+  interactionView.toast(((item && item.name) || 'Tool') + ' broke');
   hideMiningFeedback();
   paintPack();
   return true;
@@ -593,19 +611,19 @@ function tryPlaceSelectedBlock() {
 
   // Right-clicking a crafting table opens the 3x3 screen, whatever is held.
   if (currentTarget.id === B.CRAFTING_TABLE) {
-    openScreen('crafting');
+    interactionView.openScreen('crafting');
     return false;
   }
 
   // So does a furnace, lit or not, which opens its smelting screen.
   if (isFurnaceBlock(currentTarget.id)) {
-    openScreen('furnace', currentTarget);
+    interactionView.openScreen('furnace', currentTarget);
     return false;
   }
 
   // And a chest, which opens its box of stored things under the crosshair.
   if (isChestBlock(currentTarget.id)) {
-    openScreen('chest', currentTarget);
+    interactionView.openScreen('chest', currentTarget);
     return false;
   }
 
@@ -663,7 +681,7 @@ function tryPlaceSelectedBlock() {
   if (block.ladder) {
     ladderFacing = ladderFacingFor(currentTarget, px, py, pz);
     if (!ladderFacing) {
-      showToast('A ladder needs a wall to hang on');
+      interactionView.toast('A ladder needs a wall to hang on');
       return false;
     }
   }
@@ -673,7 +691,7 @@ function tryPlaceSelectedBlock() {
   if (block.bed) return placeBed(px, py, pz);
 
   if (block.solid && blockIntersectsPlayer(px, py, pz)) {
-    showToast('Not enough room to place that');
+    interactionView.toast('Not enough room to place that');
     return false;
   }
 
@@ -737,7 +755,7 @@ function useHoeOnTarget() {
   const y = currentTarget.y;
   const z = currentTarget.z;
   if (world.getBlock(x, y + 1, z) !== B.AIR) {
-    showToast('Needs air above it to till');
+    interactionView.toast('Needs air above it to till');
     return false;
   }
 
@@ -770,7 +788,7 @@ function plantSeedsOnTarget() {
   // Sowing dry soil is allowed — Minecraft does not stop it either — but a
   // player who has just learned wheat can also wait for water, so say which.
   if (!isFarmlandWet(x, y - 1, z)) {
-    showToast(`Dry soil — crops wait for water within ${FARMLAND_WET_REACH} blocks`);
+    interactionView.toast(`Dry soil — crops wait for water within ${FARMLAND_WET_REACH} blocks`);
   }
   return true;
 }
@@ -834,13 +852,13 @@ function fillBucket() {
   camera.getWorldDirection(rayDirection);
   const hit = raycastWater(aimOrigin(), rayDirection, FOCUS_REACH);
   if (!hit) {
-    showToast('No source to fill from');
+    interactionView.toast('No source to fill from');
     return false;
   }
 
   const stack = getSelectedStack();
   if (stack.count > 1 && !inventoryHasRoom('water_bucket', 1)) {
-    showToast('Nowhere to put the water');
+    interactionView.toast('Nowhere to put the water');
     return false;
   }
   if (!swapHeldFor('water_bucket')) return false;
@@ -848,7 +866,7 @@ function fillBucket() {
   if (!waterBeside(hit.x, hit.y, hit.z)) world.setBlock(hit.x, hit.y, hit.z, B.AIR);
   triggerHeldSwing();
   playFillBucketSound(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
-  showToast('Bucket filled');
+  interactionView.toast('Bucket filled');
   return true;
 }
 
@@ -868,7 +886,7 @@ function pourBucket() {
 
   const roomId = world.getBlock(x, y, z);
   if (roomId !== B.AIR && !isWater(roomId)) {
-    showToast('Nowhere for the water to go');
+    interactionView.toast('Nowhere for the water to go');
     return false;
   }
   if (!world.setBlock(x, y, z, B.WATER)) return false;
@@ -914,15 +932,15 @@ function isDoorBlock(blockId) {
  */
 function placeDoor(x, y, z) {
   if (!BLOCKS[world.getBlock(x, y - 1, z)].solid) {
-    showToast('Doors need solid ground beneath them');
+    interactionView.toast('Doors need solid ground beneath them');
     return false;
   }
   if (y + 1 >= WORLD_HEIGHT || world.getBlock(x, y + 1, z) !== B.AIR) {
-    showToast('Needs a clear block above for the door');
+    interactionView.toast('Needs a clear block above for the door');
     return false;
   }
   if (blockIntersectsPlayer(x, y, z) || blockIntersectsPlayer(x, y + 1, z)) {
-    showToast('Not enough room to place that');
+    interactionView.toast('Not enough room to place that');
     return false;
   }
 
@@ -963,7 +981,7 @@ function toggleDoor(x, y, z) {
  */
 function placeBed(x, y, z) {
   if (!BLOCKS[world.getBlock(x, y - 1, z)].solid) {
-    showToast('Beds need solid ground beneath them');
+    interactionView.toast('Beds need solid ground beneath them');
     return false;
   }
   const towards = frontFacingTowardsPlayer(x, z);
@@ -972,15 +990,15 @@ function placeBed(x, y, z) {
   const headZ = z + facing[1];
 
   if (world.getBlock(headX, y, headZ) !== B.AIR) {
-    showToast('Needs a clear cell beside for the bed');
+    interactionView.toast('Needs a clear cell beside for the bed');
     return false;
   }
   if (!BLOCKS[world.getBlock(headX, y - 1, headZ)].solid) {
-    showToast('Beds need solid ground beneath them');
+    interactionView.toast('Beds need solid ground beneath them');
     return false;
   }
   if (blockIntersectsPlayer(x, y, z) || blockIntersectsPlayer(headX, y, headZ)) {
-    showToast('Not enough room to place that');
+    interactionView.toast('Not enough room to place that');
     return false;
   }
 
@@ -1016,14 +1034,13 @@ function useBed(x, y, z) {
     }
   }
 
-  spawnColumn.x = footX;
-  spawnColumn.z = footZ;
+  interactionView.placeSpawn(footX, footZ);
   playDoorSound(x + 0.5, y + 0.5, z + 0.5);
 
   if (isNight() && !sleeping) {
     sleepThroughNight();
   } else {
-    showToast('Spawn point set');
+    interactionView.toast('Spawn point set');
   }
   return true;
 }
@@ -1033,15 +1050,15 @@ let sleeping = false;
 
 function sleepThroughNight() {
   sleeping = true;
-  sleepFadeEl.classList.add('active');
-  showToast('You fall asleep...');
+  interactionView.showSleepFade();
+  interactionView.toast('You fall asleep...');
   setTimeout(() => {
     setDayTime(DAY_START);
     applyDayNight();
-    updateDebug();
+    interactionView.paintReadout();
     sleeping = false;
-    sleepFadeEl.classList.remove('active');
-    showToast('Good morning');
+    interactionView.hideSleepFade();
+    interactionView.toast('Good morning');
   }, 1400);
 }
 
@@ -4205,6 +4222,20 @@ setHungerPainter(renderHunger);
 setPackPainter(() => {
   renderHotbar();
   if (activeScreen) renderScreen();
+});
+
+/* And the page's screens, toast, sleep fade, readout and spawn column come down
+   as one view, so nothing that uses a block has to know their names. */
+setInteractionView({
+  toast: showToast,
+  openScreen,
+  placeSpawn: (x, z) => {
+    spawnColumn.x = x;
+    spawnColumn.z = z;
+  },
+  showSleepFade: () => sleepFadeEl.classList.add('active'),
+  hideSleepFade: () => sleepFadeEl.classList.remove('active'),
+  paintReadout: updateDebug
 });
 
 /* The held item's frame: the view model reads the game only through this. */
