@@ -5222,10 +5222,6 @@ const LEGACY_SAVE_KEYS = ['voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcr
 const SAVE_SCHEMA = 4;
 const AUTOSAVE_SECONDS = 25;
 
-const saveStatusEl = document.getElementById('save-status');
-const newWorldButton = document.getElementById('new-world-button');
-const startButton = document.getElementById('start-button');
-
 let lastSaveAt = 0;
 let lastSaveBytes = 0;
 let lastSaveError = null;
@@ -5467,6 +5463,72 @@ function applySavedBlockEntities(world, save) {
   }
 }
 
+/** A saved stack as a compact record: [id, count] plus durability if it has any. */
+function stackRecord(stack) {
+  if (!stack) return null;
+  return stack.dur == null
+    ? [stack.id, stack.count]
+    : [stack.id, stack.count, stack.dur];
+}
+
+/** Reads one saved record back into a stack, or null if it no longer exists. */
+function stackFromRecord(record) {
+  if (!Array.isArray(record) || !ITEMS.has(record[0])) return null;
+  const count = Math.trunc(Number(record[1]) || 0);
+  if (count <= 0) return null;
+  const def = ITEMS.get(record[0]);
+  const stack = makeStack(record[0], Math.min(count, def.stack));
+  if (def.durability && record[2] != null) {
+    stack.dur = clamp(Math.trunc(Number(record[2]) || 0), 0, def.durability);
+  }
+  return stack;
+}
+
+function restoreSavedInventory(save) {
+  if (!Array.isArray(save.inventory)) return;
+  for (let i = 0; i < INVENTORY_SIZE; i++) {
+    const restored = stackFromRecord(save.inventory[i]);
+    if (restored) inventory[i] = restored;
+  }
+}
+
+function formatSavedAt(timestamp) {
+  if (!timestamp) return 'never';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return seconds + 's ago';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return minutes + ' min ago';
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + ' h ago';
+  return new Date(timestamp).toLocaleDateString();
+}
+
+/** True when an unreadable older-schema world is still sitting in storage. */
+function hasLegacySave() {
+  try {
+    return LEGACY_SAVE_KEYS.some((key) => localStorage.getItem(key) != null);
+  } catch (unavailable) {
+    return false;
+  }
+}
+
+/** True when this build has written its own world yet, readable or not. */
+function hasCurrentSave() {
+  try {
+    return localStorage.getItem(SAVE_KEY) != null;
+  } catch (unavailable) {
+    return false;
+  }
+}
+
+function updateSaveLoop(dt) {
+  autosaveTimer -= dt;
+  if (autosaveTimer > 0) return;
+  autosaveTimer = AUTOSAVE_SECONDS;
+  saveWorld();
+}
+
 function restoreSavedPlayer(save) {
   const p = save.player;
   if (!p) return false;
@@ -5503,35 +5565,6 @@ function restoreSavedPlayer(save) {
   return true;
 }
 
-/** A saved stack as a compact record: [id, count] plus durability if it has any. */
-function stackRecord(stack) {
-  if (!stack) return null;
-  return stack.dur == null
-    ? [stack.id, stack.count]
-    : [stack.id, stack.count, stack.dur];
-}
-
-/** Reads one saved record back into a stack, or null if it no longer exists. */
-function stackFromRecord(record) {
-  if (!Array.isArray(record) || !ITEMS.has(record[0])) return null;
-  const count = Math.trunc(Number(record[1]) || 0);
-  if (count <= 0) return null;
-  const def = ITEMS.get(record[0]);
-  const stack = makeStack(record[0], Math.min(count, def.stack));
-  if (def.durability && record[2] != null) {
-    stack.dur = clamp(Math.trunc(Number(record[2]) || 0), 0, def.durability);
-  }
-  return stack;
-}
-
-function restoreSavedInventory(save) {
-  if (!Array.isArray(save.inventory)) return;
-  for (let i = 0; i < INVENTORY_SIZE; i++) {
-    const restored = stackFromRecord(save.inventory[i]);
-    if (restored) inventory[i] = restored;
-  }
-}
-
 /**
  * Worn armour, put back only if it is still the right kind of armour for the
  * slot it is stored in.
@@ -5548,17 +5581,9 @@ function restoreSavedArmour(save) {
   renderArmorBar();
 }
 
-function formatSavedAt(timestamp) {
-  if (!timestamp) return 'never';
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 10) return 'just now';
-  if (seconds < 60) return seconds + 's ago';
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return minutes + ' min ago';
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return hours + ' h ago';
-  return new Date(timestamp).toLocaleDateString();
-}
+const saveStatusEl = document.getElementById('save-status');
+const newWorldButton = document.getElementById('new-world-button');
+const startButton = document.getElementById('start-button');
 
 function refreshSaveStatus() {
   if (!saveStatusEl) return;
@@ -5574,24 +5599,6 @@ function refreshSaveStatus() {
   } else {
     saveStatusEl.textContent = 'No saved world yet';
     saveStatusEl.classList.remove('found');
-  }
-}
-
-/** True when an unreadable older-schema world is still sitting in storage. */
-function hasLegacySave() {
-  try {
-    return LEGACY_SAVE_KEYS.some((key) => localStorage.getItem(key) != null);
-  } catch (unavailable) {
-    return false;
-  }
-}
-
-/** True when this build has written its own world yet, readable or not. */
-function hasCurrentSave() {
-  try {
-    return localStorage.getItem(SAVE_KEY) != null;
-  } catch (unavailable) {
-    return false;
   }
 }
 
@@ -5614,13 +5621,6 @@ function initSaveUi(hasSavedWorld) {
   } else {
     refreshSaveStatus();
   }
-}
-
-function updateSaveLoop(dt) {
-  autosaveTimer -= dt;
-  if (autosaveTimer > 0) return;
-  autosaveTimer = AUTOSAVE_SECONDS;
-  saveWorld();
 }
 
 window.addEventListener('pagehide', () => saveWorld());
