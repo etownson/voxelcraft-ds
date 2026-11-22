@@ -902,63 +902,6 @@ function updateItemEntities(dt) {
   }
 }
 
-/* ---------- Break particles ---------- */
-
-const breakParticleGeometry = new THREE.BoxGeometry(0.11, 0.11, 0.11);
-const breakParticleMaterials = new Map();
-const breakParticles = [];
-
-function breakParticleMaterial(color) {
-  let material = breakParticleMaterials.get(color);
-  if (!material) {
-    material = new THREE.MeshBasicMaterial({ color });
-    breakParticleMaterials.set(color, material);
-  }
-  return material;
-}
-
-function spawnBlockBreakParticles(x, y, z, blockId) {
-  const color = BLOCKS[blockId].particleColor ?? 0x9a9a9a;
-  for (let i = 0; i < 10; i++) {
-    const mesh = new THREE.Mesh(breakParticleGeometry, breakParticleMaterial(color));
-    mesh.position.set(
-      x + 0.2 + Math.random() * 0.6,
-      y + 0.2 + Math.random() * 0.6,
-      z + 0.2 + Math.random() * 0.6
-    );
-    const life = 0.45 + Math.random() * 0.25;
-    mesh.scale.setScalar(0.7 + Math.random() * 0.8);
-    scene.add(mesh);
-    breakParticles.push({
-      mesh,
-      vel: new THREE.Vector3(
-        (Math.random() - 0.5) * 4.2,
-        1.6 + Math.random() * 3.2,
-        (Math.random() - 0.5) * 4.2
-      ),
-      life,
-      maxLife: life
-    });
-  }
-}
-
-function updateBreakParticles(dt) {
-  for (let i = breakParticles.length - 1; i >= 0; i--) {
-    const particle = breakParticles[i];
-    particle.life -= dt;
-    if (particle.life <= 0) {
-      scene.remove(particle.mesh);
-      breakParticles.splice(i, 1);
-      continue;
-    }
-    particle.vel.y -= 18 * dt;
-    particle.mesh.position.addScaledVector(particle.vel, dt);
-    particle.mesh.rotation.x += dt * 7;
-    particle.mesh.rotation.z += dt * 5;
-    particle.mesh.scale.setScalar(Math.max(0.12, particle.life / particle.maxLife));
-  }
-}
-
 /* ---------- Voxel raycast and target outline ---------- */
 
 const rayDirection = new THREE.Vector3();
@@ -4352,30 +4295,6 @@ function removeMob(mob, index = mobs.indexOf(mob)) {
   mobs.splice(index, 1);
 }
 
-function spawnBurstParticles(x, y, z, color, count = 8, spread = 3.2) {
-  for (let i = 0; i < count; i++) {
-    const mesh = new THREE.Mesh(breakParticleGeometry, breakParticleMaterial(color));
-    mesh.position.set(
-      x + (Math.random() - 0.5) * 0.5,
-      y + (Math.random() - 0.5) * 0.5,
-      z + (Math.random() - 0.5) * 0.5
-    );
-    const life = 0.4 + Math.random() * 0.35;
-    mesh.scale.setScalar(0.55 + Math.random() * 0.9);
-    scene.add(mesh);
-    breakParticles.push({
-      mesh,
-      vel: new THREE.Vector3(
-        (Math.random() - 0.5) * spread,
-        Math.random() * spread * 0.8,
-        (Math.random() - 0.5) * spread
-      ),
-      life,
-      maxLife: life
-    });
-  }
-}
-
 function dropMobLoot(mob) {
   for (const drop of mob.def.drops || []) {
     // A shorn sheep has nothing left to give but its meat.
@@ -7146,6 +7065,16 @@ function spawnTorchEmber(x, y, z) {
   return true;
 }
 
+/**
+ * Everything this layer may know about the view: where the feet are, where
+ * the eye settles between treads, which way the head is turned, whether the
+ * game is paused, and the right to hand the camera back when the shaking is
+ * done. The page registers these once before the first frame; nothing below
+ * reaches up on its own.
+ */
+let fxView = null;
+function setFxView(view) { fxView = view; }
+
 /** Ambient embers rising from placed torches near the player. */
 function updateTorchEmbers(dt) {
   if (dt <= 0) return;
@@ -7155,14 +7084,15 @@ function updateTorchEmbers(dt) {
     emberSpawnTimer = EMBER_SPAWN_INTERVAL * (0.7 + Math.random() * 0.7);
     if (emberActiveCount < EMBER_LIMIT && world.torches.size) {
       const candidates = [];
+      const listener = fxView.pos();
       for (const key of world.torches) {
         const parts = key.split(',');
         const tx = Number(parts[0]) + 0.5;
         const ty = Number(parts[1]);
         const tz = Number(parts[2]) + 0.5;
-        const dx = tx - player.pos.x;
-        const dy = ty - player.pos.y;
-        const dz = tz - player.pos.z;
+        const dx = tx - listener.x;
+        const dy = ty - listener.y;
+        const dz = tz - listener.z;
         if (dx * dx + dy * dy + dz * dz <= EMBER_RANGE * EMBER_RANGE) {
           candidates.push({ x: tx, y: ty, z: tz });
         }
@@ -7208,13 +7138,14 @@ function emberCount() {
 
 /** Snapshot of nearby torches and live embers for debug/tests. */
 function torchEmbers() {
+  const listener = fxView.pos();
   const torches = [];
   for (const key of world.torches) {
     const parts = key.split(',');
     const x = Number(parts[0]);
     const y = Number(parts[1]);
     const z = Number(parts[2]);
-    if (Math.hypot(x + 0.5 - player.pos.x, y - player.pos.y, z + 0.5 - player.pos.z) <= EMBER_RANGE) {
+    if (Math.hypot(x + 0.5 - listener.x, y - listener.y, z + 0.5 - listener.z) <= EMBER_RANGE) {
       torches.push([x, y, z]);
     }
   }
@@ -7249,9 +7180,10 @@ function triggerExplosionPunch(x, y, z) {
   explosionLight.intensity = 18;
   explosionFlashTimer = EXPLOSION_FLASH_SECONDS;
 
-  const dx = player.pos.x - x;
-  const dy = player.pos.y + EYE_HEIGHT - y;
-  const dz = player.pos.z - z;
+  const from = fxView.pos();
+  const dx = from.x - x;
+  const dy = from.y + EYE_HEIGHT - y;
+  const dz = from.z - z;
   const distance = Math.hypot(dx, dy, dz);
   if (distance < 16) {
     cameraShake = Math.max(cameraShake, 0.12 * (1 - distance / 16));
@@ -7274,13 +7206,14 @@ function updateExplosionEffects(dt) {
   if (cameraShake > 0) {
     const time = performance.now() * 0.001;
     const amplitude = cameraShake;
+    const eye = fxView.eye();
     camera.position.set(
-      player.pos.x + Math.sin(time * 61) * amplitude,
-      player.pos.y + EYE_HEIGHT - cameraStepOffset + Math.cos(time * 73) * amplitude * 0.6,
-      player.pos.z + Math.sin(time * 53 + 1.7) * amplitude
+      eye.x + Math.sin(time * 61) * amplitude,
+      eye.y + Math.cos(time * 73) * amplitude * 0.6,
+      eye.z + Math.sin(time * 53 + 1.7) * amplitude
     );
     cameraShake = Math.max(0, cameraShake - dt * 0.7);
-    if (cameraShake <= 0) syncCamera();
+    if (cameraShake <= 0) fxView.restore();
   }
 }
 
@@ -7290,6 +7223,87 @@ function explosionEffects() {
     shake: cameraShake,
     lightIntensity: explosionLight.intensity
   };
+}
+
+/* ---------- Break particles ---------- */
+
+const breakParticleGeometry = new THREE.BoxGeometry(0.11, 0.11, 0.11);
+const breakParticleMaterials = new Map();
+const breakParticles = [];
+
+function breakParticleMaterial(color) {
+  let material = breakParticleMaterials.get(color);
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({ color });
+    breakParticleMaterials.set(color, material);
+  }
+  return material;
+}
+
+function spawnBlockBreakParticles(x, y, z, blockId) {
+  const color = BLOCKS[blockId].particleColor ?? 0x9a9a9a;
+  for (let i = 0; i < 10; i++) {
+    const mesh = new THREE.Mesh(breakParticleGeometry, breakParticleMaterial(color));
+    mesh.position.set(
+      x + 0.2 + Math.random() * 0.6,
+      y + 0.2 + Math.random() * 0.6,
+      z + 0.2 + Math.random() * 0.6
+    );
+    const life = 0.45 + Math.random() * 0.25;
+    mesh.scale.setScalar(0.7 + Math.random() * 0.8);
+    scene.add(mesh);
+    breakParticles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * 4.2,
+        1.6 + Math.random() * 3.2,
+        (Math.random() - 0.5) * 4.2
+      ),
+      life,
+      maxLife: life
+    });
+  }
+}
+
+function updateBreakParticles(dt) {
+  for (let i = breakParticles.length - 1; i >= 0; i--) {
+    const particle = breakParticles[i];
+    particle.life -= dt;
+    if (particle.life <= 0) {
+      scene.remove(particle.mesh);
+      breakParticles.splice(i, 1);
+      continue;
+    }
+    particle.vel.y -= 18 * dt;
+    particle.mesh.position.addScaledVector(particle.vel, dt);
+    particle.mesh.rotation.x += dt * 7;
+    particle.mesh.rotation.z += dt * 5;
+    particle.mesh.scale.setScalar(Math.max(0.12, particle.life / particle.maxLife));
+  }
+}
+
+function spawnBurstParticles(x, y, z, color, count = 8, spread = 3.2) {
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(breakParticleGeometry, breakParticleMaterial(color));
+    mesh.position.set(
+      x + (Math.random() - 0.5) * 0.5,
+      y + (Math.random() - 0.5) * 0.5,
+      z + (Math.random() - 0.5) * 0.5
+    );
+    const life = 0.4 + Math.random() * 0.35;
+    mesh.scale.setScalar(0.55 + Math.random() * 0.9);
+    scene.add(mesh);
+    breakParticles.push({
+      mesh,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * spread,
+        Math.random() * spread * 0.8,
+        (Math.random() - 0.5) * spread
+      ),
+      life,
+      maxLife: life
+    });
+  }
 }
 
 /* ---------- Landing dust and water-entry splashes ---------- */
@@ -7320,17 +7334,17 @@ let audioLastInWater = false;
 let audioHeartbeatTimer = 0;
 
 /** Track footstep cadence, landings, water entry, swimming and the heartbeat. */
-function updateAudio(dt) {
+function updateAudio(dt, player) {
   if (dt <= 0) return;
 
   setAudioListener({
     x: player.pos.x,
     y: player.pos.y,
     z: player.pos.z,
-    yaw,
+    yaw: fxView.yaw(),
     headInWater: player.headInWater,
     dead: player.dead,
-    paused: !!activeScreen || !overlayEl.classList.contains('hidden') || player.dead
+    paused: fxView.paused()
   });
 
   updateAmbient(dt);
@@ -7413,8 +7427,7 @@ function updateAudio(dt) {
   }
 
   // A quiet heartbeat is the only warning an empty health bar gives.
-  if (!player.dead && player.health <= 6 &&
-      overlayEl.classList.contains('hidden') && !activeScreen) {
+  if (!player.dead && player.health <= 6 && !fxView.paused()) {
     audioHeartbeatTimer -= dt;
     if (audioHeartbeatTimer <= 0) {
       audioHeartbeatTimer = player.health <= 3 ? 0.72 : 1.15;
@@ -7868,6 +7881,21 @@ window.addEventListener('visibilitychange', () => {
 /* ============================================================
    21. MAIN ANIMATION LOOP AND DEBUG HOOKS
    ============================================================ */
+
+/* The eye, for the layers that shake the camera and paint embers: the same
+   position syncCamera settles the view onto, scratch-reused frame to frame. */
+const fxEyePoint = new THREE.Vector3();
+setFxView({
+  pos: () => player.pos,
+  eye: () => fxEyePoint.set(
+    player.pos.x,
+    player.pos.y + EYE_HEIGHT - cameraStepOffset,
+    player.pos.z
+  ),
+  yaw: () => yaw,
+  paused: () => !!activeScreen || !overlayEl.classList.contains('hidden') || player.dead,
+  restore: () => syncCamera()
+});
 
 const loadedSave = readSavedWorld();
 if (loadedSave) {
@@ -8993,7 +9021,7 @@ window.__voxelcraft = {
       updateItemEntities(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
-      updateAudio(dt);
+      updateAudio(dt, player);
       updateExplosionEffects(dt);
       updateBlockEntities(dt);
       updateCrops(dt);
@@ -9027,7 +9055,7 @@ window.__voxelcraft = {
       updateItemEntities(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
-      updateAudio(dt);
+      updateAudio(dt, player);
       updateExplosionEffects(dt);
       updateWater(dt);
     }
@@ -9266,7 +9294,7 @@ function animate(now) {
   updateWaterLook(dt, player.headInWater);
 
   world.updateStreaming(player.pos.x, player.pos.z);
-  updateAudio(dt);
+  updateAudio(dt, player);
   updateSaveLoop(dt);
   skyDome.position.copy(camera.position);
   renderGame();
