@@ -121,6 +121,31 @@ export function paintHunger() {
   hungerPainter();
 }
 
+/* The hearts are that picture's twin: the same shape, a different bar, and the
+   body has no idea either of them exists. */
+let healthPainter = () => {};
+
+export function setHealthPainter(paint) { healthPainter = paint; }
+
+/** Redraws the hearts after anything has moved them. */
+export function paintHealth() {
+  healthPainter();
+}
+
+/* The red wash that follows a hit is not a wound but the screen's way of saying
+   one landed, so it is not the body's clock either. All the body gets to say is
+   that a hit landed, how much time has gone by since, and that the player is
+   somewhere else now — dead, or newly alive. */
+const damageFlash = {
+  flash: () => {},
+  fade: () => {},
+  clear: () => {}
+};
+
+export function setDamageFlash(verbs) {
+  Object.assign(damageFlash, verbs);
+}
+
 /**
  * Spends exhaustion the way Minecraft does: every full 4.0 points takes one point
  * of saturation if there is any left, and only then one point of food. That order

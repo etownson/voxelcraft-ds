@@ -193,7 +193,8 @@ import {
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
   consumeSelectedItem, countInventoryItem, currentSlot, equipSlotFor, equipStack,
-  getSelectedStack, inventory, selectSlot, setArmorPainter, setPackPainter, unequipSlot
+  getSelectedStack, inventory, paintArmorBar, selectSlot, setArmorPainter, setPackPainter,
+  unequipSlot
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -201,8 +202,8 @@ import {
   setMobWorld, spawnMob, trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './src/mob.js';
 import {
-  addExhaustion, aimOrigin, aimPlayer, applyLook, exhaustForMovement, player, setHungerPainter,
-  turnPlayer, view
+  addExhaustion, aimOrigin, aimPlayer, applyLook, exhaustForMovement, paintHealth, paintHunger,
+  player, setDamageFlash, setHealthPainter, setHungerPainter, turnPlayer, view
 } from './src/player.js';
 import { camera, renderer, scene, skyDome } from './src/render.js';
 import {
@@ -1327,6 +1328,28 @@ let regenTimer = 0;
 let saturationBoostTimer = 0;
 let currentMobTarget = null;
 
+/* The red wash that follows a hit is not a wound, it is the screen's way of
+   saying one landed. The body only says when to put one up, how much of it has
+   drained away, and when to take it away — at a death, or at a new life. */
+function showDamageFlash() {
+  damageFlashTimer = 0.5;
+  damageFlashEl.style.opacity = '1';
+}
+
+function fadeDamageFlash(dt) {
+  if (damageFlashTimer <= 0) {
+    damageFlashEl.style.opacity = '0';
+    return;
+  }
+  damageFlashTimer = Math.max(0, damageFlashTimer - dt);
+  damageFlashEl.style.opacity = String(clamp(damageFlashTimer * 2.4, 0, 1));
+}
+
+function clearDamageFlash() {
+  damageFlashTimer = 0;
+  damageFlashEl.style.opacity = '0';
+}
+
 function renderHealth() {
   const hearts = healthBarEl.children;
   const points = clamp(player.health, 0, player.maxHealth);
@@ -1394,7 +1417,7 @@ function wearArmour(absorbed) {
   const item = ITEMS.get(stack.id);
   showToast((item ? item.name : 'Armour') + ' broke');
   playToolBreakSound();
-  renderArmorBar();
+  paintArmorBar();
   markWorldDirty();
 }
 
@@ -1416,10 +1439,9 @@ function damagePlayer(amount, cause = 'unknown') {
   player.hurtCooldown = 0.35;
   player.regenDelay = 6;
   regenTimer = 0;
-  damageFlashTimer = 0.5;
-  damageFlashEl.style.opacity = '1';
+  showDamageFlash();
   playPlayerHurtSound();
-  renderHealth();
+  paintHealth();
 
   if (player.health <= 0) {
     playerDie(cause);
@@ -1431,7 +1453,7 @@ function damagePlayer(amount, cause = 'unknown') {
 function healPlayer(amount) {
   if (player.dead) return;
   player.health = clamp(player.health + amount, 0, player.maxHealth);
-  renderHealth();
+  paintHealth();
 }
 
 function playerDie(cause) {
@@ -1447,11 +1469,10 @@ function playerDie(cause) {
   hideTargetOutline();
   currentMobTarget = null;
   if (activeScreen) closeScreen();
-  damageFlashTimer = 0;
-  damageFlashEl.style.opacity = '0';
-  renderHealth();
+  clearDamageFlash();
+  paintHealth();
   // Dead players stop being hungry on screen: this drops the saturation jitter.
-  renderHunger();
+  paintHunger();
 
   const messages = {
     fall: 'You fell too far.',
@@ -1484,15 +1505,14 @@ function respawnPlayer() {
   player.hunger = HUNGER_MAX;
   player.saturation = SATURATION_ON_RESPAWN;
   player.exhaustion = 0;
-  renderHunger();
+  paintHunger();
   // A death and a respawn change the save even when the world itself does not, so
   // the refilled stomach has to be written: without this, closing the tab before
   // the next autosave brings back the empty bar the save was holding.
   markWorldDirty();
-  damageFlashTimer = 0;
-  damageFlashEl.style.opacity = '0';
+  clearDamageFlash();
   deathScreenEl.classList.add('hidden');
-  renderHealth();
+  paintHealth();
 
   spawnPlayer(spawnColumn);
   // The spawn area was almost certainly unloaded while the player was out
@@ -1558,7 +1578,7 @@ function tryEatSelectedItem() {
   // empty stomach wastes most of it — the same reason Minecraft pays to eat early
   // rather than waiting until the bar is gone.
   player.saturation = Math.min(player.hunger, player.saturation + (item.saturation || 0));
-  renderHunger();
+  paintHunger();
   triggerHeldSwing();
   playEatSound();
   markWorldDirty();
@@ -1621,12 +1641,7 @@ function updateHealth(dt) {
   if (player.regenDelay > 0) {
     player.regenDelay = Math.max(0, player.regenDelay - dt);
   }
-  if (damageFlashTimer > 0) {
-    damageFlashTimer = Math.max(0, damageFlashTimer - dt);
-    damageFlashEl.style.opacity = String(clamp(damageFlashTimer * 2.4, 0, 1));
-  } else {
-    damageFlashEl.style.opacity = '0';
-  }
+  fadeDamageFlash(dt);
 
   if (player.dead) return;
 
@@ -1647,7 +1662,7 @@ function updateHealth(dt) {
       healPlayer(1);
       player.saturation = Math.max(0, player.saturation - SATURATION_BOOST_COST);
       // The bar starts jittering the moment that cushion is gone.
-      if (player.saturation <= 0) renderHunger();
+      if (player.saturation <= 0) paintHunger();
     }
     return;
   }
@@ -3326,6 +3341,15 @@ setAimBlocked(() => !!activeScreen || player.dead);
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */
 setHungerPainter(renderHunger);
+
+/* The hearts are the same kind of picture, and so is the red wash: the body
+   says when each of them changes, and never names an element. */
+setHealthPainter(renderHealth);
+setDamageFlash({
+  flash: showDamageFlash,
+  fade: fadeDamageFlash,
+  clear: clearDamageFlash
+});
 
 /* And the pack says where its picture is: the hotbar, and the screen too when
    one of them is showing the same thirty-six slots. */
