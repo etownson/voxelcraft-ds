@@ -15,7 +15,9 @@
  * imports it — a new module needing a name that stays in the page is reported as a
  * blocker, because the honest fix is to move that name down a layer.
  *
- * Paths are relative to the repository root, which is where to run it from.
+ * Paths are relative to the repository root, which is where to run it from. The
+ * rules it uses to decide what a file declares and what it refers to live in
+ * tools/js-scope.mjs, shared with the import checker.
  *
  * --dry       print what would change and write nothing
  * --selftest  with an empty spec, assert that the page regenerates byte for byte.
@@ -45,88 +47,24 @@ const body = html.slice(headAt + HEAD.length, tailAt).split('\n');
 
 /* ---------- the rules for what counts as a name and a reference ---------- */
 
-/* A binding declared at column 0 is module-level, so it can be exported. */
-const DECL = /^(export\s+)?(const|let|var)\s+([A-Za-z_$][\w$]*)|^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)|^class\s+([A-Za-z_$][\w$]*)|^export\s+(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/;
-/* What an already-moved module offers the graph: only what it exports. */
-const EXPORTED = /^export\s+(?:async\s+)?(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)/;
-const DECL_ANY = /(?:^|\s)(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)|(?:^|\s)function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(/g;
-const codeOnly = (lines) => lines.filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l));
-const topLevelNames = (lines) => {
-  const out = [];
-  for (const line of lines) {
-    const m = DECL.exec(line);
-    if (m) out.push(m[3] || m[4] || m[5] || m[6]);
-  }
-  return out;
-};
-/* A mention of the binding, not of something else with the same spelling. A
-   lookbehind on `.` skips a property; a lookahead at a colon with no space before
-   it skips an object key — only with no space, because `ready ? GROUND_ACCEL :
-   AIR_ACCEL` has the same colon and is a real reference. And `...spread` starts
-   with dots too, so those go first, or spreading an imported function reads as a
-   property and silently loses its import. */
-const spreadless = (lines) => codeOnly(lines).join('\n').replace(/\.\.\./g, '   ');
-const mention = (name) => new RegExp('(?<![.\\w$])' + name.replace(/\$/g, '\\$') + '(?![\\w$])(?!:)');
+/* Which names a file declares and which it merely spells out loud is the same
+   question the import checker has to answer, and a rule that is wrong in either
+   tool fails silently: one deletes an import nobody noticed was needed, the
+   other leaves a name in place that is not declared anywhere. So both tools read
+   the rules from one file, and `--selftest` runs those rules against their cases
+   before this says anything about the game. */
+import {
+  DECL, EXPORTED, mention, reachesFor, references, scopeSelftest, scopes, topLevelNames
+} from './js-scope.mjs';
 
-/* Bindings made anywhere, including inside a function. A piece with its own
-   `const canvas` inside a helper is not asking for someone else's canvas. */
-const localNames = (lines) => {
-  const out = new Set();
-  for (const line of codeOnly(lines)) {
-    DECL_ANY.lastIndex = 0;
-    let m;
-    while ((m = DECL_ANY.exec(line))) out.add(m[1] || m[2]);
-  }
-  for (const n of paramNames(spreadless(lines))) out.add(n);
-  return out;
-};
-/* A parameter is a local binding too, and this one mattered: the lighting and
-   mesh sections are written as `function addLightBFS(world, kind, x, y, z)`,
-   each passed the world it should read, and a module handed a name is not
-   asking to import it. Without this the whole knot looked like it depended on
-   the page's `world` singleton, which would have been wired up as a cycle.
-
-   Only real signatures count — `if (daylight < 0.35) {` has the same shape as a
-   method and is not one, and reading it as one would call `daylight` local and
-   quietly drop a needed import. So the keyword list, and nothing that follows a
-   dot, since `world.getBlock(x)` is a call on someone else's method. And it is
-   the parameter list that is local, never the method's own name: `sampleColumn(x,
-   z) { ... }` in the debug hook is a method on an object literal, which binds
-   `x` and `z` and nothing else — the first run of this read the name as a
-   binding and dropped the page's import of it, which `--selftest` caught. */
-const NON_METHOD = 'if|for|while|switch|catch|return|typeof|await|new|do|else|in|of|case|delete|void|instanceof|yield|throw';
-const PLIST = '[^)]*(?:\\([^)]*\\)[^)]*)*';            // params with a default that calls
-const paramNames = (text) => {
-  const out = new Set();
-  /* Only the bound half of each parameter. `processMeshing(budgetMs =
-     CHUNK_BUDGET_MS)` binds `budgetMs` and *reads* CHUNK_BUDGET_MS from outside,
-     so taking every identifier in the list called a config constant local to the
-     chunk manager and left the import out. Splitting on commas at depth zero and
-     cutting each at its own `=` keeps the binding and hands the default back to
-     the reference pass. */
-  const addList = (list) => {
-    let depth = 0;
-    let piece = '';
-    let skipping = false;
-    const pieces = [];
-    for (let i = 0; i < list.length; i++) {
-      const ch = list[i];
-      if ('([{'.includes(ch)) depth++;
-      else if (')]}'.includes(ch)) depth--;
-      if (ch === ',' && depth === 0) { pieces.push(piece); piece = ''; skipping = false; continue; }
-      const assign = ch === '=' && list[i + 1] !== '=' && list[i + 1] !== '>' && list[i - 1] !== '=' && list[i - 1] !== '!' && list[i - 1] !== '<' && list[i - 1] !== '>';
-      if (assign && depth === 0) { skipping = true; continue; }   // the default is a reference
-      if (!skipping) piece += ch;
-    }
-    pieces.push(piece);
-    for (const p of pieces) for (const m of p.matchAll(/[A-Za-z_$][\w$]*/g)) out.add(m[0]);
-  };
-  for (const m of text.matchAll(new RegExp('\\bfunction\\s*\\*?\\s*[A-Za-z_$][\\w$]*?\\s*\\((' + PLIST + ')\\)', 'g'))) addList(m[1]);
-  for (const m of text.matchAll(new RegExp('\\((' + PLIST + ')\\)\\s*=>', 'g'))) addList(m[1]);
-  for (const m of text.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) out.add(m[1]);
-  for (const m of text.matchAll(new RegExp('(?:^|[\\s{;])(?:async\\s+)?(?:get\\s+|set\\s+)?(?!' + NON_METHOD + '\\b)([A-Za-z_$][\\w$]*)\\s*\\((' + PLIST + ')\\)\\s*\\{', 'g'))) addList(m[2]);
-  return out;
-};
+/* Every line this tool prints is built on those rules, so a rule that has stopped
+   matching its cases makes the rest of the output a lie: it would quietly leave a
+   name out of an import list. Run them before anything else, every run. */
+const scopeProblems = scopeSelftest();
+if (scopeProblems.length) {
+  scopeProblems.forEach((line) => console.log(line));
+  throw new Error('the scope rules in tools/js-scope.mjs no longer match their cases');
+}
 
 /* ---------- pieces: the modules on disk, the sections being cut, the page ---------- */
 
@@ -196,7 +134,7 @@ pieces.push({ name: FILE, lines: pageSplit.head.concat(pageSplit.rest), head: pa
 
 for (const p of pieces) {
   p.declared = p.declared || topLevelNames(p.lines);
-  p.locals = localNames(p.lines);
+  p.sc = scopes(p.lines);
 }
 
 /* Ownership. An existing module only puts its exports on the table; a section
@@ -219,20 +157,22 @@ for (const p of pieces) if (p.existing) for (const n of p.declared) if (!p.expor
 
 const page = pieces.find((p) => p.name === FILE);
 for (const p of pieces) {
-  const text = spreadless(p.lines);
+  const text = references(p.lines);
   p.uses = new Map();
   p.blockers = [];
   p.shadowed = [];
   p.needsExport = [];
   for (const [name, from] of owner) {
     if (from === p.name || !mention(name).test(text)) continue;
-    if (p.locals.has(name)) { p.shadowed.push(`${name} (from ${from})`); continue; }
+    /* Spelling the name is only half of it: a use inside a function that is handed
+       the name, or makes its own, is not a request for an import. */
+    if (!reachesFor(p.sc, name)) { p.shadowed.push(`${name} (from ${from})`); continue; }
     if (from === FILE) { p.blockers.push(name); continue; }
     p.uses.set(name, from);
   }
   for (const [name, from] of privateNames) {
     if (from === p.name || !mention(name).test(text)) continue;
-    if (p.locals.has(name)) continue;
+    if (!reachesFor(p.sc, name)) continue;
     p.needsExport.push({ name, into: from });
   }
   if (p.name !== FILE && p.blockers.length) {
@@ -327,7 +267,7 @@ function importBlock(entries, three, fromFile) {
 const written = [];
 for (const p of pieces) {
   if (p.name === FILE) continue;
-  const needsThree = /\bTHREE\./.test(codeOnly(p.lines).join('\n'));
+  const needsThree = /\bTHREE\./.test(references(p.lines));
   const imports = p.existing ? null : importBlock([...p.groups], needsThree, p.name);
   let added = 0;
   const lines = p.lines.map((line) => {
@@ -354,32 +294,7 @@ written.push([FILE, finalHtml]);
 console.log(`  ${FILE}: ${pageImports.length} import block(s), ${body.length - finalLines.length} fewer lines than the module script started with`);
 
 if (selftest) {
-  /* The two regex bugs this tool has already had, as cases. Both silently took a
-     name off an import list: one read the method name in `sampleColumn(x, z) {`
-     as a binding, the other read a default value as one. A missing import is not
-     a crash at load — it is a ReferenceError the first time a player walks into
-     the branch, so the check belongs with the tool rather than with the game. */
-  const PARAM_CASES = [
-    ['function addLightBFS(world, kind, x, y, z) {', ['world', 'kind', 'x', 'y', 'z']],
-    ['processMeshing(budgetMs = CHUNK_BUDGET_MS) {', ['budgetMs']],
-    ['flushFlowRemesh(budget = WATER_REMESH_BUDGET, msBudget = WATER_REMESH_MS) {', ['budget', 'msBudget']],
-    ['sampleColumn(x, z) {', ['x', 'z']],
-    ['processGeneration(budgetMs) { this.run(CHUNK_BUDGET_MS - delta); }', ['budgetMs']],
-    ['if (daylight < 0.35) {', []],
-    ['const n = world.getBlock(x, y, z);', []],
-    ['(a, b) => a + b', ['a', 'b']],
-    ['tiles.map((t) => tileRect(t))', ['t']],
-    ['chunks.forEach((chunk) => { notifyChunkMeshed(chunk); })', ['chunk']]
-  ];
-  let patternsOk = true;
-  for (const [code, want] of PARAM_CASES) {
-    const got = [...paramNames(code)].sort();
-    if (got.join() !== [...want].sort().join()) {
-      patternsOk = false;
-      console.log(`  pattern ${JSON.stringify(code)}\n          wanted [${want}] got [${got}]`);
-    }
-  }
-  console.log(patternsOk ? 'selftest: parameter patterns ok' : 'selftest: PARAMETER PATTERNS WRONG');
+  console.log('selftest: scope rules ok');
 
   const same = finalHtml === html;
   console.log(same ? 'selftest: the page regenerates byte for byte' : 'selftest: THE PAGE CHANGED with an empty spec');
@@ -390,7 +305,7 @@ if (selftest) {
       if (a[i] !== b[i]) { console.log(`  line ${i + 1}\n  was  ${JSON.stringify((a[i] || '').slice(0, 100))}\n  now  ${JSON.stringify((b[i] || '').slice(0, 100))}`); break; }
     }
   }
-  process.exit(same && patternsOk ? 0 : 1);
+  process.exit(same ? 0 : 1);
 }
 
 if (dry) { console.log('\ndry run, nothing written'); process.exit(0); }
