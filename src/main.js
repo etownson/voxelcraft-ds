@@ -113,7 +113,6 @@ import { sampleColumn, treeAt } from './worldgen.js';
 
 const saveStatusEl = document.getElementById('save-status');
 const newWorldButton = document.getElementById('new-world-button');
-const startButton = document.getElementById('start-button');
 
 function refreshSaveStatus() {
   if (!saveStatusEl) return;
@@ -148,7 +147,6 @@ function initSaveUi(hasSavedWorld) {
   if (hasSavedWorld) {
     saveStatusEl.textContent = 'Saved world found';
     saveStatusEl.classList.add('found');
-    startButton.textContent = 'CLICK TO CONTINUE';
   } else {
     refreshSaveStatus();
   }

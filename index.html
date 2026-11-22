@@ -67,65 +67,99 @@
   <div class="panel">
     <h1>VOXELCRAFT</h1>
     <p class="subtitle">Milestone 12 &middot; Beds &amp; Shears</p>
-    <div class="controls">
-      <div><kbd>Mouse</kbd><span>Look around</span></div>
-      <div><kbd>W A S D</kbd><span>Walk</span></div>
-      <div><kbd>Space</kbd><span>Jump / swim up / climb out</span></div>
-      <div><kbd>S</kbd><span>Climb down a ladder</span></div>
-      <div><kbd>Shift</kbd><span>Sprint on / off</span></div>
-      <div><kbd>Left click</kbd><span>Break blocks / attack mobs</span></div>
-      <div><kbd>Right click</kbd><span>Place block &middot; eat &middot; till &middot; sow &middot; shear &middot; sleep</span></div>
-      <div><kbd>1&ndash;9</kbd><span>Select hotbar slot</span></div>
-      <div><kbd>Wheel</kbd><span>Cycle hotbar</span></div>
-      <div><kbd>E</kbd><span>Inventory &amp; crafting</span></div>
-      <div><kbd>Esc</kbd><span>Release mouse / close screen</span></div>
-      <div><kbd>T</kbd><span>Pause / resume time</span></div>
-      <div><kbd>[ ]</kbd><span>Scrub time of day</span></div>
-      <div><kbd>G</kbd><span>Debug: give items</span></div>
-      <div><kbd>M</kbd><span>Mute sound</span></div>
-      <div><kbd>Pad</kbd><span>Left stick move &middot; right stick look</span></div>
-      <div><kbd>RT / LT</kbd><span>Mine &middot; attack / place &middot; use</span></div>
-      <div><kbd>A</kbd><span>Jump / respawn</span></div>
-      <div><kbd>B</kbd><span>Sprint on / off</span></div>
-      <div><kbd>LB / RB</kbd><span>Cycle hotbar</span></div>
-      <div><kbd>Y</kbd><span>Inventory &middot; quick move in menu</span></div>
-      <div><kbd>X</kbd><span>Half stack in menu</span></div>
-      <div><kbd>Start</kbd><span>Pause &middot; close menu</span></div>
-      <div><kbd>D-pad</kbd><span>Navigate menus</span></div>
-    </div>
-    <div class="pad-settings">
-      <span id="pad-status" class="pad-state">Gamepad: not detected</span>
-      <span>&middot;</span>
-      <span>Look sensitivity (D-pad &larr; &rarr;)</span>
-      <button id="pad-sens-down" type="button" title="Lower gamepad sensitivity">&minus;</button>
-      <span id="pad-sens-value">1.0&times;</span>
-      <button id="pad-sens-up" type="button" title="Raise gamepad sensitivity">+</button>
-    </div>
-    <div class="save-settings">
-      <span id="save-status" class="save-state">No saved world yet</span>
-      <span>&middot;</span>
-      <span>Progress saves automatically</span>
-      <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
-    </div>
-    <div class="audio-settings" id="audio-settings">
-      <div class="audio-row">
-        <span class="audio-label">Master</span>
-        <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume">
-        <span id="audio-volume-value" class="audio-value">70%</span>
+
+    <section class="controls" aria-label="Controls">
+      <div class="controls-head">
+        <span>Action</span>
+        <span>Keyboard &amp; mouse</span>
+        <span>Gamepad</span>
       </div>
-      <div class="audio-row">
-        <span class="audio-label">Sound effects</span>
-        <input id="audio-sfx-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Sound effects volume">
-        <span id="audio-sfx-volume-value" class="audio-value">100%</span>
+      <div class="control-row">
+        <span class="control-action">Move</span>
+        <span class="control-keys"><kbd>WASD</kbd></span>
+        <span class="control-keys"><kbd>Left stick</kbd></span>
       </div>
-      <div class="audio-row">
-        <span class="audio-label">Music</span>
-        <input id="audio-music-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Music volume">
-        <span id="audio-music-volume-value" class="audio-value">70%</span>
+      <div class="control-row">
+        <span class="control-action">Look</span>
+        <span class="control-keys"><kbd>Mouse</kbd></span>
+        <span class="control-keys"><kbd>Right stick</kbd></span>
       </div>
-    </div>
-    <button id="start-button" class="cta" type="button">CLICK TO START</button>
-    <p class="fineprint">Explore forests, jungles, deserts, mountains, rivers, and caves. Torches light the dark, animals roam the grass, and hostile things stir at night. Stone, coal, and iron wait underground, with diamonds far below. Make a furnace, arm yourself, and sow wheat &mdash; an empty hunger bar is a slow way to die.</p>
+      <div class="control-row">
+        <span class="control-action">Jump / swim</span>
+        <span class="control-keys"><kbd>Space</kbd></span>
+        <span class="control-keys"><kbd>A</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Sprint</span>
+        <span class="control-keys"><kbd>Shift</kbd></span>
+        <span class="control-keys"><kbd>B</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Break / attack</span>
+        <span class="control-keys"><kbd>Left click</kbd></span>
+        <span class="control-keys"><kbd>RT</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Place / use</span>
+        <span class="control-keys"><kbd>Right click</kbd></span>
+        <span class="control-keys"><kbd>LT</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Hotbar</span>
+        <span class="control-keys"><kbd>1&ndash;9</kbd><kbd>Wheel</kbd></span>
+        <span class="control-keys"><kbd>LB</kbd><kbd>RB</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Inventory</span>
+        <span class="control-keys"><kbd>E</kbd></span>
+        <span class="control-keys"><kbd>Y</kbd></span>
+      </div>
+      <div class="control-row">
+        <span class="control-action">Pause / free mouse</span>
+        <span class="control-keys"><kbd>Esc</kbd></span>
+        <span class="control-keys"><kbd>Start</kbd></span>
+      </div>
+      <p class="controls-note">The D-pad or left stick moves through open menus.</p>
+    </section>
+
+    <section class="menu-settings" aria-label="Settings">
+      <div class="menu-heading">Settings</div>
+      <div class="pad-settings">
+        <span id="pad-status" class="pad-state">Gamepad: not detected</span>
+        <span class="setting-control">
+          <span class="setting-note">Look sensitivity</span>
+          <button id="pad-sens-down" type="button" title="Lower gamepad sensitivity">&minus;</button>
+          <span id="pad-sens-value">1.0&times;</span>
+          <button id="pad-sens-up" type="button" title="Raise gamepad sensitivity">+</button>
+        </span>
+      </div>
+      <div class="save-settings">
+        <span id="save-status" class="save-state">No saved world yet</span>
+        <span class="setting-control">
+          <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
+        </span>
+      </div>
+      <div class="audio-settings" id="audio-settings">
+        <div class="audio-row">
+          <span class="audio-label">Master</span>
+          <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume">
+          <span id="audio-volume-value" class="audio-value">70%</span>
+        </div>
+        <div class="audio-row">
+          <span class="audio-label">Sound effects</span>
+          <input id="audio-sfx-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Sound effects volume">
+          <span id="audio-sfx-volume-value" class="audio-value">100%</span>
+        </div>
+        <div class="audio-row">
+          <span class="audio-label">Music</span>
+          <input id="audio-music-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Music volume">
+          <span id="audio-music-volume-value" class="audio-value">70%</span>
+        </div>
+      </div>
+    </section>
+
+    <button id="start-button" class="cta" type="button">CLICK OR PRESS START</button>
+    <p class="fineprint">Explore forests, deserts, mountains, and caves. Torches hold back the dark, and ore waits below &mdash; build a furnace, arm yourself, and keep your hunger fed.</p>
   </div>
 </div>
 
