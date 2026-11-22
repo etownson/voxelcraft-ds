@@ -219,12 +219,6 @@ function unequipSlot(index) {
   return true;
 }
 
-/** null, 'inventory' (2x2 grid) or 'crafting' (3x3 grid). */
-let activeScreen = null;
-/** Furnace position while the furnace screen is open, else null. */
-let activeScreenAt = null;
-/** Whether pointer lock was active when the current screen opened. */
-let screenHadPointerLock = false;
 /** Stack currently attached to the mouse cursor while a screen is open. */
 let cursorStack = null;
 
@@ -938,7 +932,6 @@ function updateBreakParticles(dt) {
 
 const rayDirection = new THREE.Vector3();
 let currentTarget = null;
-let leftMouseDown = false;
 
 const outlineGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004));
 const outlineMaterial = new THREE.LineBasicMaterial({
@@ -2328,6 +2321,8 @@ const pressedKeys = new Set();
 
 let yaw = 0.7;
 let pitch = -0.2;
+/** Whether the left mouse button is held: mined with, and swung with. */
+let leftMouseDown = false;
 
 /** Fallback controls for embedded browsers where pointer lock is blocked. */
 let fallbackControls = false;
@@ -5758,7 +5753,6 @@ for (let i = 0; i < HOTBAR_SIZE; i++) {
 }
 
 let selectedSlot = 0;
-let fps = 0;
 let toastTimer = 0;
 
 /**
@@ -6513,6 +6507,18 @@ function updateGamepadScreen(dt) {
   if (dy) movePadCursor(0, dy);
 }
 
+/* What a screen is: which one is up, the block it was opened at, and whether
+   the mouse was captured when it opened. The inventory owns the rows of slots
+   these screens show, and the stack that rides the cursor while one is open;
+   these three belong to the screen itself, which is why they sit with the two
+   functions that put one up and take it down. */
+/** null, 'inventory' (2x2 grid) or 'crafting' (3x3 grid). */
+let activeScreen = null;
+/** Furnace position while the furnace screen is open, else null. */
+let activeScreenAt = null;
+/** Whether pointer lock was active when the current screen opened. */
+let screenHadPointerLock = false;
+
 function openScreen(kind, at = null) {
   if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace' &&
       kind !== 'chest' && kind !== 'give') return;
@@ -6940,6 +6946,25 @@ window.addEventListener('wheel', (event) => {
   selectHotbarSlot(selectedSlot + (event.deltaY > 0 ? 1 : -1), true);
 }, { passive: true });
 
+/* The frame rate the readout prints. The loop hands over every frame's length
+   and this does the averaging, so the number is the pace of the last half
+   second rather than the twitch of one frame — and the hud, which is the only
+   thing that shows it, is the only thing that counts it. */
+let fps = 0;
+let fpsFrames = 0;
+let fpsWindow = 0;
+
+/** Counts a frame; true once the window is full and `fps` says something new. */
+function sampleFrameRate(seconds) {
+  fpsFrames++;
+  fpsWindow += seconds;
+  if (fpsWindow < 0.5) return false;
+  fps = Math.round(fpsFrames / fpsWindow);
+  fpsFrames = 0;
+  fpsWindow = 0;
+  return true;
+}
+
 function updateDebug() {
   const pos = camera.position;
   const cx = Math.floor(pos.x / CHUNK_SIZE);
@@ -7311,8 +7336,6 @@ let audioAmbientSnapshot = {
   underwater: false, openSky: true, nearWater: false, fireDistance: Infinity,
   wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0, musicTrack: null
 };
-let audioHeartbeatTimer = 0;
-let audioSwimAccumulator = 0;
 let audioUnderwaterShown = false;
 let audioHudText = '';
 
@@ -7340,14 +7363,6 @@ audioVolume = loadAudioLevel(':volume', AUDIO_DEFAULT_VOLUME);
 audioSfxVolume = loadAudioLevel(':sfx', AUDIO_DEFAULT_SFX_VOLUME);
 audioMusicVolume = loadAudioLevel(':music', AUDIO_DEFAULT_MUSIC_VOLUME);
 audioMuted = loadAudioMuted();
-
-let audioStepAccumulator = 0;
-let audioLastOnGround = true;
-let audioLastInWater = false;
-let audioAirPeakY = 0;
-let audioPrevVelocityY = 0;
-let audioPositionInitialized = false;
-const audioLastPosition = new THREE.Vector3();
 
 function audioSupported() {
   return typeof window.AudioContext === 'function' ||
@@ -9353,6 +9368,21 @@ function spawnWaterSplash(x, y, z) {
   spawnBurstParticles(x, y + 0.1, z, 0x5f9fd8, 4, 1.4);
 }
 
+/* What the walking-around audio has to remember between frames: where the
+   player was, how far past the next footstep they are, how long since the last
+   heartbeat. The engine above this sets up a context, loads a bank and runs
+   loops; this is the part that listens to the player, and every line of it is
+   read and written by the one function below. */
+let audioPositionInitialized = false;
+const audioLastPosition = new THREE.Vector3();
+let audioStepAccumulator = 0;
+let audioSwimAccumulator = 0;
+let audioAirPeakY = 0;
+let audioPrevVelocityY = 0;
+let audioLastOnGround = true;
+let audioLastInWater = false;
+let audioHeartbeatTimer = 0;
+
 /** Track footstep cadence, landings, water entry, swimming and the heartbeat. */
 function updateAudio(dt) {
   if (dt <= 0) return;
@@ -11228,8 +11258,6 @@ function renderGame() {
 }
 
 let lastTime = performance.now();
-let frameCount = 0;
-let fpsAccum = 0;
 
 function animate(now) {
   requestAnimationFrame(animate);
@@ -11283,14 +11311,7 @@ function animate(now) {
   skyDome.position.copy(camera.position);
   renderGame();
 
-  frameCount++;
-  fpsAccum += rawDt;
-  if (fpsAccum >= 0.5) {
-    fps = Math.round(frameCount / fpsAccum);
-    frameCount = 0;
-    fpsAccum = 0;
-    updateDebug();
-  }
+  if (sampleFrameRate(rawDt)) updateDebug();
 }
 
 window.addEventListener('resize', () => {
