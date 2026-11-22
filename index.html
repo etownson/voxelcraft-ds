@@ -140,10 +140,9 @@ import {
 import { atlasCanvas } from './src/atlas.js';
 import {
   audioCtx, audioStatus, ensureAudio, playAnimalSound, playChestCloseSound, playChestOpenSound,
-  playCraftSound, playDeathSound, playEatSound, playJumpSound, playPlayerHurtSound,
-  playShearSound, playSound, playToolBreakSound, playUiClickSound, playUiCloseSound,
-  playUiOpenSound, setAudioMusicVolume, setAudioMuted, setAudioSfxVolume, setAudioVolume,
-  toggleAudioMuted
+  playDeathSound, playEatSound, playJumpSound, playPlayerHurtSound, playShearSound, playSound,
+  playToolBreakSound, playUiClickSound, playUiCloseSound, playUiOpenSound, setAudioMusicVolume,
+  setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './src/audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, ARMOR_SLOTS, BLOCKS,
@@ -171,6 +170,10 @@ import {
 import {
   CRAFT2_SIZE, CRAFT3_SIZE, RECIPES, consumeCraftIngredients, craft2, craft3, matchRecipe
 } from './src/crafting.js';
+import {
+  clearCursorStack, craftCurrent, currentCraftRecipe, cursorCarried, dropEmptyCursorStack,
+  returnCursorStack, setCursorStack, setCursorView
+} from './src/cursor.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './src/drops.js';
 import { isFarmlandWet, updateCrops } from './src/farming.js';
 import {
@@ -190,7 +193,7 @@ import {
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
   consumeSelectedItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
-  inventoryHasRoom, paintPack, selectSlot, setArmorPainter, setPackPainter, unequipSlot
+  selectSlot, setArmorPainter, setPackPainter, unequipSlot
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -220,112 +223,6 @@ import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './src/worldge
 /* ============================================================
    10. INVENTORY, CRAFTING, ITEM DROPS, AND BLOCK INTERACTION
    ============================================================ */
-
-/** Stack currently attached to the mouse cursor while a screen is open. */
-let cursorStack = null;
-
-/* A screen takes a stack onto the cursor and puts it back down, and these are
-   the ways it does it. The inventory keeps what the cursor is carrying, because
-   it is the thing that puts a crafted result there and the thing that drops it
-   on the ground when a player quits with one; the screens say what they want
-   rather than assigning to it. */
-
-/** The cursor now carries `stack`, which may be nothing at all. */
-function setCursorStack(stack) { cursorStack = stack; }
-
-/** The cursor is empty. */
-function clearCursorStack() { cursorStack = null; }
-
-/** A cursor that has handed over its last item is not left holding nothing. */
-function dropEmptyCursorStack() {
-  if (cursorStack && cursorStack.count <= 0) cursorStack = null;
-}
-
-/** The stack the cursor is carrying, or nothing at all. */
-function cursorCarried() { return cursorStack; }
-
-/* A screen is what puts a picture of the carried stack on the pointer, what hears
-   why a craft was refused, and — since the 2x2 grid belongs to the pack and the
-   3x3 to the crafting table — which grid is in play at all. None of that is the
-   cursor's business, so the page hands all three over at bootstrap. Until it
-   does, a cursor carries a stack nothing pictures, refusals go unheard, and there
-   is no grid to craft from. */
-const cursorView = {
-  screen: () => null,
-  toast: () => {},
-  paintCursor: () => {}
-};
-
-function setCursorView(coming) { Object.assign(cursorView, coming); }
-
-function craftingContext() {
-  const screen = cursorView.screen();
-  if (screen === 'crafting') return { grid: craft3, size: CRAFT3_SIZE };
-  if (screen === 'inventory') return { grid: craft2, size: CRAFT2_SIZE };
-  return null;
-}
-
-function currentCraftRecipe() {
-  const context = craftingContext();
-  return context ? matchRecipe(context.grid, context.size) : null;
-}
-
-/**
- * Consume one set of ingredients and deliver the result either to the cursor
- * (normal click) or straight into the inventory (shift click).
- */
-function craftCurrent(intoInventory = false) {
-  const context = craftingContext();
-  if (!context) return false;
-
-  const recipe = matchRecipe(context.grid, context.size);
-  if (!recipe) return false;
-
-  const result = recipe.result;
-  const def = ITEMS.get(result.id);
-  const produced = freshStack(result.id, result.count);
-
-  if (intoInventory) {
-    if (!inventoryHasRoom(result.id, result.count)) {
-      cursorView.toast('Inventory full');
-      return false;
-    }
-    addItemToInventory(produced.id, produced.count, produced.dur);
-  } else if (cursorStack) {
-    if (cursorStack.id !== produced.id || !stacksMergeable(cursorStack, produced)) {
-      cursorView.toast('Clear the cursor to craft');
-      return false;
-    }
-    if (cursorStack.count + produced.count > def.stack) {
-      cursorView.toast('Not enough room on cursor');
-      return false;
-    }
-    cursorStack.count += produced.count;
-  } else {
-    cursorStack = produced;
-  }
-
-  consumeCraftIngredients(context.grid);
-  playCraftSound();
-  paintPack();
-  cursorView.paintCursor();
-  return true;
-}
-
-function returnCursorStack() {
-  if (!cursorStack) return;
-  const leftover = addItemToInventory(
-    cursorStack.id, cursorStack.count, cursorStack.dur
-  );
-  if (leftover > 0) {
-    spawnItemDrop(
-      cursorStack.id, leftover,
-      player.pos.x, player.pos.y + 1.2, player.pos.z, false, cursorStack.dur
-    );
-  }
-  cursorStack = null;
-  cursorView.paintCursor();
-}
 
 function mergeStackInto(source, targetArray, start, end) {
   const def = ITEMS.get(source.id);
