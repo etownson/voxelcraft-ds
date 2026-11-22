@@ -485,6 +485,41 @@ export function consumeDurability(stack, amount = 1) {
  * of the game. */
 
 /** Slots in a chest: three rows of nine, the box Minecraft stores things in. */
+export function mergeStackInto(source, targetArray, start, end) {
+  const def = ITEMS.get(source.id);
+  const maxStack = def.stack;
+  let remaining = source.count;
+
+  for (let i = start; i < end && remaining > 0; i++) {
+    const slot = targetArray[i];
+    if (!slot || !stacksMergeable(source, slot) || slot.count >= maxStack) continue;
+    const moved = Math.min(remaining, maxStack - slot.count);
+    slot.count += moved;
+    remaining -= moved;
+  }
+
+  for (let i = start; i < end && remaining > 0; i++) {
+    if (targetArray[i]) continue;
+    const moved = Math.min(remaining, maxStack);
+    targetArray[i] = makeStack(source.id, moved, source.dur);
+    remaining -= moved;
+  }
+
+  return remaining;
+}
+
+/** Plain readable snapshot of a stack, used by the debug hooks. */
+export function slotInfo(stack) {
+  if (!stack) return null;
+  return {
+    id: stack.id,
+    count: stack.count,
+    dur: stack.dur == null ? null : stack.dur,
+    max: maxDurability(stack.id) || null
+  };
+}
+
+
 export const CHEST_SLOTS = 27;
 
 export function createBlockEntity(kind) {

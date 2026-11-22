@@ -147,8 +147,8 @@ import {
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, ARMOR_SLOTS, BLOCKS,
   BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, consumeDurability, freshStack, isChestBlock,
-  isFallingWater, isFlowWater, isFurnaceBlock, makeStack, maxDurability, stackDurability,
-  stacksMergeable, waterLevel
+  isFallingWater, isFlowWater, isFurnaceBlock, makeStack, mergeStackInto, slotInfo,
+  stackDurability, stacksMergeable, waterLevel
 } from './src/blocks.js';
 import { isWorldDirty, markWorldDirty, meshChunk, world } from './src/chunks.js';
 import { isSolid, ladderHolding, playerCollidesAt, submergedAt } from './src/collision.js';
@@ -192,8 +192,8 @@ import {
 } from './src/interaction.js';
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
-  consumeSelectedItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
-  selectSlot, setArmorPainter, setPackPainter, unequipSlot
+  consumeSelectedItem, countInventoryItem, currentSlot, equipSlotFor, equipStack,
+  getSelectedStack, inventory, selectSlot, setArmorPainter, setPackPainter, unequipSlot
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -219,53 +219,6 @@ import {
 } from './src/sky.js';
 import { desiredWaterLevel, updateWater, waterTick } from './src/water.js';
 import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './src/worldgen.js';
-
-/* ============================================================
-   10. INVENTORY, CRAFTING, ITEM DROPS, AND BLOCK INTERACTION
-   ============================================================ */
-
-function mergeStackInto(source, targetArray, start, end) {
-  const def = ITEMS.get(source.id);
-  const maxStack = def.stack;
-  let remaining = source.count;
-
-  for (let i = start; i < end && remaining > 0; i++) {
-    const slot = targetArray[i];
-    if (!slot || !stacksMergeable(source, slot) || slot.count >= maxStack) continue;
-    const moved = Math.min(remaining, maxStack - slot.count);
-    slot.count += moved;
-    remaining -= moved;
-  }
-
-  for (let i = start; i < end && remaining > 0; i++) {
-    if (targetArray[i]) continue;
-    const moved = Math.min(remaining, maxStack);
-    targetArray[i] = makeStack(source.id, moved, source.dur);
-    remaining -= moved;
-  }
-
-  return remaining;
-}
-
-
-function countInventoryItem(itemId) {
-  let total = 0;
-  for (const slot of inventory) {
-    if (slot && slot.id === itemId) total += slot.count;
-  }
-  return total;
-}
-
-/** Plain readable snapshot of a stack, used by the debug hooks. */
-function slotInfo(stack) {
-  if (!stack) return null;
-  return {
-    id: stack.id,
-    count: stack.count,
-    dur: stack.dur == null ? null : stack.dur,
-    max: maxDurability(stack.id) || null
-  };
-}
 
 /* ============================================================
    11. PLAYER PHYSICS AND CONTROLLER

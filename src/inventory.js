@@ -174,3 +174,11 @@ export function consumeSelectedItem(count = 1) {
 export function emptyHand() {
   inventory[currentSlot()] = null;
 }
+
+export function countInventoryItem(itemId) {
+  let total = 0;
+  for (const slot of inventory) {
+    if (slot && slot.id === itemId) total += slot.count;
+  }
+  return total;
+}
