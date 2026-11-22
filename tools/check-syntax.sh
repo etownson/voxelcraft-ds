@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Extract the module script from index.html and syntax-check it with node.
+# Syntax-check the game's JavaScript with node: the module script in index.html
+# plus every module under src/. node --check only parses, so a name imported from
+# a module that never exports it is invisible here — tools/check-imports.sh does
+# that job.
 # Usage: ./tools/check-syntax.sh [file]
 set -euo pipefail
 FILE="${1:-index.html}"
@@ -17,3 +20,9 @@ open(out, 'w', encoding='utf-8').write(match.group(1))
 PY
 node --check "$OUT" && echo "syntax ok: $FILE"
 rm -f "$OUT"
+
+shopt -s nullglob
+for module in "$DIR"/src/*.js; do
+  node --check "$module"
+  echo "syntax ok: src/$(basename "$module")"
+done

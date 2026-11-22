@@ -453,7 +453,8 @@ Sound coverage now includes:
 
 ## Technical requirements
 
-The game code stays in one HTML file; the audio banks sit beside it:
+The game is one page and a graph of native ES modules; the audio banks sit beside
+them:
 
 - HTML
 - CSS
@@ -468,7 +469,9 @@ The game code stays in one HTML file; the audio banks sit beside it:
   `tools/generate-audio.mjs`
 - `CREDITS.md` — source and licence record for the active bank
 
-Use Three.js from a CDN. The code should be organized into clear sections:
+Use Three.js from a CDN. The code is organized by concern. It began as clearly
+marked sections of the one inline script and is becoming one file per concern under
+`src/`, in the same order, with no build step between the repository and the page:
 
 - Constants and configuration
 - Block and item definitions
