@@ -248,6 +248,21 @@ function currentCraftRecipe() {
   return context ? matchRecipe(context.grid, context.size) : null;
 }
 
+/* The pack is drawn in more than one place — the hotbar, and whichever screen is
+   showing the same slots — and which screens those are is not the pack's
+   business. The page hands one painter over at bootstrap; until then the pack
+   can change and nothing notices. */
+let packPainter = () => {};
+function setPackPainter(paint) { packPainter = paint; }
+
+/**
+ * Redraws the pack wherever it is being shown. Anything that has just moved a
+ * stack calls this and knows nothing about where the picture of it gets drawn.
+ */
+function paintPack() {
+  packPainter();
+}
+
 function inventoryHasRoom(itemId, count) {
   const def = ITEMS.get(itemId);
   if (!def) return false;
@@ -297,8 +312,7 @@ function craftCurrent(intoInventory = false) {
 
   consumeCraftIngredients(context.grid);
   playCraftSound();
-  renderHotbar();
-  if (activeScreen) renderScreen();
+  paintPack();
   updateCursorVisual();
   return true;
 }
@@ -372,10 +386,7 @@ function addItemToInventory(itemId, count, dur) {
     remaining -= moved;
   }
 
-  if (remaining !== count) {
-    renderHotbar();
-    if (activeScreen) renderScreen();
-  }
+  if (remaining !== count) paintPack();
   return remaining;
 }
 
@@ -387,9 +398,14 @@ function consumeSelectedItem(count = 1) {
   const stack = getSelectedStack();
   if (!stack) return false;
   stack.count -= count;
-  if (stack.count <= 0) inventory[currentSlot()] = null;
-  renderHotbar();
+  if (stack.count <= 0) emptyHand();
+  paintPack();
   return true;
+}
+
+/** The stack the hand is out with is gone, whether spent or worn out. */
+function emptyHand() {
+  inventory[currentSlot()] = null;
 }
 
 /** Plain readable snapshot of a stack, used by the debug hooks. */
@@ -543,12 +559,11 @@ function wearHeldTool(amount = 1) {
   if (!stack || !consumeDurability(stack, amount)) return false;
 
   const item = ITEMS.get(stack.id);
-  inventory[currentSlot()] = null;
+  emptyHand();
   playToolBreakSound();
   showToast(((item && item.name) || 'Tool') + ' broke');
   hideMiningFeedback();
-  renderHotbar();
-  if (activeScreen) renderScreen();
+  paintPack();
   return true;
 }
 
@@ -852,7 +867,7 @@ function swapHeldFor(itemId) {
   } else {
     inventory[currentSlot()] = freshStack(itemId);
   }
-  renderHotbar();
+  paintPack();
   markWorldDirty();
   return true;
 }
@@ -4254,6 +4269,13 @@ setAimBlocked(() => !!activeScreen || player.dead);
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */
 setHungerPainter(renderHunger);
+
+/* And the pack says where its picture is: the hotbar, and the screen too when
+   one of them is showing the same thirty-six slots. */
+setPackPainter(() => {
+  renderHotbar();
+  if (activeScreen) renderScreen();
+});
 
 /* The held item's frame: the view model reads the game only through this. */
 function heldFrame() {
