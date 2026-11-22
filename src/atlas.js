@@ -23,6 +23,9 @@ const TILE_ORDER = [
 for (let stage = 0; stage < 10; stage++) TILE_ORDER.push('crack_' + stage);
 // One tile per wheat growth stage, painted in a loop like the crack stages.
 for (let stage = 0; stage < 8; stage++) TILE_ORDER.push('wheat_' + stage);
+// The beacon monument's faces: a cased metal shell with a crystal socket in
+// the middle, dim when the transmitter's machine waits and teal when it runs.
+TILE_ORDER.push('beacon_side', 'beacon_top', 'beacon_side_lit', 'beacon_top_lit');
 
 export const TILES = Object.create(null);
 TILE_ORDER.forEach((name, index) => { TILES[name] = index; });
@@ -129,6 +132,61 @@ function generateAtlas() {
     }
     paint(cx, cy, colors[colors.length - 1]);
     paint(cx + size - 1, cy + size - 1, colors[0]);
+  }
+
+  // The beacon's shell: a heavier cast than the furnace's, with bolts at the
+  // corners, shared by all four faces so the unlit and lit states read as the
+  // same machine wearing different light.
+  function paintBeaconShell(paint, rand) {
+    pixelNoise(paint, rand, [104, 110, 122], 6);
+    for (let i = 0; i < 14; i++) {
+      paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [84, 90, 102], 6));
+    }
+    for (let i = 0; i < 16; i++) {
+      const shade = vary(rand, [70, 76, 88], 4);
+      paint(i, 0, shade);
+      paint(i, 15, shade);
+      paint(0, i, shade);
+      paint(15, i, shade);
+    }
+    // Corner bolts: two pixels of bright cast metal at each quarter.
+    for (const [bx, by] of [[2, 2], [13, 2], [2, 13], [13, 13]]) {
+      paint(bx, by, vary(rand, [168, 176, 190], 8));
+      paint(bx + 1, by, vary(rand, [150, 158, 172], 8));
+      paint(bx, by + 1, vary(rand, [150, 158, 172], 8));
+    }
+  }
+
+  // The crystal socket in the middle of every face. `lit` is whether the
+  // machine is running: the socket holds the same glass either way, and only
+  // the glow inside it changes.
+  function paintBeaconSocket(paint, rand, lit) {
+    for (let y = 5; y < 12; y++) {
+      for (let x = 5; x < 12; x++) {
+        if (x === 5 || x === 11 || y === 5 || y === 11) {
+          paint(x, y, vary(rand, [58, 64, 76], 4));
+          continue;
+        }
+        if (lit) {
+          const glow = 0.55 + 0.45 * (1 - (Math.abs(x - 8) + Math.abs(y - 8)) / 6);
+          paint(x, y, vary(rand, [
+            60 + Math.round(90 * glow),
+            170 + Math.round(80 * glow),
+            190 + Math.round(60 * glow)
+          ], 9));
+        } else {
+          paint(x, y, vary(rand, [40, 58, 66], 5));
+        }
+      }
+    }
+    if (lit) {
+      // The hot centre, and a filament of pixels reaching up into the casing.
+      paint(8, 8, vary(rand, [226, 250, 255], 8));
+      for (let y = 2; y < 5; y++) paint(8, y, vary(rand, [96, 190, 208], 10));
+      for (let y = 12; y < 15; y++) paint(8, y, vary(rand, [96, 190, 208], 10));
+    } else {
+      paint(8, 8, vary(rand, [66, 92, 102], 6));
+    }
   }
 
   const painters = {
@@ -462,6 +520,29 @@ function generateAtlas() {
         paint(4, y, vary(rand, [240, 186, 82], 12));
         paint(11, y, vary(rand, [240, 186, 82], 12));
       }
+    },
+
+    beacon_side(paint, rand) {
+      paintBeaconShell(paint, rand);
+      paintBeaconSocket(paint, rand, false);
+    },
+
+    beacon_top(paint, rand) {
+      paintBeaconShell(paint, rand);
+      // The socket seen from above: a ring rather than a band, the emitter
+      // pointing at the sky the way the beam will when it runs.
+      paintBeaconSocket(paint, rand, false);
+    },
+
+    beacon_side_lit(paint, rand) {
+      paintBeaconShell(paint, rand);
+      paintBeaconSocket(paint, rand, true);
+    },
+
+    beacon_top_lit(paint, rand) {
+      paintBeaconShell(paint, rand);
+      paintBeaconSocket(paint, rand, true);
+      for (let x = 7; x < 9; x++) paint(x, 7, vary(rand, [236, 252, 255], 6));
     },
 
     glass(paint, rand) {

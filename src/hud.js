@@ -32,7 +32,9 @@ import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
 import {
   FURNACE_FUEL, FURNACE_FUELS, FURNACE_INPUT, FURNACE_OUTPUT, SMELTING_RECIPES, furnaceHasWork
 } from './containers.js';
-import { CRAFT2_SIZE, CRAFT3_SIZE, craft2, craft3, matchRecipe } from './crafting.js';
+import {
+  CRAFT2_SIZE, CRAFT3_SIZE, craft2, craft3, matchRecipe, receivedRecipes
+} from './crafting.js';
 import {
   clearCursorStack, craftCurrent, cursorCarried, dropEmptyCursorStack, returnCursorStack,
   setCursorStack
@@ -56,11 +58,13 @@ import { camera, renderer } from './render.js';
 import {
   applyDayNight, formatClock, isNight, nudgeDayTime, timeScale, toggleTimeFrozen
 } from './sky.js';
+import { nextBeacon } from './beacons.js';
 
 const fpsEl = document.getElementById('fps');
 const clockEl = document.getElementById('clock');
 const coordsEl = document.getElementById('coords');
 const chunklineEl = document.getElementById('chunkline');
+const missionEl = document.getElementById('mission');
 const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
 const armorEl = document.getElementById('armor');
@@ -68,6 +72,7 @@ export const hungerBarEl = document.getElementById('hunger');
 const essenceEl = document.getElementById('essence');
 const essenceCountEl = document.getElementById('essence-count');
 const toastEl = document.getElementById('item-toast');
+const transmissionEl = document.getElementById('transmission');
 const screenLayer = document.getElementById('screen-layer');
 const screenTitle = document.getElementById('screen-title');
 const screenBody = document.getElementById('screen-body');
@@ -136,6 +141,23 @@ export function renderEssence() {
   const total = essenceCount();
   essenceEl.classList.toggle('hidden', total <= 0);
   essenceCountEl.textContent = String(total);
+}
+
+/**
+ * The mission line: where the beacon the transmission wants stands, what it
+ * will ask for, and what the walker happens to be carrying toward it. Once
+ * all five are lit the line says so and stops pointing anywhere.
+ */
+export function renderMission() {
+  const beacon = nextBeacon();
+  if (!beacon) {
+    missionEl.textContent = 'All five beacons lit';
+    return;
+  }
+  missionEl.textContent =
+    'Beacon ' + (beacon.index + 1) + '/5 \u00b7 ' +
+    beacon.x + ' / ' + (beacon.y + 1) + ' / ' + beacon.z +
+    ' \u00b7 wants ' + beacon.cost + ' \u00b7 carrying ' + essenceCount();
 }
 
 /**
@@ -641,6 +663,79 @@ function buildFurnaceColumn() {
   return column;
 }
 
+/* The journal: every recipe a beacon has transmitted, in the order the table
+   holds them. It shows what a recipe makes and what it eats; the recipes are
+   learned whole, so there is nothing here to unlock a second time. */
+const JOURNAL_SCREEN_HINT =
+  'Recipes arrive whole from the beacons \u00b7 J or B close';
+
+function recipeIngredients(recipe) {
+  const counts = new Map();
+  if (recipe.shapeless) {
+    for (const id of recipe.shapeless) counts.set(id, (counts.get(id) || 0) + 1);
+    return counts;
+  }
+  for (const row of recipe.pattern) {
+    for (const symbol of row) {
+      if (symbol === '.') continue;
+      const id = recipe.key[symbol];
+      counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function buildJournalColumn() {
+  const column = document.createElement('div');
+  column.className = 'journal-column';
+
+  const known = receivedRecipes();
+  if (!known.length) {
+    const none = document.createElement('p');
+    none.className = 'journal-none';
+    none.textContent =
+      'Nothing received yet. Find the beacon the transmission wants, ' +
+      'and the recipes will come through with it.';
+    column.append(none);
+    return column;
+  }
+
+  for (const recipe of known) {
+    const row = document.createElement('div');
+    row.className = 'journal-row';
+
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    const itemIcon = ITEM_ICONS.get(recipe.result.id);
+    if (itemIcon) icon.style.backgroundImage = 'url("' + itemIcon.url + '")';
+    row.append(icon);
+
+    const result = document.createElement('span');
+    result.className = 'journal-result';
+    const def = ITEMS.get(recipe.result.id);
+    result.textContent = (def ? def.name : recipe.result.id) +
+      (recipe.result.count > 1 ? ' \u00d7' + recipe.result.count : '');
+    row.append(result);
+
+    const need = document.createElement('span');
+    need.className = 'journal-need';
+    const parts = [];
+    for (const [itemId, count] of recipeIngredients(recipe)) {
+      const ingredient = ITEMS.get(itemId);
+      parts.push((ingredient ? ingredient.name : itemId) + ' \u00d7' + count);
+    }
+    // A pattern three cells across needs the table; two fits the pocket grid.
+    const needsTable = !recipe.shapeless &&
+      Math.max(...recipe.pattern.map((rowText) => rowText.length)) >= 3;
+    need.textContent = 'needs ' + parts.join(', ') +
+      ' \u00b7 ' + (needsTable ? 'crafting table' : 'any grid');
+    row.append(need);
+
+    column.append(row);
+  }
+  return column;
+}
+
 export function renderScreen() {
   if (!activeScreen) return;
 
@@ -655,6 +750,16 @@ export function renderScreen() {
     giveLayout.append(buildGiveColumn());
     screenBody.append(giveLayout);
     if (gamepadState.active) applyPadCursorFocus(false);
+    return;
+  }
+
+  // The journal shares the panel and also nothing else: no pack, no grid,
+  // no cursor — recipes are learned whole and cannot be carried.
+  if (activeScreen === 'journal') {
+    screenTitle.textContent = 'Journal \u00b7 Received Recipes';
+    screenHint.textContent = JOURNAL_SCREEN_HINT;
+    screenBody.innerHTML = '';
+    screenBody.append(buildJournalColumn());
     return;
   }
 
@@ -705,6 +810,9 @@ export const padCursor = { section: 0, index: 0 };
  */
 function padSections() {
   if (!activeScreen) return [];
+  // The journal is a list of words, not a grid of slots: the pad can open it
+  // and close it, but there is no cursor to park on it.
+  if (activeScreen === 'journal') return [];
   if (activeScreen === 'give') {
     return [{
       container: 'give', start: 0,
@@ -999,7 +1107,7 @@ let screenHadPointerLock = false;
 
 export function openScreen(kind, at = null) {
   if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace' &&
-      kind !== 'chest' && kind !== 'give') return;
+      kind !== 'chest' && kind !== 'give' && kind !== 'journal') return;
 
   // A furnace screen only makes sense at a real furnace, so anything pointing
   // at air or a block that has since been broken is turned away here. The
@@ -1086,6 +1194,16 @@ function toggleGiveScreen() {
   } else if (document.pointerLockElement === canvas || fallbackControls ||
       gamepadState.active) {
     openScreen('give');
+  }
+}
+
+/** J opens the journal of received recipes, or closes whatever screen is up. */
+function toggleJournal() {
+  if (activeScreen) {
+    closeScreen();
+  } else if (document.pointerLockElement === canvas || fallbackControls ||
+      gamepadState.active) {
+    openScreen('journal');
   }
 }
 
@@ -1365,6 +1483,8 @@ window.addEventListener('keydown', (event) => {
     (event.key && event.key.toLowerCase() === 'e');
   const isGiveKey = event.code === 'KeyG' ||
     (event.key && event.key.toLowerCase() === 'g');
+  const isJournalKey = event.code === 'KeyJ' ||
+    (event.key && event.key.toLowerCase() === 'j');
   const isEscape = event.code === 'Escape' || event.key === 'Escape';
 
   if (isInventoryKey) {
@@ -1376,6 +1496,9 @@ window.addEventListener('keydown', (event) => {
     // no shelf tile because it never sits in a slot.
     if (event.shiftKey) grantDebugEssence();
     else toggleGiveScreen();
+  } else if (isJournalKey) {
+    event.preventDefault();
+    toggleJournal();
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();
@@ -1405,6 +1528,36 @@ export function showToast(text) {
   toastEl.classList.add('show');
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 1400);
+}
+
+/* A transmission is not a toast: it is the transmitter talking, several lines
+   long, arriving a sentence at a time because the line is bad. The panel sits
+   above the hotbar, unspeaks itself when it is done, and takes nothing from
+   the player — it has no controls to steal. A newer transmission supersedes
+   an older one mid-sentence; the token is what drops the old one's timers. */
+let transmissionToken = 0;
+
+export function showTransmission(lines) {
+  const token = ++transmissionToken;
+  transmissionEl.innerHTML = '';
+  const from = document.createElement('div');
+  from.className = 'transmission-from';
+  from.textContent = 'Transmission \u2014 the line is spotty';
+  transmissionEl.append(from);
+  transmissionEl.classList.add('active');
+
+  lines.forEach((line, i) => {
+    window.setTimeout(() => {
+      if (token !== transmissionToken) return;
+      const said = document.createElement('p');
+      said.textContent = line;
+      transmissionEl.append(said);
+    }, 400 + i * 2400);
+  });
+  window.setTimeout(() => {
+    if (token !== transmissionToken) return;
+    transmissionEl.classList.remove('active');
+  }, 400 + lines.length * 2400 + 3000);
 }
 
 window.addEventListener('keydown', (event) => {

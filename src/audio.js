@@ -1105,6 +1105,25 @@ export function playEssenceSound() {
   return !!audioCtx && !audioMuted;
 }
 
+export function playBeaconSound() {
+  // Lighting a beacon happens once in a world per monument, so it can afford
+  // to be an event rather than a blip: a low fifth that arrives under a
+  // rising third, the machine coming up before the light does. It borrows the
+  // furnace ignition's two-stage shape but an octave cleaner and longer, so
+  // the two events cannot be mistaken for each other across the mission.
+  audioTone({
+    type: 'sine', from: 180, to: 270, duration: 0.5,
+    volume: 0.09, bus: 'ui', priority: 0
+  });
+  if (!audioCtx) return !!audioCtx && !audioMuted;
+  audioTone({
+    type: 'triangle', from: 540, to: 810, duration: 0.7,
+    now: audioCtx.currentTime + 0.35,
+    volume: 0.07, bus: 'ui', priority: 0
+  });
+  return !!audioCtx && !audioMuted;
+}
+
 export function playUiClickSound() {
   if (audioSample('event_ui_click', {
     spatial: false, volume: 0.5, bus: 'ui', priority: 0

@@ -30,6 +30,7 @@ import {
   CHUNK_SIZE, EXHAUSTION_THRESHOLD, HUNGER_MAX, SATURATION_ON_RESPAWN, WORLD_HEIGHT,
   WORLD_SEED, clamp
 } from './config.js';
+import { beaconsActivatedCount, restoreBeaconProgress, setSpawnPoint0, spawnPoint } from './beacons.js';
 import { essenceCount, setEssence } from './essence.js';
 import { syncHeldAngles } from './held.js';
 import { INVENTORY_SIZE, armorSlots, currentSlot, inventory, paintArmorBar } from './inventory.js';
@@ -50,11 +51,18 @@ import { dayTime } from './sky.js';
  * values changes underneath it, so schema 3 saves are no longer readable.
  * Schema 5 adds the essence the walker carries: a running total that belongs
  * to nobody else's record, so a schema 4 world has none and is no longer
- * readable.
+ * readable. Schema 6 adds the mission: SP0, the column the walker first landed
+ * on, and how many beacons have been lit. The monuments and the difficulty of
+ * the ground are both measured from SP0, and it has no default a mismatched
+ * one could survive — a world whose SP0 moved would be a different world with
+ * the same save in it.
  */
-export const SAVE_KEY = 'voxelcraft:world:v5';
-export const LEGACY_SAVE_KEYS = ['voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3', 'voxelcraft:world:v4'];
-export const SAVE_SCHEMA = 5;
+export const SAVE_KEY = 'voxelcraft:world:v6';
+export const LEGACY_SAVE_KEYS = [
+  'voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3',
+  'voxelcraft:world:v4', 'voxelcraft:world:v5'
+];
+export const SAVE_SCHEMA = 6;
 const AUTOSAVE_SECONDS = 25;
 
 let lastSaveAt = 0;
@@ -131,6 +139,11 @@ function serializeWorldSave() {
     // What the walker carries in no slot at all: the essence total, kept by
     // the essence layer and ridden here as a bare number.
     essence: essenceCount(),
+    // The mission's two numbers: SP0, the column the walker first landed on,
+    // which every monument and every hostile is measured from, and how many
+    // of the five beacons are already lit.
+    sp0: spawnPoint(),
+    beacons: beaconsActivatedCount(),
     // Where a bed last claimed the player, if anywhere: the respawn point
     // outlives both the session and the bed that set it.
     spawn: { x: saveSpawn.x, z: saveSpawn.z },
@@ -349,6 +362,18 @@ export function restoreSavedInventory(save) {
 /** Puts the carried essence back. A missing number is a fresh walker. */
 export function restoreSavedEssence(save) {
   setEssence(Math.max(0, Math.trunc(Number(save.essence) || 0)));
+}
+
+/**
+ * Puts the mission back: SP0 first, because the monuments, the essence
+ * prices and the difficulty of the ground are all measured from it, then the
+ * count of lit beacons with its beams. The lit blocks themselves come back
+ * with the saved edits.
+ */
+export function restoreSavedBeacons(save) {
+  const sp0 = save.sp0;
+  if (sp0 && Number.isFinite(sp0.x) && Number.isFinite(sp0.z)) setSpawnPoint0(sp0);
+  restoreBeaconProgress(save.beacons);
 }
 
 export function formatSavedAt(timestamp) {

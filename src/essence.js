@@ -14,8 +14,8 @@
  * The running total belongs to this file and to nothing else: the save puts a
  * number in and asks for one back, the page paints it through the painter it
  * hands over at bootstrap, and the debug shelf grants it the way it grants
- * items. How the total is eventually spent — on a beacon, presumably — is a
- * story this file has not reached yet.
+ * items. What it is spent on is the beacon layer's story: a monument takes
+ * its price out of this purse, through the one door below.
  */
 
 import * as THREE from 'three';
@@ -83,9 +83,10 @@ export function setEssence(value) {
 }
 
 /**
- * Spends essence, answering whether the purse was deep enough. Beacons are
- * what will ask for this; nothing does yet, and that is the point of keeping
- * the door here rather than letting every caller add and subtract freely.
+ * Spends essence, answering whether the purse was deep enough. The beacons
+ * are what ask for this, one monument price at a time; nothing else gets to
+ * reach in, which is the point of keeping the door here rather than letting
+ * every caller add and subtract freely.
  */
 export function spendEssence(amount) {
   const wanted = Math.trunc(Number(amount) || 0);

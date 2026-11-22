@@ -188,6 +188,49 @@ html, body {
 }
 #item-toast.show { opacity: 1; }
 
+/* The transmission panel: the transmitter talking above the hotbar. It takes
+   no clicks and steals no keys — it reads over the world and then leaves. */
+#transmission {
+  position: absolute; left: 50%; bottom: 140px; transform: translateX(-50%);
+  width: min(520px, 88vw);
+  padding: 10px 14px; border-radius: 4px;
+  background: rgba(10, 16, 22, 0.82);
+  border: 1px solid rgba(127, 227, 239, 0.35);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.5);
+  color: #cfeef5; text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  font-size: 13px; line-height: 1.45;
+  opacity: 0; transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+#transmission.active { opacity: 1; }
+#transmission .transmission-from {
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #7fe3ef; margin-bottom: 4px;
+}
+#transmission p { margin: 4px 0; }
+
+/* The journal: one received recipe per row, icon, result, and what it eats. */
+.journal-column {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 60vh; overflow-y: auto;
+  min-width: 420px; max-width: 74vw;
+  padding: 4px 2px;
+}
+.journal-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: 3px;
+  background: rgba(14, 20, 28, 0.72);
+  border: 1px solid rgba(150, 170, 190, 0.14);
+}
+.journal-row .icon {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  background-size: contain; background-repeat: no-repeat; background-position: center;
+  image-rendering: pixelated;
+}
+.journal-result { color: #f7fafc; font-size: 13px; min-width: 130px; }
+.journal-need { color: #9fb4c7; font-size: 12px; }
+.journal-none { color: #9fb4c7; font-size: 13px; padding: 8px; }
+
 #control-hint {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
   padding: 5px 11px; border-radius: 3px;

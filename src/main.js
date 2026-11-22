@@ -33,6 +33,11 @@ import {
   isFallingWater, isFlowWater, isFurnaceBlock, makeStack, slotInfo, stackDurability,
   waterLevel
 } from './blocks.js';
+import {
+  SPAWN_TRANSMISSION, beaconReport, beaconSites, clearBeaconBeams, plantBeaconMonuments,
+  restoreBeaconProgress, setBeaconPainter, setSpawnPoint0, setTransmissionDeliverer,
+  startingEssence
+} from './beacons.js';
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
 import { attackMob, clearMobTarget, mobTarget, updateCombat, updateMobTarget } from './combat.js';
 import {
@@ -45,7 +50,8 @@ import {
   SMELTING_RECIPES, setBlockEntityView, spillBlockEntityContents, updateBlockEntities
 } from './containers.js';
 import {
-  CRAFT2_SIZE, CRAFT3_SIZE, RECIPES, consumeCraftIngredients, craft2, craft3, matchRecipe
+  CRAFT2_SIZE, CRAFT3_SIZE, RECIPES, consumeCraftIngredients, craft2, craft3, matchRecipe,
+  recipeReceived
 } from './crafting.js';
 import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } from './cursor.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
@@ -70,9 +76,9 @@ import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
-  renderHealth,
-  renderHotbar, renderHunger, renderScreen, sampleFrameRate, selectHotbarSlot, showDamageFlash,
-  showToast, sleepFadeEl, sprintStateEl, toggleInventory, updateCursorVisual, updateDebug,
+  renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
+  selectHotbarSlot, showDamageFlash, showToast, showTransmission, sleepFadeEl, sprintStateEl,
+  toggleInventory, updateCursorVisual, updateDebug,
   updateFurnaceGauges, updateGamepadScreen
 } from './hud.js';
 import {
@@ -104,7 +110,8 @@ import { camera, renderer, scene, skyDome } from './render.js';
 import {
   LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
   forgetSavedWorld, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
-  readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedEssence,
+  readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedBeacons,
+  restoreSavedEssence,
   restoreSavedInventory,
   restoreSavedPlayer, resumeAutosave, saveReport, saveWorld, setSaveArrival, setSaveSpawn,
   stopAutosave, updateSaveLoop
@@ -229,8 +236,18 @@ registerSpeaker(showToast);
 setHungerPainter(renderHunger);
 
 /* The carried essence gets its picture the same way: the essence layer says
-   when the total moves, and never names the row it draws. */
-setEssencePainter(renderEssence);
+   when the total moves, and never names the row it draws. The mission line
+   quotes what is being carried toward the next beacon, so the purse repaints
+   both. */
+setEssencePainter(() => {
+  renderEssence();
+  renderMission();
+});
+
+/* The beacon layer speaks through the page too: the mission line under the
+   readout, and the panel the transmissions arrive in. */
+setBeaconPainter(renderMission);
+setTransmissionDeliverer(showTransmission);
 
 /* The hearts are the same kind of picture, and so is the red wash: the body
    says when each of them changes, and never names an element. */
@@ -384,6 +401,20 @@ if (loadedSave) {
 // chunk can mesh with correct borders.
 const spawnColumn = chooseSpawnColumn();
 setSaveSpawn(spawnColumn);
+
+/* SP0 before the ground: the monuments, the essence prices and the difficulty
+   of the whole map are measured from the column the walker first landed on,
+   so a saved world gets back the one it was written with and a fresh one
+   adopts the column just chosen. The monuments then go into the override
+   tables as permanent edits — generated with every chunk, saved with every
+   write, and never needing a player to walk out there and find them built. */
+if (loadedSave && loadedSave.sp0) {
+  restoreSavedBeacons(loadedSave);
+} else {
+  setSpawnPoint0(spawnColumn);
+}
+plantBeaconMonuments();
+
 prepareSpawnChunks(
   Math.floor(spawnColumn.x / CHUNK_SIZE),
   Math.floor(spawnColumn.z / CHUNK_SIZE)
@@ -411,6 +442,16 @@ updateDebug();
 rememberSavedWorld((loadedSave && loadedSave.savedAt) || 0);
 initSaveUi(Boolean(loadedSave));
 
+/* A world nobody has walked yet opens the way the design opens it: the walker
+   starts with no items but exactly one activation's worth of essence —
+   beacon 1's price — and the transmitter's first bubble arrives over the
+   landing. A saved world keeps its own purse and its own quiet. */
+if (!loadedSave) {
+  addEssence(startingEssence());
+  showTransmission(SPAWN_TRANSMISSION);
+}
+renderMission();
+
 // A world written by an older build stays in storage but cannot be read, so
 // say so out loud on the first new-world boot rather than let a player wonder
 // where their base went.
@@ -419,7 +460,7 @@ if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
 }
 
 window.__voxelcraft = {
-  version: '0.1.0-milestone-12',
+  version: '0.1.0-milestone-13',
   seed: WORLD_SEED,
   world,
   camera,
@@ -551,6 +592,30 @@ window.__voxelcraft = {
   grantEssence(amount = 5) {
     return addEssence(Number(amount) || 0);
   },
+  /** The mission: SP0, the five monuments, their prices, and how many run. */
+  beacons() {
+    return beaconReport();
+  },
+  /**
+   * Debug fast-forward of the mission: put `count` monuments down as running
+   * without the walk or the purse, blocks included, so a scripted check reads
+   * the same world a played one would. Backwards works the same way.
+   */
+  advanceBeacons(count = 1) {
+    const wanted = clamp(Math.trunc(Number(count) || 0), 0, beaconSites().length);
+    for (const site of beaconSites()) {
+      const y = site.y + 1;
+      const id = world.getBlock(site.x, y, site.z);
+      if (site.index < wanted && id === B.BEACON) {
+        world.setBlock(site.x, y, site.z, B.BEACON_ACTIVE);
+      } else if (site.index >= wanted && id === B.BEACON_ACTIVE) {
+        world.setBlock(site.x, y, site.z, B.BEACON);
+      }
+    }
+    clearBeaconBeams();
+    restoreBeaconProgress(wanted);
+    return beaconReport();
+  },
   heal(amount = 20) {
     healPlayer(Number(amount) || 0);
     return this.health();
@@ -580,6 +645,10 @@ window.__voxelcraft = {
       health: mob.health,
       maxHealth: mob.maxHealth,
       hostile: mob.def.hostile,
+      // What the ground it spawned on made of it: the difficulty score and
+      // the bite it carries, both scaled from the definition.
+      difficulty: Number(mob.difficulty.toFixed(3)),
+      attack: mob.attack == null ? null : Number(mob.attack.toFixed(2)),
       pos: [mob.pos.x, mob.pos.y, mob.pos.z],
       onGround: mob.onGround,
       fuse: mob.fuse,
@@ -818,6 +887,11 @@ window.__voxelcraft = {
     openScreen('inventory');
     return activeScreen;
   },
+  /** Opens the journal of recipes the beacons have transmitted. */
+  openJournal() {
+    openScreen('journal');
+    return activeScreen;
+  },
   openCraftingTable() {
     openScreen('crafting');
     return activeScreen;
@@ -1016,7 +1090,9 @@ window.__voxelcraft = {
       id: recipe.id,
       result: { ...recipe.result },
       shapeless: recipe.shapeless ? [...recipe.shapeless] : null,
-      pattern: recipe.pattern ? [...recipe.pattern] : null
+      pattern: recipe.pattern ? [...recipe.pattern] : null,
+      unlockedBy: recipe.unlockedBy ?? null,
+      received: recipeReceived(recipe)
     }));
   },
   selectSlot(index) {
@@ -1617,7 +1693,7 @@ window.__voxelcraft = {
     const craftRecipe = currentCraftRecipe();
     const miningLoop = miningReport();
     return {
-      version: '0.1.0-milestone-12',
+      version: '0.1.0-milestone-13',
       seed: WORLD_SEED,
       position: [camera.position.x, camera.position.y, camera.position.z],
       feet: [pos.x, pos.y, pos.z],
@@ -1705,6 +1781,10 @@ window.__voxelcraft = {
       crops: world.crops.size,
       save: this.saveInfo(),
       essence: essenceCount(),
+      beacons: {
+        activated: beaconReport().activated,
+        next: beaconReport().next
+      },
       essenceDrops: essenceEntities.map((entity) => ({
         amount: entity.amount,
         age: Number(entity.age.toFixed(2)),

@@ -41,6 +41,7 @@ import {
 import { addExhaustion, aimOrigin, player } from './player.js';
 import { camera } from './render.js';
 import { applyDayNight, isNight, setDayTime } from './sky.js';
+import { tryLightBeacon } from './beacons.js';
 
 /* The layer that uses a block with what is in hand is the one that has to say
    something back to the player, and everything it says belongs to whoever is
@@ -341,6 +342,14 @@ export function tryPlaceSelectedBlock() {
   // And a bed claims the spawn point and, after dark, ends the night.
   if (BLOCKS[currentTarget.id].bed) {
     useBed(currentTarget.x, currentTarget.y, currentTarget.z);
+    return false;
+  }
+
+  // And a beacon answers a right click wherever it stands. Whether it lights
+  // or refuses, the machine has been spoken to and the click is spent: held
+  // blocks do not get placed against a transmitter's monument.
+  if (BLOCKS[currentTarget.id].beacon) {
+    tryLightBeacon(currentTarget.x, currentTarget.y, currentTarget.z);
     return false;
   }
 

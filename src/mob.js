@@ -17,8 +17,11 @@ import { BLOCKS, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
 import { cellCollidesAt, isSolid, submergedAt } from './collision.js';
 import {
-  B, CHUNK_SIZE, COLLISION_EPSILON, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP, TERMINAL_VELOCITY, chunkKey, clamp
+  B, CHUNK_SIZE, COLLISION_EPSILON, DIFFICULTY_DAMAGE_SCALE, DIFFICULTY_ESSENCE_SCALE,
+  DIFFICULTY_HEALTH_SCALE, DIFFICULTY_SPAWN_SCALE, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP,
+  TERMINAL_VELOCITY, chunkKey, clamp
 } from './config.js';
+import { difficultyAt } from './beacons.js';
 import { spawnBurstParticles, triggerExplosionPunch } from './fx.js';
 import { createCanvas } from './icons.js';
 import { chunkRandom, hashString, mulberry32 } from './noise.js';
@@ -182,7 +185,10 @@ const MOB_DEFS = {
   },
   creeper: {
     hostile: true, health: 20, speed: 1.65, width: 0.62, height: 1.66,
-    detection: 24, essence: { min: 3, max: 5 },
+    detection: 24,
+    // The creeper's "attack" is the explosion at the end of its fuse: the
+    // 14 is full strength at point blank, and the falloff rides beside it.
+    damage: 14, essence: { min: 3, max: 5 },
     drops: []
   }
 };
@@ -526,19 +532,31 @@ export function spawnMob(type, x, y, z, options = {}) {
   const def = MOB_DEFS[type];
   if (!def || mobs.length >= MOB_CAP) return null;
 
+  // Difficulty is read off the ground the mob arrives on, not the ground it
+  // wanders to: the X and Z distance from SP0 and the depth below sea level
+  // decide how tough this one is, and they decide it for keeps. A creeper
+  // bred at the far edge of the world stays mean when it calls on SP0.
+  const difficulty = difficultyAt(x, y, z);
+  const health = Math.max(1, Math.round(def.health * (1 + DIFFICULTY_HEALTH_SCALE * difficulty)));
+  const attack = def.damage == null
+    ? null
+    : def.damage * (1 + DIFFICULTY_DAMAGE_SCALE * difficulty);
+
   const model = createMobModel(type, !!options.sheared);
   const mob = {
     serial: mobSerial++,
     type,
     def,
+    difficulty,
+    attack,
     sheared: !!options.sheared,
     pos: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(),
     yaw: options.yaw ?? Math.random() * Math.PI * 2,
     onGround: false,
     inWater: false,
-    health: def.health,
-    maxHealth: def.health,
+    health,
+    maxHealth: health,
     hurtFlash: 0,
     walkPhase: Math.random() * Math.PI * 2,
     state: 'idle',
@@ -596,12 +614,13 @@ function dropMobLoot(mob) {
 
 function dropMobEssence(mob) {
   // Essence is what enemies pay, and only enemies: a herd is food, not fuel.
-  // The yield sits on the definition today; the design's scaling of that yield
-  // with a mob's distance from spawn point 0 arrives with the difficulty pass.
+  // The yield scales with the difficulty of the ground the mob came from, the
+  // way its health and bite do: what is hard to kill is worth more to light.
   const yieldToTake = mob.def.essence;
   if (!mob.def.hostile || !dropEssence || !yieldToTake) return;
-  const amount = yieldToTake.min +
+  const base = yieldToTake.min +
     Math.floor(Math.random() * (yieldToTake.max - yieldToTake.min + 1));
+  const amount = Math.round(base * (1 + DIFFICULTY_ESSENCE_SCALE * mob.difficulty));
   if (amount <= 0) return;
   dropEssence(amount, mob.pos.x, mob.pos.y + mob.def.height * 0.4, mob.pos.z);
 }
@@ -861,7 +880,11 @@ function explodeCreeper(mob) {
   const playerCz = mobWalker().pos.z;
   const distance = Math.hypot(playerCx - cx, playerCy - cy, playerCz - cz);
   if (distance < 6) {
-    const damage = Math.round(14 * (1 - distance / 6));
+    // The blast carries the difficulty of the ground the creeper was bred on,
+    // the same way its health does: `mob.attack` is the def's 14 scaled up.
+    const damage = Math.round(
+      (mob.attack ?? mob.def.damage) * (1 - distance / 6)
+    );
     const knock = 8 * (1 - distance / 6);
     if (distance > 0.01) {
       mobWalker().vel.x += ((playerCx - cx) / distance) * knock;
@@ -971,7 +994,7 @@ function updateMobAI(mob, dt) {
         moveZ = dz;
         if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0) {
           mob.attackCooldown = def.attackInterval;
-          hurtWalker(def.damage, 'zombie');
+          hurtWalker(mob.attack ?? def.damage, 'zombie');
         }
       }
     } else {
@@ -1139,6 +1162,10 @@ export function updateMobs(dt) {
   hostileSpawnTimer -= dt;
   if (hostileSpawnTimer <= 0) {
     hostileSpawnTimer = isNight() ? 1.4 : 3.6;
+    // Frequency is the third scaling dimension of the design: the farther the
+    // walker has travelled from SP0, the less the night waits between arrivals.
+    const walker = mobWalker().pos;
+    hostileSpawnTimer /= 1 + DIFFICULTY_SPAWN_SCALE * difficultyAt(walker.x, walker.y, walker.z);
     trySpawnHostile();
   }
 

@@ -306,6 +306,31 @@ BLOCKS.push({
   drops: [{ item: 'ladder', min: 1, max: 1 }], placeable: true
 });
 
+// The beacon monuments join last, same rule as above. They are transmitter
+// equipment rather than something the player builds: the mission needs them
+// standing, so no tool takes one down, nothing is dropped, and no recipe or
+// give shelf can carry one. Activation swaps the unlit id for the lit one the
+// way the furnace lights itself, and the light engine reads the new number
+// from the table with no extra hooks. Which beacon of the five a monument is,
+// and whether it has been lit, lives in the progression layer, not here.
+BLOCKS.push(
+  {
+    id: B.BEACON, key: 'beacon', name: 'Beacon',
+    tiles: { top: 'beacon_top', bottom: 'beacon_top', side: 'beacon_side' },
+    solid: true, opaque: true, hardness: Infinity, unbreakable: true,
+    beacon: 'idle', drops: [], placeable: false
+  },
+  {
+    id: B.BEACON_ACTIVE, key: 'beacon_active', name: 'Beacon',
+    tiles: {
+      top: 'beacon_top_lit', bottom: 'beacon_top_lit',
+      side: 'beacon_side_lit'
+    },
+    solid: true, opaque: true, hardness: Infinity, unbreakable: true,
+    light: 15, beacon: 'active', drops: [], placeable: false
+  }
+);
+
 export const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -322,6 +347,7 @@ for (const block of BLOCKS) {
   block.bed ??= null;
   block.stairs ??= false;
   block.ladder ??= false;
+  block.beacon ??= null;
   // Only water carries a depth; everything else sits at -1 so isWater(id) can
   // be a single comparison against the block table.
   block.waterLevel ??= -1;
@@ -543,6 +569,11 @@ export function isFurnaceBlock(blockId) {
 export function isChestBlock(blockId) {
   const block = BLOCKS[blockId];
   return !!block && block.blockEntity === 'chest';
+}
+
+/** Either state of a beacon monument, lit or waiting. */
+export function isBeaconBlock(blockId) {
+  return !!BLOCKS[blockId] && BLOCKS[blockId].beacon !== null;
 }
 
 const TOOL_TIERS = {

@@ -204,8 +204,43 @@ export const B = Object.freeze({
   OAK_STAIRS: 50, COBBLESTONE_STAIRS: 51,
   // A ladder is one id too: which wall it is nailed to is the facing, and the
   // plank that leans off that wall is geometry rather than state.
-  LADDER: 52
+  LADDER: 52,
+  // The beacon monument stands in the world in two states, unlit and lit, the
+  // same way the furnace does: activation swaps the id, and lighting follows
+  // the block table on its own. It is transmitter equipment, so there is no
+  // third state and no item that carries it.
+  BEACON: 53, BEACON_ACTIVE: 54
 });
+
+/* ---------- Beacons and the walk out from SP0 ---------- */
+
+/** The five monuments the mission runs between, beacon 1 nearest the spawn. */
+export const BEACON_COUNT = 5;
+/**
+ * How far from SP0 each monument aims to stand. These are targets rather
+ * than exact figures: the chosen column must be dry, flat and cave-free, so
+ * the search walks outward from here until the ground agrees.
+ */
+export const BEACON_TARGET_DISTANCES = [40, 120, 220, 340, 470];
+/** One essence per this many blocks from SP0; the purse opens at beacon 1's price. */
+export const BEACON_ESSENCE_PER_BLOCK = 4;
+
+/**
+ * Enemy difficulty reads three axes off the ground a mob spawns on: its X and
+ * Z distance from SP0 always, and its depth below sea level on top of that,
+ * because the design only charges for the dark once the player has left the
+ * surface. One unit of difficulty per this many blocks of travel.
+ */
+export const DIFFICULTY_XZ_STEP = 64;
+export const DIFFICULTY_Y_STEP = 48;
+/** A ceiling on the total, so the far corners stay survivable rather than absurd. */
+export const DIFFICULTY_MAX = 3;
+/** Health, attack and essence multiply by 1 + this times the difficulty. */
+export const DIFFICULTY_HEALTH_SCALE = 0.6;
+export const DIFFICULTY_DAMAGE_SCALE = 0.5;
+export const DIFFICULTY_ESSENCE_SCALE = 0.5;
+/** Hostiles show up this much more often at a difficulty, interval divided. */
+export const DIFFICULTY_SPAWN_SCALE = 0.4;
 
 /* ---------- Hunger ---------- */
 

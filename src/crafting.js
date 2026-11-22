@@ -12,6 +12,12 @@
  * nothing else holds a grid; which of the two is in front of the player — the
  * pocket 2x2 or the table's 3x3 — is a screen's business, so the page names the
  * grid and its width and `matchRecipe` says what those items have become.
+ *
+ * Recipes are not known until a beacon transmits them: each one carries the
+ * beacon whose activation puts it in the journal, and the matcher ignores
+ * anything not yet received. A new walker knows nothing — that is the whole
+ * point of the mission — so the unlock count starts at zero and the beacon
+ * layer raises it.
  */
 
 import { ARMOR_MATERIALS, ARMOR_PIECES } from './blocks.js';
@@ -24,63 +30,67 @@ export const craft3 = new Array(CRAFT3_SIZE * CRAFT3_SIZE).fill(null);
 /**
  * Crafting recipes. Shaped patterns are matched anywhere inside the grid and
  * are trimmed to their occupied bounding box, so leading/trailing empty rows
- * and columns do not matter. A '.' means the cell must stay empty.
+ * and columns do not matter. A '.' means the cell must stay empty. `unlockedBy`
+ * is the beacon that transmits the recipe, in the grouping the design writes
+ * down: beacon 1 pays for the survival kit — the 2x2 basics, the furnace, the
+ * chest, the door and the wooden tools; beacon 2 for farming, building and
+ * stone; beacon 3 for iron; beacon 4 for diamond.
  */
 export const RECIPES = [
   {
-    id: 'planks', shapeless: ['log'],
+    id: 'planks', shapeless: ['log'], unlockedBy: 1,
     result: { id: 'planks', count: 4 }
   },
   {
-    id: 'sticks', pattern: ['P', 'P'], key: { P: 'planks' },
+    id: 'sticks', pattern: ['P', 'P'], key: { P: 'planks' }, unlockedBy: 1,
     result: { id: 'stick', count: 4 }
   },
   {
-    id: 'crafting_table', pattern: ['PP', 'PP'], key: { P: 'planks' },
+    id: 'crafting_table', pattern: ['PP', 'PP'], key: { P: 'planks' }, unlockedBy: 1,
     result: { id: 'crafting_table', count: 1 }
   },
   {
-    id: 'torches', pattern: ['C', 'S'], key: { C: 'coal', S: 'stick' },
+    id: 'torches', pattern: ['C', 'S'], key: { C: 'coal', S: 'stick' }, unlockedBy: 1,
     result: { id: 'torch', count: 4 }
   },
   {
     id: 'torches_charcoal', pattern: ['C', 'S'],
-    key: { C: 'charcoal', S: 'stick' },
+    key: { C: 'charcoal', S: 'stick' }, unlockedBy: 1,
     result: { id: 'torch', count: 4 }
   },
   {
     id: 'furnace', pattern: ['CCC', 'C.C', 'CCC'],
-    key: { C: 'cobblestone' },
+    key: { C: 'cobblestone' }, unlockedBy: 1,
     result: { id: 'furnace', count: 1 }
   },
   {
     // Three ears laid side by side: bread needs the crafting table, not the
     // 2x2 grid carried in the inventory.
-    id: 'bread', pattern: ['WWW'], key: { W: 'wheat' },
+    id: 'bread', pattern: ['WWW'], key: { W: 'wheat' }, unlockedBy: 2,
     result: { id: 'bread', count: 1 }
   },
   {
     // Six planks in two columns, three leaves tall: Minecraft's own door
     // pattern, and three doors out of it like the original gives.
-    id: 'door', pattern: ['PP', 'PP', 'PP'], key: { P: 'planks' },
+    id: 'door', pattern: ['PP', 'PP', 'PP'], key: { P: 'planks' }, unlockedBy: 1,
     result: { id: 'door', count: 3 }
   },
   {
     // Two ingots laid point to point: the shears glyph already carved into
     // the crafting table top finally earns its keep.
-    id: 'shears', pattern: ['I.', '.I'], key: { I: 'iron_ingot' },
+    id: 'shears', pattern: ['I.', '.I'], key: { I: 'iron_ingot' }, unlockedBy: 2,
     result: { id: 'shears', count: 1 }
   },
   {
     // The same shears from the other hand: the matcher is exact, so both
     // diagonals need listing.
-    id: 'shears_alt', pattern: ['.I', 'I.'], key: { I: 'iron_ingot' },
+    id: 'shears_alt', pattern: ['.I', 'I.'], key: { I: 'iron_ingot' }, unlockedBy: 2,
     result: { id: 'shears', count: 1 }
   },
   {
     // Blanket over boards: three wool laid across three planks, the table's
     // own pattern for a bed.
-    id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' },
+    id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, unlockedBy: 2,
     result: { id: 'bed', count: 1 }
   },
   {
@@ -88,34 +98,34 @@ export const RECIPES = [
     // Three ingots and no sticks: the pail is one bent sheet with a wire handle.
     // The V is three cells across, so like the bed it has to be folded at the
     // table rather than in the 2x2 grid carried in the inventory.
-    id: 'bucket', pattern: ['I.I', '.I.'], key: { I: 'iron_ingot' },
+    id: 'bucket', pattern: ['I.I', '.I.'], key: { I: 'iron_ingot' }, unlockedBy: 2,
     result: { id: 'bucket', count: 1 }
   },
   {
     // Eight boards around an empty middle: the box is all walls and a lid, and
     // the hollow centre is the gap things are put through. Needs the table, the
     // same as the bucket and the bed, because the ring is three cells wide.
-    id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' },
+    id: 'chest', pattern: ['PPP', 'P.P', 'PPP'], key: { P: 'planks' }, unlockedBy: 1,
     result: { id: 'chest', count: 1 }
   },
   {
     // Six boards sawn into a staircase, and four stairs out of the six —
     // Minecraft's own pattern and its own numbers. The V is three cells
     // across, so the table folds this one too.
-    id: 'oak_stairs', pattern: ['P..', 'PP.', 'PPP'], key: { P: 'planks' },
+    id: 'oak_stairs', pattern: ['P..', 'PP.', 'PPP'], key: { P: 'planks' }, unlockedBy: 2,
     result: { id: 'oak_stairs', count: 4 }
   },
   {
     // The same staircase cut in cobblestone.
     id: 'cobblestone_stairs', pattern: ['C..', 'CC.', 'CCC'],
-    key: { C: 'cobblestone' },
+    key: { C: 'cobblestone' }, unlockedBy: 2,
     result: { id: 'cobblestone_stairs', count: 4 }
   },
   {
     // Seven sticks: two rails of three with a rung laid across each end and the
     // middle. Minecraft's pattern, and its own count of three ladders out of
     // the seven. Three cells wide, so it wants the table like the chest does.
-    id: 'ladder', pattern: ['S.S', 'SSS', 'S.S'], key: { S: 'stick' },
+    id: 'ladder', pattern: ['S.S', 'SSS', 'S.S'], key: { S: 'stick' }, unlockedBy: 2,
     result: { id: 'ladder', count: 3 }
   }
 ];
@@ -134,6 +144,9 @@ const TOOL_SHAPES = {
 const TOOL_MATERIALS = {
   wood: 'planks', stone: 'cobblestone', iron: 'iron_ingot', diamond: 'diamond'
 };
+// The beacon whose transmission teaches each tier's patterns: wood arrives with
+// the survival kit, and better rock and metal follow further out from SP0.
+const TOOL_BEACONS = { wood: 1, stone: 2, iron: 3, diamond: 4 };
 
 for (const [tier, material] of Object.entries(TOOL_MATERIALS)) {
   for (const [kind, shape] of Object.entries(TOOL_SHAPES)) {
@@ -141,6 +154,7 @@ for (const [tier, material] of Object.entries(TOOL_MATERIALS)) {
       id: tier + '_' + kind,
       pattern: shape.slice(),
       key: { X: material, S: 'stick' },
+      unlockedBy: TOOL_BEACONS[tier],
       result: { id: tier + '_' + kind, count: 1 }
     });
   }
@@ -163,9 +177,38 @@ for (const [tier, stats] of Object.entries(ARMOR_MATERIALS)) {
       id: tier + '_' + piece.piece,
       pattern: ARMOR_SHAPES[piece.piece].slice(),
       key: { X: stats.material },
+      // Leather armour is part of beacon 2's husbandry package; iron and
+      // diamond arrive with the metal tiers that cut them.
+      unlockedBy: tier === 'leather' ? 2 : tier === 'iron' ? 3 : 4,
       result: { id: tier + '_' + piece.piece, count: 1 }
     });
   }
+}
+
+/* ---------- What the beacons have transmitted ---------- */
+
+/* How many beacon activations' worth of recipes the walker holds. A new world
+ * starts at zero — nothing is known until the first transmission lands — and
+ * the beacon layer raises the count as each monument lights. */
+let beaconsTransmitted = 0;
+
+/** The number of beacon transmissions received so far. */
+export function recipesTransmitted() { return beaconsTransmitted; }
+
+/** Records that beacon `count` transmissions have landed, and nothing less. */
+export function setRecipesTransmitted(count) {
+  beaconsTransmitted = Math.max(beaconsTransmitted, Math.trunc(Number(count) || 0));
+  return beaconsTransmitted;
+}
+
+/** Whether a beacon has already put this recipe in the journal. */
+export function recipeReceived(recipe) {
+  return (recipe.unlockedBy ?? 0) <= beaconsTransmitted;
+}
+
+/** Every recipe the walker knows, in table order — the journal's shelf. */
+export function receivedRecipes() {
+  return RECIPES.filter(recipeReceived);
 }
 
 /** Trim a pattern to its non-empty bounding box. */
@@ -227,6 +270,9 @@ export function matchRecipe(grid, size) {
   if (!bounds) return null;
 
   for (const recipe of RECIPES) {
+    // A pattern nobody has been told cannot be folded from memory: whatever
+    // the grid holds, an unreceived recipe is simply not one of the answers.
+    if (!recipeReceived(recipe)) continue;
     if (recipe.shapeless) {
       const counts = new Map();
       for (const slot of grid) {
