@@ -1,7 +1,7 @@
 # VoxelCraft — Design Document
 
 Build a fully playable 3D Minecraft-style voxel game in the browser using Three.js and
-vanilla JavaScript in a single HTML file, with a CC0 audio bank and a generated fallback beside it. The game should feel like a
+vanilla JavaScript as native ES modules served straight from the repository, with a CC0 audio bank and a generated fallback beside it. The game should feel like a
 simplified but functional Minecraft experience with an endless procedurally generated
 world. Do not create a fixed world with edges or borders. Instead, use deterministic
 chunk-based procedural generation so the terrain continues generating as the player moves
@@ -11,13 +11,20 @@ in any horizontal direction.
 
 Create an infinite-style Minecraft-like voxel sandbox that runs in a modern browser using:
 
-- One HTML file for the game, plus the CC0 `assets/audio/` sample bank and the
+- One `index.html` page, one `styles.css`, and a `src/` graph of native ES modules
+  for the game, plus the CC0 `assets/audio/` sample bank and the
   generated `assets/audio-generated/` fallback/reference bank
 - Three.js loaded from a CDN
 - Vanilla JavaScript
-- No build tools and no npm required to play. `tools/build-cc0-bank.py` builds
-  the active bank from the source packs; `tools/generate-audio.mjs` regenerates
-  the synthesized fallback bank
+- No build tools and no npm required to play. The browser resolves the `src/`
+  modules itself, so the repository *is* the deploy: GitHub Pages serves the
+  same files it is given, with nothing compiled, bundled, or minified in
+  between. `tools/build-cc0-bank.py` builds the active bank from the source
+  packs; `tools/generate-audio.mjs` regenerates the synthesized fallback bank
+- Serve the game over http, from a static server (`python3 -m http.server`) or
+  from Pages. Under `file://` the browser will not resolve module imports, so the
+  page stays blank. That is one more reason to use a server rather than a new
+  one: `file://` could never fetch the sample bank either.
 - Audio is CC0 (Kenney, OpenGameArt, SpritePilot; see `CREDITS.md`). Textures,
   colors, and geometry are procedural
 - The active bank is sampled at runtime, with the procedural synthesizer as a
