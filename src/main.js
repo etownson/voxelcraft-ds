@@ -25,8 +25,8 @@ import {
 } from './aim.js';
 import { atlasCanvas } from './atlas.js';
 import {
-  audioCtx, audioStatus, playSound, setAudioMusicVolume, setAudioMuted, setAudioSfxVolume,
-  setAudioVolume, toggleAudioMuted
+  audioCtx, audioStatus, playSound, playSpawnSong, setArrivalHold, setAudioMusicVolume,
+  setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './audio.js';
 import {
   ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock,
@@ -77,7 +77,8 @@ import {
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
   renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
-  selectHotbarSlot, setBeaconJumper, showDamageFlash, showToast, showTransmission, sleepFadeEl, sprintStateEl,
+  selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
+  showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, updateCursorVisual, updateDebug,
   updateFurnaceGauges, updateGamepadScreen
 } from './hud.js';
@@ -93,6 +94,7 @@ import {
   MINING_SWING_INTERVAL, hideMiningFeedback, isMining, miningFacts, miningReport,
   plantSeedsOnTarget, setInteractionView, tryPlaceSelectedBlock, updateMining, useHoeOnTarget
 } from './interaction.js';
+import { introActive, skipIntro, startIntro, updateIntro } from './intro.js';
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorAbsorbed, armorDefense, armorSlots,
   countInventoryItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
@@ -226,7 +228,7 @@ setBlockEntityView({
 setItemPickup((itemId, count, dur) => addItemToInventory(itemId, count, dur));
 
 /* And the crosshair stops pointing whenever something else has the controls. */
-setAimBlocked(() => !!activeScreen || player.dead);
+setAimBlocked(() => !!activeScreen || player.dead || introActive());
 
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */
@@ -355,7 +357,7 @@ setRespawnArrival({
    the pack, the hotbar, a screen's own frame step, and the transmission's way off
    the page. */
 setInputView({
-  screenOpen: () => !!activeScreen,
+  screenOpen: () => !!activeScreen || introActive(),
   hint: (show) => controlHintEl.classList.toggle('hidden', !show),
   paintSprint: (on) => {
     if (!sprintStateEl) return;
@@ -452,8 +454,15 @@ initSaveUi(Boolean(loadedSave));
 /** The arrival transmission is armed at boot and spent by the frame loop. */
 let arrivalWaiting = false;
 let arrivalAt = 0;
-/** The beat of quiet between the overlay lifting and the line dialing. */
+/** The beat of quiet between the scene landing and the line dialing. */
 const ARRIVAL_DELAY_MS = 550;
+/** The first-spawn scene is armed the same way and spent the same frame the
+ *  overlay lifts; the arrival line waits for it to land. */
+let introWaiting = false;
+/** True from the moment the arrival line is on the page until the transmitter
+ *  finishes it — typed out, or closed — which is when the arrival song plays.
+ *  Until then a fresh world has heard no music at all. */
+let arrivalSongWaiting = false;
 
 /* A world nobody has walked yet opens the way the design opens it: the walker
    starts with no items but exactly one activation's worth of essence —
@@ -463,12 +472,28 @@ const ARRIVAL_DELAY_MS = 550;
    The bubble itself waits for the game to begin: the start overlay sits above
    the whole HUD, so a transmission fired at boot is words nobody sees, and the
    audio clock is stopped until the first click, so the line would dial itself in
-   a heap. It lands a beat after the overlay lifts. */
+   a heap. It lands a beat after the scene does. */
 if (!loadedSave) {
   addEssence(startingEssence());
   arrivalWaiting = true;
+  introWaiting = true;
+  // Hold the clock's music from the first frame: a fresh world gets no song
+  // behind the menu, none during the scene, and none while the transmitter
+  // talks. Its first music is the arrival song, at the end of all that.
+  setArrivalHold(true);
 }
 renderMission();
+
+/* The arrival song lands when the transmitter stops talking: the last line
+   typed out, or the panel closed early. It is the tail of the arrival
+   sequence, so it only answers once — to the line the spawn point sends —
+   and it hands the schedule back to the clock when it goes. */
+setTransmissionFinisher(() => {
+  if (!arrivalSongWaiting) return;
+  arrivalSongWaiting = false;
+  setArrivalHold(false);
+  playSpawnSong();
+});
 
 // A world written by an older build stays in storage but cannot be read, so
 // say so out loud on the first new-world boot rather than let a player wonder
@@ -853,6 +878,17 @@ window.__voxelcraft = {
   },
   /** Teleport the player's feet to the given world coordinates. */
   teleport(x, y, z) { moveWalker(x, y, z); },
+  /** Whether the first-spawn scene has the controls. */
+  intro() {
+    return introActive();
+  },
+  /** Cut the first-spawn scene short: the walker is set down, and the
+   *  transmission and the arrival song still take their turn afterwards. */
+  skipIntro() {
+    const skipped = skipIntro();
+    updateDebug();
+    return skipped;
+  },
   look(yawValue, pitchValue) {
     aimPlayer(yawValue, pitchValue);
     applyLook();
@@ -1950,13 +1986,24 @@ function animate(now) {
 
   updateGamepad(dt);
 
+  /* A world nobody has walked yet opens the way the design opens it: the
+     walker is beamed in. The scene starts on the frame the overlay lifts —
+     the same gate the arrival line waits behind, and it holds that line
+     until it lands. */
+  if (introWaiting && overlayEl.classList.contains('hidden') && !player.dead) {
+    introWaiting = false;
+    startIntro();
+  }
+
   /* The arrival transmission lands once the walker is really in the world: the
-     overlay hides the HUD, and the audio context only wakes on the click that
-     lifts it, so the dial tone would otherwise be spent unheard. */
-  if (arrivalWaiting && overlayEl.classList.contains('hidden')) {
+     overlay hides the HUD, the audio context only wakes on the click that
+     lifts it, and the scene says the walk has begun, so the dial tone would
+     otherwise be spent unheard. */
+  if (arrivalWaiting && overlayEl.classList.contains('hidden') && !introActive()) {
     if (!arrivalAt) arrivalAt = now + ARRIVAL_DELAY_MS;
     else if (now >= arrivalAt) {
       arrivalWaiting = false;
+      arrivalSongWaiting = true;
       showTransmission(SPAWN_TRANSMISSION);
     }
   }
@@ -1966,9 +2013,12 @@ function animate(now) {
   // ambience and autosave keep running.
   if (!activeScreen && overlayEl.classList.contains('hidden')) {
     updatePlayer(dt, readPlayerInput());
+    // Runs after the walker is walked: the scene pins the fall peak behind
+    // the physics layer, so the arrival can never read as a drop.
+    updateIntro(dt);
     updateTarget();
     updateMobTarget();
-    const canMine = isMiningHeld() && !player.dead && isPlayable();
+    const canMine = isMiningHeld() && !player.dead && isPlayable() && !introActive();
     updateMining(dt, canMine && !mobTarget());
     updateCombat(dt, isMiningHeld());
     updateMobs(dt);

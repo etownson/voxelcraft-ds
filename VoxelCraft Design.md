@@ -813,6 +813,13 @@ dawn, noon, dusk, midnight — draws one random song from its folder under
 own bus, plays through once (`loop = false`), has no synthesizer behind it, and re-rolls
 to avoid repeating last night's song.
 
+A fresh world breaks the schedule once, from the first frame: a held clock keeps it
+silent behind the start menu, through the first-spawn scene, and while the arrival
+transmission talks. When the transmitter finishes its line — typed out, or closed — the
+walker's own song, `assets/music/first-spawn/`, plays through on the music bus, and the
+clock's windows take the world back when it ends. The morning bed and the arrival song
+can never be up together. A saved world never hears the hold or the song.
+
 Animal and hostile calls are quiet on purpose: each passive idles 15–35 s with a shared
 4–8 s gap at 0.22 gain; hostiles roll 11–24 s with a shared 6–11 s gap; pain is scaled
 per species (`MOB_HURT_GAIN`: cow 0.53, chicken 0.6, pig/sheep 0.7, hostiles 1) since
@@ -855,6 +862,7 @@ repository and the page:
     src/farming.js      farmland and crops
     src/aim.js          the crosshair's block ray and crack
     src/interaction.js  mining, placing, doors, beds, buckets, hoes, seeds
+    src/intro.js        the first-spawn scene: the walker is beamed in
     src/combat.js       the crosshair's mob ray, swings and shearing
     src/mob.js          animals, hostiles, spawning, explosions
     src/fx.js           particles, embers, ambient sound
@@ -867,7 +875,7 @@ repository and the page:
     src/save.js         the record, the restore, autosave
     src/say.js          one way for any layer to tell the player something
     assets/audio/       the active CC0 bank
-    assets/music/       the scheduled music, one folder per clock window
+    assets/music/       the scheduled music, one folder per clock window, plus first-spawn
     tools/              the bank builders, the checks, and the snapshot harness
     CREDITS.md          source and licence record for the active bank
 

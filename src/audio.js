@@ -127,7 +127,11 @@ const AUDIO_ASSETS = {
     'music/dusk/Dusk Piano 1.m4a',
     'music/dusk/Dusk Piano 2.m4a'
   ],
-  music_midnight: ['music/midnight/Midnight Pulse 1.m4a']
+  music_midnight: ['music/midnight/Midnight Pulse 1.m4a'],
+  // The arrival song is not a clock window: `playSpawnSong` puts it down at
+  // the end of the arrival sequence, and the schedule below stays quiet while
+  // it runs. See the spawn-song block above the ambient mix.
+  music_first_spawn: ['music/first-spawn/first-spawn.m4a']
 };
 
 const audioStateEl = document.getElementById('audio-state');
@@ -196,7 +200,8 @@ const audioLoopPicks = new Map();
 let audioAmbientTimer = 0;
 let audioAmbientSnapshot = {
   underwater: false, openSky: true, nearWater: false, fireDistance: Infinity,
-  wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0, musicTrack: null
+  wind: 0, water: 0, cave: 0, fire: 0, under: 0, music: 0, musicTrack: null,
+  spawnSong: false, arrivalHold: false
 };
 let audioUnderwaterShown = false;
 let audioHudText = '';
@@ -1003,6 +1008,47 @@ function ambientNearFire() {
   return best;
 }
 
+/* ---------- The first-spawn song, and the hold that precedes it ---------- */
+
+/**
+ * The arrival song rides the music bus and plays straight through once, exactly
+ * like a scheduled song, but it outranks the clock: while it runs no window's
+ * bed is asked for, and the next scheduled song takes the world back when this
+ * one ends.
+ */
+let audioSpawnSong = null;
+
+/**
+ * A fresh world's schedule is held from boot until the arrival sequence is
+ * over: no clock window opens its song behind the start menu, during the
+ * first-spawn scene, or while the transmitter is still talking, so the world's
+ * first music is the arrival song and never a morning bed.
+ */
+let audioArrivalHold = false;
+
+export function setArrivalHold(on) {
+  audioArrivalHold = !!on;
+  // Turning the hold on while a scheduled bed is somehow already running takes
+  // the bed with it: the hold is a silence, not just a refusal to start one.
+  if (audioArrivalHold && audioMusicTrack && audioLoops.has(audioMusicTrack)) {
+    audioStopLoop(audioMusicTrack);
+  }
+}
+
+export function playSpawnSong() {
+  if (!audioCtx) return false;
+  audioSpawnSong = 'music_first_spawn';
+  // A clock window may have opened its bed before the hold came down — dawn
+  // always starts half a second after the context wakes. The arrival song
+  // clears the slot before taking it, so the world hears one song, not two.
+  if (audioMusicTrack && audioLoops.has(audioMusicTrack)) audioStopLoop(audioMusicTrack);
+  return !!audioSetLoop(audioSpawnSong, 0.2, 9000);
+}
+
+function spawnSongIsRunning() {
+  return !!audioSpawnSong && audioLoops.has(audioSpawnSong);
+}
+
 /** The four scheduled music windows, in the same clock the HUD shows. */
 function musicTrackForClock(hours) {
   if (hours >= 6 && hours < 12) return 'music_dawn';
@@ -1063,15 +1109,21 @@ export function updateAmbient(dt) {
   audioSetLoop('ambient_underwater', under, 500);
   // Ride the level with the environment while the song is running, but once
   // its one playthrough has ended, leave the window in silence: starting it
-  // again is the next window's job.
-  if (!audioMusicPlayed || audioLoops.has(musicTrack)) {
+  // again is the next window's job. And the schedule does not open at all
+  // while the arrival sequence holds it or the arrival song runs — a fresh
+  // world gets one song, and it is the one the teleport paid for.
+  const spawnSong = spawnSongIsRunning();
+  if (spawnSong || audioArrivalHold) music = 0;
+  if (!spawnSong && !audioArrivalHold &&
+      (!audioMusicPlayed || audioLoops.has(musicTrack))) {
     if (audioSetLoop(musicTrack, music, 6000)) audioMusicPlayed = true;
   }
   audioSetMuffle(underwater);
 
   audioAmbientSnapshot = {
     underwater, openSky, nearWater, fireDistance,
-    wind, water, cave, fire, under, music, musicTrack
+    wind, water, cave, fire, under, music, musicTrack, spawnSong,
+    arrivalHold: audioArrivalHold
   };
 }
 
@@ -1173,6 +1225,30 @@ export function playBeaconSound() {
     volume: 0.07, bus: 'ui', priority: 0
   });
   return !!audioCtx && !audioMuted;
+}
+
+export function playTeleportSound() {
+  // Nobody else in the game arrives from above, so this is built outright: a
+  // carrier that starts under the transmitter's womps and climbs into a bright
+  // sweep, with a wash of static across it. It is the handshake heard from the
+  // sender's side — rising where the dial tone falls — and it fires once per
+  // world, so it can afford to be an event.
+  if (!audioIsAudible()) return false;
+  const start = audioCtx.currentTime + 0.02;
+  audioTone({
+    type: 'sawtooth', from: 98, to: 262, duration: 0.7,
+    filterType: 'lowpass', filterFreq: 620, filterQ: 1.1,
+    volume: 0.09, now: start, bus: 'ui', priority: 2
+  });
+  audioStatic({
+    type: 'bandpass', freq: 700, freqEnd: 3000, q: 1.2, duration: 0.55,
+    volume: 0.06, now: start + 0.05, bus: 'ui', priority: 2
+  });
+  audioTone({
+    type: 'sine', from: 523, to: 1046, duration: 0.6,
+    volume: 0.05, now: start + 0.25, bus: 'ui', priority: 2
+  });
+  return true;
 }
 
 /**
@@ -2154,6 +2230,8 @@ export function playSound(name, options = {}) {
       return playDeathSound();
     case 'explosion':
       return playExplosionSound(x, y, z);
+    case 'teleport':
+      return playTeleportSound();
     default:
       return false;
   }

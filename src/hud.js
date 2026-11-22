@@ -1567,8 +1567,24 @@ const TRANSMISSION_STOP_MS = 240;
 const TRANSMISSION_LINE_MS = 900;
 let transmissionToken = 0;
 
+/* The page sometimes needs to know the transmitter has stopped talking: the
+   arrival sequence, for one, waits for the line to be spoken — or closed —
+   before its song starts. The finisher answers once per transmission, when
+   the last line has been typed out or the walker has shut the panel, and
+   never for a transmission that a newer one has already replaced. */
+let transmissionFinisher = null;
+export function setTransmissionFinisher(finisher) {
+  transmissionFinisher = finisher || null;
+}
+
+function finishTransmission(token) {
+  if (token !== transmissionToken || !transmissionFinisher) return;
+  transmissionFinisher();
+}
+
 export function showTransmission(lines) {
   const token = ++transmissionToken;
+  let linesLeft = lines.length;
   transmissionEl.innerHTML = '';
   const from = document.createElement('div');
   from.className = 'transmission-from';
@@ -1605,7 +1621,10 @@ export function showTransmission(lines) {
   for (const line of lines) {
     window.setTimeout(() => {
       if (token !== transmissionToken) return;
-      typeTransmissionLine(said, line, token);
+      typeTransmissionLine(said, line, token, () => {
+        linesLeft--;
+        if (linesLeft === 0) finishTransmission(token);
+      });
     }, at);
     at += TRANSMISSION_LINE_MS +
       line.length * (TRANSMISSION_CHAR_MS + TRANSMISSION_CHAR_JITTER_MS / 2);
@@ -1641,7 +1660,7 @@ function spotTransmissionLine(line) {
  * it belongs to is superseded or closed. Spaces are silent — nothing clicks when
  * the thumb hits the space bar — and a full stop costs the typist a beat.
  */
-function typeTransmissionLine(said, line, token) {
+function typeTransmissionLine(said, line, token, done) {
   const text = spotTransmissionLine(line);
   const p = document.createElement('p');
   const caret = document.createElement('span');
@@ -1655,6 +1674,7 @@ function typeTransmissionLine(said, line, token) {
     if (token !== transmissionToken) return;
     if (i >= text.length) {
       caret.remove();
+      if (done) done();
       return;
     }
     const char = text[i++];
@@ -1682,6 +1702,10 @@ export function dismissTransmission() {
   if (!transmissionIsUp()) return false;
   transmissionToken++;
   transmissionEl.classList.remove('active');
+  // Closing the panel is the walker saying they have read it: the line is
+  // finished, half-typed words and all, and whoever is waiting on the
+  // transmission hears that now rather than never.
+  finishTransmission(transmissionToken);
   return true;
 }
 
