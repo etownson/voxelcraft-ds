@@ -11,9 +11,12 @@
  * Modules already under src/ are read from disk and treated as fixed: their
  * exports are the only names the rest of the graph may reach for, and a section
  * that needs one it keeps private gets the export added rather than a copy of the
- * code. index.html is the composition root, so it imports everything and nothing
- * imports it — a new module needing a name that stays in the page is reported as a
- * blocker, because the honest fix is to move that name down a layer.
+ * code. Their import blocks are left exactly as written — with one exception: a
+ * module that arrived with none, because its run was carved out by hand rather
+ * than by a spec section, gets them generated like anyone else's. index.html is
+ * the composition root, so it imports everything and nothing imports it — a new
+ * module needing a name that stays in the page is reported as a blocker, because
+ * the honest fix is to move that name down a layer.
  *
  * Paths are relative to the repository root, which is where to run it from. The
  * rules it uses to decide what a file declares and what it refers to live in
@@ -264,11 +267,30 @@ function importBlock(entries, three, fromFile) {
   return out;
 }
 
+/* Where a module's own code starts: past the header comment, past the blank
+   lines after it. Zero for a file that opens straight into code. */
+function firstContent(lines) {
+  let i = 0;
+  if (lines[0] && lines[0].startsWith('/*')) {
+    while (i < lines.length && !lines[i].includes('*/')) i++;
+    i++;
+  }
+  while (i < lines.length && !lines[i].trim()) i++;
+  return i;
+}
+
 const written = [];
 for (const p of pieces) {
   if (p.name === FILE) continue;
   const needsThree = /\bTHREE\./.test(references(p.lines));
-  const imports = p.existing ? null : importBlock([...p.groups], needsThree, p.name);
+  /* A module that already carries an import block keeps it exactly as it is, so a
+     block whose wrapping was tuned by hand survives. One that arrived with none —
+     a run carved out by hand rather than by a spec section — has its imports
+     generated here, the same way the page's are, slotted in under the header. A
+     module that needs nothing at all, like the config, stays untouched. */
+  const bare = p.existing && !p.lines.some((line) => /^import /.test(line)) &&
+    (needsThree || p.groups.size);
+  const imports = !p.existing || bare ? importBlock([...p.groups], needsThree, p.name) : null;
   let added = 0;
   const lines = p.lines.map((line) => {
     const m = DECL.exec(line);
@@ -278,9 +300,19 @@ for (const p of pieces) {
     added++;
     return 'export ' + line;
   });
-  const text = p.existing
-    ? lines.join('\n')
-    : `${p.header.replace(/\s+$/, '')}\n\n${imports.join('\n')}\n\n${lines.join('\n').replace(/^\s+/, '').replace(/\s+$/, '')}\n`;
+  let text;
+  if (!p.existing) {
+    text = `${p.header.replace(/\s+$/, '')}\n\n${imports.join('\n')}\n\n${lines.join('\n').replace(/^\s+/, '').replace(/\s+$/, '')}\n`;
+  } else if (bare) {
+    const at = firstContent(lines);
+    text = [
+      lines.slice(0, at).join('\n').replace(/\s+$/, ''),
+      '', ...imports, '',
+      lines.slice(at).join('\n').replace(/\s+$/, '')
+    ].join('\n') + '\n';
+  } else {
+    text = lines.join('\n');
+  }
   if (p.existing && text === p.lines.join('\n')) continue;
   written.push([p.name, text]);
   console.log(`  ${p.name}: ${p.exports.size} exports${p.existing ? ` (+${added} newly exported)` : ''}, ${imports ? imports.length - (needsThree ? 1 : 0) : 'kept'} import block(s)${needsThree ? ' + three' : ''}`);
