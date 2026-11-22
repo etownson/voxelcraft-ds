@@ -133,6 +133,13 @@
 
 import * as THREE from 'three';
 
+import { TILES, atlasCanvas, atlasTexture, tileRect } from './src/atlas.js';
+import {
+  ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MATERIALS, ARMOR_MAX_DEFENSE, ARMOR_PIECES,
+  ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, ITEMS, consumeDurability, freshStack, isFallingWater,
+  isFlowWater, isWater, isWaterSource, makeStack, maxDurability, stackDurability,
+  stacksMergeable, waterCanOccupy, waterLevel, waterSurfaceHeight
+} from './src/blocks.js';
 import {
   AIR_ACCEL, B, BLOCK_ENTITY_TICK_RANGE, CHUNK_AREA, CHUNK_BUDGET_MS, CHUNK_SIZE, CHUNK_VOLUME,
   COLLISION_EPSILON, DATA_RADIUS, DAY_LENGTH_SECONDS, DAY_START, EYE_HEIGHT, FOCUS_REACH,
@@ -147,18 +154,11 @@ import {
   WATER_TICK_SECONDS, WATER_WAIT_LIMIT, WORLD_HEIGHT, WORLD_SEED, blockIndex, chunkKey, clamp,
   lerp, smoothstep
 } from './src/config.js';
-import {
-  ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MATERIALS, ARMOR_MAX_DEFENSE, ARMOR_PIECES,
-  ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, ITEMS, consumeDurability, freshStack, isFallingWater,
-  isFlowWater, isWater, isWaterSource, makeStack, maxDurability, stackDurability,
-  stacksMergeable, waterCanOccupy, waterLevel, waterSurfaceHeight
-} from './src/blocks.js';
+import { ITEM_ICONS, createCanvas } from './src/icons.js';
 import {
   caveNoiseA, caveNoiseB, cavernNoise, chunkRandom, detailNoise, hash3i, hashString,
   humidNoise, mountainNoise, mulberry32, riverNoise, tempNoise, terrainNoise
 } from './src/noise.js';
-import { TILES, atlasCanvas, atlasTexture, tileRect } from './src/atlas.js';
-import { ITEM_ICONS, createCanvas } from './src/icons.js';
 
 /* ============================================================
    5. CHUNK DATA AND CHUNK MANAGER
@@ -13626,9 +13626,6 @@ window.addEventListener('resize', () => {
 });
 
 requestAnimationFrame(animate);
-
-
-
 </script>
 </body>
 </html>
