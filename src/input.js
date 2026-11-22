@@ -57,7 +57,8 @@ const inputView = {
   screenTap: () => {},
   hotbarStep: () => {},
   togglePack: () => {},
-  screenTick: () => {}
+  screenTick: () => {},
+  dismissTransmission: () => false
 };
 
 export function setInputView(verbs) {
@@ -1058,6 +1059,11 @@ export function handlePadTap(name) {
       beginPadMining();
       break;
     case 'b':
+      // B is the pad's way of saying the transmission has been read: the panel
+      // takes the press, and only an idle B asks for the sprint latch.
+      if (inputView.dismissTransmission()) break;
+      if (controlsOwned()) toggleSprintLatch();
+      break;
     case 'l3':
       if (controlsOwned()) toggleSprintLatch();
       break;
@@ -1123,7 +1129,12 @@ export function updateGamepad(dt) {
     releasePadMining();
     return;
   }
-  if (gamepadState.pressed[PAD_BUTTON.b] || gamepadState.pressed[PAD_BUTTON.l3]) {
+  // B first asks whether the transmitter is still on the page: a transmission
+  // takes the press, and only an idle B latches the sprint. L3 never speaks to
+  // the panel.
+  const padB = gamepadState.pressed[PAD_BUTTON.b];
+  const readTransmission = padB && inputView.dismissTransmission();
+  if (!readTransmission && (padB || gamepadState.pressed[PAD_BUTTON.l3])) {
     toggleSprintLatch();
   }
   if (gamepadState.pressed[PAD_BUTTON.lb]) {

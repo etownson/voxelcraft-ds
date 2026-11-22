@@ -74,7 +74,7 @@ import {
 } from './held.js';
 import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
-  deathCauseEl, deathScreenEl, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
+  deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
   renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
   selectHotbarSlot, showDamageFlash, showToast, showTransmission, sleepFadeEl, sprintStateEl,
@@ -348,7 +348,8 @@ setRespawnArrival({
 /* The controller's view of the screens: whether one has the controls, and the
    few pictures and verbs a key or a pad button can reach — the control hint, the
    sprint line, the pad's name and its sensitivity, the pad's way through a menu,
-   the pack, the hotbar, and a screen's own frame step. */
+   the pack, the hotbar, a screen's own frame step, and the transmission's way off
+   the page. */
 setInputView({
   screenOpen: () => !!activeScreen,
   hint: (show) => controlHintEl.classList.toggle('hidden', !show),
@@ -367,7 +368,8 @@ setInputView({
   screenTap: handlePadScreenTap,
   hotbarStep: (delta) => selectHotbarSlot(currentSlot() + delta, true),
   togglePack: toggleInventory,
-  screenTick: updateGamepadScreen
+  screenTick: updateGamepadScreen,
+  dismissTransmission
 });
 
 /* The cursor's picture, its refusals, and the grid its screen is using. */

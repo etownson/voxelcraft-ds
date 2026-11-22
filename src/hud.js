@@ -1502,6 +1502,11 @@ window.addEventListener('keydown', (event) => {
   } else if (isEscape && activeScreen) {
     event.preventDefault();
     closeScreen();
+  } else if (isEscape && transmissionIsUp()) {
+    // The transmitter is still talking over the world, so this Esc is spent on
+    // the panel; the pause menu, if there is one to open, waits for the next.
+    event.preventDefault();
+    dismissTransmission();
   } else if (isEscape && fallbackControls && !player.dead &&
       overlayEl.classList.contains('hidden')) {
     // No pointer lock to release in fallback mode, so Esc opens the pause menu.
@@ -1532,9 +1537,11 @@ export function showToast(text) {
 
 /* A transmission is not a toast: it is the transmitter talking, several lines
    long, arriving a sentence at a time because the line is bad. The panel sits
-   above the hotbar, unspeaks itself when it is done, and takes nothing from
-   the player — it has no controls to steal. A newer transmission supersedes
-   an older one mid-sentence; the token is what drops the old one's timers. */
+   above the hotbar and stays there: the walker is meant to be able to read the
+   whole of it, even the part that lands while they are running, so nothing
+   unspeaks it on a timer. The player ends it — Esc, or B on the pad — and a
+   newer transmission supersedes an older one mid-sentence, the token being what
+   drops the lines of the old one that had not landed yet. */
 let transmissionToken = 0;
 
 export function showTransmission(lines) {
@@ -1543,21 +1550,40 @@ export function showTransmission(lines) {
   const from = document.createElement('div');
   from.className = 'transmission-from';
   from.textContent = 'Transmission \u2014 the line is spotty';
-  transmissionEl.append(from);
+  const said = document.createElement('div');
+  said.className = 'transmission-lines';
+  const hint = document.createElement('div');
+  hint.className = 'transmission-hint';
+  hint.textContent = 'Esc or B closes';
+  transmissionEl.append(from, said, hint);
   transmissionEl.classList.add('active');
 
   lines.forEach((line, i) => {
     window.setTimeout(() => {
       if (token !== transmissionToken) return;
-      const said = document.createElement('p');
-      said.textContent = line;
-      transmissionEl.append(said);
+      const p = document.createElement('p');
+      p.textContent = line;
+      said.append(p);
     }, 400 + i * 2400);
   });
-  window.setTimeout(() => {
-    if (token !== transmissionToken) return;
-    transmissionEl.classList.remove('active');
-  }, 400 + lines.length * 2400 + 3000);
+}
+
+/** Whether the transmitter is still talking on the page. */
+export function transmissionIsUp() {
+  return transmissionEl.classList.contains('active');
+}
+
+/**
+ * Esc, or B on the pad: the walker has read it, and the panel leaves. The words
+ * stay where they are so the panel fades out instead of blanking itself, and the
+ * token is what stops the lines that had not landed yet. Answers whether there
+ * was anything to close, so whoever asked knows whether the press was spent.
+ */
+export function dismissTransmission() {
+  if (!transmissionIsUp()) return false;
+  transmissionToken++;
+  transmissionEl.classList.remove('active');
+  return true;
 }
 
 window.addEventListener('keydown', (event) => {

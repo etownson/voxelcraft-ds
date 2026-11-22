@@ -208,6 +208,11 @@ html, body {
   color: #7fe3ef; margin-bottom: 4px;
 }
 #transmission p { margin: 4px 0; }
+/* The panel no longer goes away on its own, so it says how it goes away. */
+#transmission .transmission-hint {
+  margin-top: 7px; font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: rgba(159, 180, 199, 0.72);
+}
 
 /* The journal: one received recipe per row, icon, result, and what it eats. */
 .journal-column {
