@@ -2453,6 +2453,12 @@ function tryUseSelectedItem() {
   return tryPlaceSelectedBlock();
 }
 
+/* The food bar belongs to whoever is showing it, and this is the only way the
+   body can tell it to redraw. The page hands one over at bootstrap; until then
+   spending exhaustion moves the counters and nobody hears. */
+let paintHunger = () => {};
+function setHungerPainter(paint) { paintHunger = paint; }
+
 /**
  * Spends exhaustion the way Minecraft does: every full 4.0 points takes one point
  * of saturation if there is any left, and only then one point of food. That order
@@ -2477,7 +2483,7 @@ function addExhaustion(amount) {
     spent = true;
   }
   // Saturation leaving the picture is worth showing: Minecraft jitters the bar.
-  if (spent) renderHunger();
+  if (spent) paintHunger();
 }
 
 /** Tracks how far the player has travelled and charges food for it. */
@@ -4290,6 +4296,10 @@ setItemPickup((itemId, count, dur) => addItemToInventory(itemId, count, dur));
 
 /* And the crosshair stops pointing whenever something else has the controls. */
 setAimBlocked(() => !!activeScreen || player.dead);
+
+/* The body spends itself digging, swimming, jumping and swinging; the page says
+   which picture of the food bar that moves. */
+setHungerPainter(renderHunger);
 
 /* The held item's frame: the view model reads the game only through this. */
 function heldFrame() {
