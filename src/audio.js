@@ -15,8 +15,8 @@ import { camera } from './render.js';
 import { clockHours } from './sky.js';
 
 const AUDIO_DEFAULT_VOLUME = 0.7;
-const AUDIO_DEFAULT_SFX_VOLUME = 1;
-const AUDIO_DEFAULT_MUSIC_VOLUME = 0.7;
+const AUDIO_DEFAULT_SFX_VOLUME = 0.6;
+const AUDIO_DEFAULT_MUSIC_VOLUME = 0.5;
 const AUDIO_MAX_VOICES = 40;
 const AUDIO_NOISE_SECONDS = 2;
 const AUDIO_ASSET_ROOT = 'assets/audio/';
