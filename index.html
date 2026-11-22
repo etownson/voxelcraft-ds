@@ -1833,6 +1833,15 @@ function furnaceEntityValid(x, y, z) {
   return isFurnaceBlock(world.getBlock(x, y, z));
 }
 
+/* The few things about the rest of the page a container cannot see, so they are
+   handed to it instead of reached for. `at` names the one furnace a screen is
+   showing — no screen, no watched block. `paint(state)` moves its gauges and
+   `redraw()` rebuilds its slots, so the tick never has to ask what is open or
+   know what a gauge is. `spill(slots, x, y, z)` scatters a broken container's
+   contents, because making an item fall is not a container's business either. */
+const BLOCK_ENTITY_NONE = '';
+let blockEntityView = null;
+
 /**
  * Keeps nearby furnaces burning, and sweeps up chest states an old save left
  * behind. Only block entities within a chunk or so of the player, plus the
@@ -1843,9 +1852,7 @@ function furnaceEntityValid(x, y, z) {
 function updateBlockEntities(dt) {
   if (!world || dt <= 0 || !world.blockEntities.size) return;
 
-  const openKey = activeScreen === 'furnace' && activeScreenAt
-    ? activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z
-    : null;
+  const openKey = blockEntityView ? blockEntityView.at() : BLOCK_ENTITY_NONE;
 
   for (const [key, state] of world.blockEntities) {
     const isFurnace = state.kind === 'furnace';
@@ -1885,23 +1892,22 @@ function updateBlockEntities(dt) {
     if (finished) {
       playFurnaceFinishSound(x + 0.5, y + 0.5, z + 0.5);
       markWorldDirty();
-      if (key === openKey) renderScreen();
+      if (key === openKey && blockEntityView) blockEntityView.redraw();
     }
-    if (key === openKey) updateFurnaceGauges(state);
+    if (key === openKey && blockEntityView) blockEntityView.paint(state);
   }
 }
 
 /**
  * Drops whatever a chest or furnace was holding when it is broken. Slot order
- * means nothing here, so one spill serves every kind of stored inventory.
+ * means nothing here, so one spill serves every kind of stored inventory, and
+ * the asking is all the container layer does: making the items fall belongs to
+ * whoever is willing to hold them.
  */
 function spillBlockEntityContents(x, y, z) {
   const state = world.blockEntities.get(x + ',' + y + ',' + z);
-  if (!state) return;
-  for (const slot of state.slots) {
-    if (!slot) continue;
-    spawnItemDrop(slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5);
-  }
+  if (!state || !blockEntityView) return;
+  blockEntityView.spill(state.slots, x, y, z);
 }
 
 /* ---------- Chests ---------- */
@@ -1917,6 +1923,10 @@ function chestEntityValid(x, y, z) {
   if (!world.getChunk(cx, cz)) return true;
   return isChestBlock(world.getBlock(x, y, z));
 }
+
+/** Handed once, at bootstrap, the way the camera and the mobs are handed their
+ *  view of a world they cannot see. */
+function setBlockEntityView(view) { blockEntityView = view; }
 
 /* ============================================================
    11. PLAYER PHYSICS AND CONTROLLER
@@ -5084,6 +5094,22 @@ setMobWorld({
   drop: (itemId, count, x, y, z, scatter, dur) =>
     spawnItemDrop(itemId, count, x, y, z, scatter, dur),
   spill: (x, y, z) => spillBlockEntityContents(x, y, z)
+});
+
+/* And for the block entities, whose whole idea of a screen is the one furnace
+ * in front of the player: the screens name it when they have one and draw it,
+ * and the tick never has to ask what is open. */
+setBlockEntityView({
+  at: () => activeScreen === 'furnace' && activeScreenAt
+    ? activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z
+    : BLOCK_ENTITY_NONE,
+  paint: (state) => updateFurnaceGauges(state),
+  redraw: () => renderScreen(),
+  spill: (slots, x, y, z) => {
+    for (const slot of slots) {
+      if (slot) spawnItemDrop(slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5);
+    }
+  }
 });
 
 /* The held item's frame: the view model reads the game only through this. */
