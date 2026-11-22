@@ -3646,7 +3646,11 @@ let heldLastPitch = 0;
  * runs, or the next frame reads the whole jump as one enormous flick of the
  * mouse and swings the arm to match.
  */
-function syncHeldAngles() {
+/**
+ * Tells the held item where the view is now pointing, so the next frame does
+ * not read a spawn or a load as one enormous flick of the mouse.
+ */
+function syncHeldAngles(yaw, pitch) {
   heldLastYaw = yaw;
   heldLastPitch = pitch;
 }
@@ -3668,8 +3672,7 @@ function addHeldArm() {
   heldRoot.add(arm);
 }
 
-function updateHeldItemModel() {
-  const stack = getSelectedStack();
+function updateHeldItemModel(stack) {
   const key = stack ? stack.id : 'hand';
   if (key === heldModelKey) return;
   heldModelKey = key;
@@ -3714,27 +3717,33 @@ function triggerHeldSwing() {
   heldSwingTime = 0;
 }
 
-function updateHeldItem(dt) {
+/**
+ * One frame of the view, as the compositor describes it: which stack is in
+ * hand, where the view points and how fast it moves, whether a screen hides
+ * it, and whether the pickaxe is biting. The view model itself keeps every
+ * animation in hand and never reaches for any of it.
+ */
+function updateHeldItem(dt, frame) {
   if (dt <= 0) {
-    heldLastYaw = yaw;
-    heldLastPitch = pitch;
+    heldLastYaw = frame.yaw;
+    heldLastPitch = frame.pitch;
     return;
   }
 
-  heldRoot.visible = !activeScreen && !player.dead;
+  heldRoot.visible = !frame.hidden;
   if (!heldRoot.visible) {
-    heldLastYaw = yaw;
-    heldLastPitch = pitch;
+    heldLastYaw = frame.yaw;
+    heldLastPitch = frame.pitch;
     return;
   }
 
-  updateHeldItemModel();
+  updateHeldItemModel(frame.stack);
 
   // Turning the camera sways the held item slightly.
-  const yawDelta = yaw - heldLastYaw;
-  const pitchDelta = pitch - heldLastPitch;
-  heldLastYaw = yaw;
-  heldLastPitch = pitch;
+  const yawDelta = frame.yaw - heldLastYaw;
+  const pitchDelta = frame.pitch - heldLastPitch;
+  heldLastYaw = frame.yaw;
+  heldLastPitch = frame.pitch;
   const swayTargetX = clamp(-yawDelta * 16, -0.11, 0.11);
   const swayTargetY = clamp(pitchDelta * 16, -0.09, 0.09);
   const swayBlend = 1 - Math.exp(-13 * dt);
@@ -3742,8 +3751,8 @@ function updateHeldItem(dt) {
   heldSwayY += (swayTargetY - heldSwayY) * swayBlend;
 
   // Walk bob.
-  const speed = Math.hypot(player.vel.x, player.vel.z);
-  const bobAmount = clamp(speed / SPRINT_SPEED, 0, 1) * (player.onGround ? 1 : 0.35);
+  const speed = frame.speed;
+  const bobAmount = clamp(speed / SPRINT_SPEED, 0, 1) * (frame.onGround ? 1 : 0.35);
   heldBobPhase += dt * (4.2 + speed * 1.9);
   const bobX = Math.sin(heldBobPhase) * 0.016 * bobAmount;
   const bobY = Math.abs(Math.cos(heldBobPhase)) * 0.018 * bobAmount;
@@ -3752,11 +3761,11 @@ function updateHeldItem(dt) {
   if (heldSwingTime < heldSwingDuration) {
     heldSwingTime = Math.min(heldSwingDuration, heldSwingTime + dt);
   }
-  if (isMiningHeld() && miningState.active && !player.dead) {
+  if (frame.mining) {
     heldMiningSwingTimer -= dt;
     if (heldMiningSwingTimer <= 0) {
       triggerHeldSwing();
-      heldMiningSwingTimer = MINING_SWING_INTERVAL;
+      heldMiningSwingTimer = frame.swingInterval;
     }
   } else {
     heldMiningSwingTimer = 0;
@@ -5217,7 +5226,7 @@ function respawnPlayer() {
     Math.floor(spawnColumn.x / CHUNK_SIZE),
     Math.floor(spawnColumn.z / CHUNK_SIZE)
   );
-  syncHeldAngles();
+  syncHeldAngles(yaw, pitch);
   ensurePlayerChunks();
   world.updateStreaming(player.pos.x, player.pos.z);
   updateTarget();
@@ -7299,7 +7308,7 @@ function restoreSavedPlayer(save) {
   renderHunger();
   applyLook();
   syncCamera();
-  syncHeldAngles();
+  syncHeldAngles(yaw, pitch);
   return true;
 }
 
@@ -7452,6 +7461,20 @@ setFxView({
   paused: () => !!activeScreen || !overlayEl.classList.contains('hidden') || player.dead,
   restore: () => syncCamera()
 });
+
+/* The held item's frame: the view model reads the game only through this. */
+function heldFrame() {
+  return {
+    stack: getSelectedStack(),
+    yaw,
+    pitch,
+    speed: Math.hypot(player.vel.x, player.vel.z),
+    onGround: player.onGround,
+    hidden: !!activeScreen || player.dead,
+    mining: isMiningHeld() && miningState.active && !player.dead,
+    swingInterval: MINING_SWING_INTERVAL
+  };
+}
 
 const loadedSave = readSavedWorld();
 if (loadedSave) {
@@ -8573,7 +8596,7 @@ window.__voxelcraft = {
       updateMobs(dt);
       updateHealth(dt);
       updateHunger(dt);
-      updateHeldItem(dt);
+      updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
@@ -8607,7 +8630,7 @@ window.__voxelcraft = {
       updateMobs(dt);
       updateHealth(dt);
       updateHunger(dt);
-      updateHeldItem(dt);
+      updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
       updateBreakParticles(dt);
       updateTorchEmbers(dt);
@@ -8823,7 +8846,7 @@ function animate(now) {
     updateMining(dt, canMine && !currentMobTarget);
     updateCombat(dt);
     updateMobs(dt);
-    updateHeldItem(dt);
+    updateHeldItem(dt, heldFrame());
     updateHealth(dt);
     updateHunger(dt);
     updateItemEntities(dt);
