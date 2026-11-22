@@ -601,10 +601,12 @@ export function readPlayerInput() {
     right += gpAxis(0);
   }
 
-  // The A that dismissed the menu belongs to the menu until the thumb lets
-  // go of it: a held pick must not become a jump on the first playable frame.
-  if (!gpButton('a')) padJumpSpentOnMenu = false;
-  const padJump = gamepadState.active && gpButton('a') && !padJumpSpentOnMenu;
+  // A pick spent on the menu stays spent until the thumb lets go, and the
+  // menu keeps A quiet for a moment after it closes, so the tap that chooses
+  // Start and the tap that confirms it never land in the world as a jump.
+  if (padMenuAPending && !gpButton('a')) padMenuAPending = false;
+  const padJumpAllowed = !padMenuAPending && performance.now() >= padJumpQuietUntil;
+  const padJump = gamepadState.active && gpButton('a') && padJumpAllowed;
 
   // Sprint arrives through the latch: the Shift, Ctrl and B edges in the input
   // handlers set it, and holding the key down does nothing on its own.
@@ -676,9 +678,13 @@ export function startFromOverlay(padResume = false) {
     if (fallbackControls) inputView.hint(true);
     if (padResume) {
       padResumeFrame = true;
-      // The A that chose Start belongs to the menu: held into play it would
-      // otherwise read as a jump, sound and all, on the first playable frame.
-      if (gpButton('a')) padJumpSpentOnMenu = true;
+      // The A that chose Start belongs to the menu, and so does the thumb's
+      // next tap: a held pick must not jump on the first playable frame, and a
+      // quick second tap — the way anyone confirms a pick — must not jump
+      // either. Once the button is up and the quiet moment has passed, A jumps
+      // again exactly as it always did.
+      padMenuAPending = true;
+      padJumpQuietUntil = performance.now() + PAD_MENU_JUMP_QUIET_MS;
     }
   } else {
     requestLock();
@@ -791,6 +797,9 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 document.addEventListener('mousemove', (event) => {
+  // The menu keeps the pointer lock the pad opened it over, so the mouse has
+  // to be told: behind the menu it looks at nothing.
+  if (menuOpen()) return;
   if (document.pointerLockElement === canvas) {
     turnPlayer(-event.movementX * 0.0022, -event.movementY * 0.0022);
     applyLook();
@@ -912,7 +921,10 @@ export let padMiningDown = false;
 /** True for the single frame where a pad press dismissed the overlay. */
 let padResumeFrame = false;
 /** True while the A that dismissed the menu is still held: it must not jump. */
-let padJumpSpentOnMenu = false;
+let padMenuAPending = false;
+/** When the pad may jump again, in ms; a pick is not a jump for a moment. */
+let padJumpQuietUntil = 0;
+const PAD_MENU_JUMP_QUIET_MS = 300;
 
 /**
  * Whether this is the frame right after control came back, in which case the

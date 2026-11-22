@@ -77,6 +77,10 @@ for (const name of CHOICES) {
   buttons[name].addEventListener('click', () => choose(name));
 }
 
+// A pad and the arrow keys need to see where they are from the first frame,
+// not only after the first press.
+paintSelection();
+
 window.addEventListener('keydown', (event) => {
   if (overlayEl.classList.contains('hidden')) return;
   // A focused slider keeps its arrow keys, and a focused button answers Enter

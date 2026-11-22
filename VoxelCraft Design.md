@@ -729,7 +729,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   D-pad or left stick and picks with A, while Start on the pad means resume.
   Every choice answers with the neutral UI click — the same voice the hotbar
   uses — and the menu is allowed no other sound: a pick that resumes the game
-  is spent, not a jump, even while held
+  is spent, not a jump — held or tapped again at once — until the thumb has
+  been off A for a quiet moment
 - While the menu has the page, its input belongs to the menu and never reaches the
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`
