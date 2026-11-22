@@ -141,14 +141,14 @@ import { atlasCanvas } from './src/atlas.js';
 import {
   audioCtx, audioStatus, ensureAudio, playAnimalSound, playChestCloseSound, playChestOpenSound,
   playDeathSound, playEatSound, playJumpSound, playPlayerHurtSound, playShearSound, playSound,
-  playToolBreakSound, playUiClickSound, playUiCloseSound, playUiOpenSound, setAudioMusicVolume,
-  setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
+  playUiClickSound, playUiCloseSound, playUiOpenSound, setAudioMusicVolume, setAudioMuted,
+  setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './src/audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, ARMOR_SLOTS, BLOCKS,
-  BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, consumeDurability, freshStack, isChestBlock,
-  isFallingWater, isFlowWater, isFurnaceBlock, makeStack, mergeStackInto, slotInfo,
-  stackDurability, stacksMergeable, waterLevel
+  BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock, isFallingWater, isFlowWater,
+  isFurnaceBlock, makeStack, mergeStackInto, slotInfo, stackDurability, stacksMergeable,
+  waterLevel
 } from './src/blocks.js';
 import { isWorldDirty, markWorldDirty, meshChunk, world } from './src/chunks.js';
 import { isSolid, ladderHolding, playerCollidesAt, submergedAt } from './src/collision.js';
@@ -191,10 +191,10 @@ import {
   wearHeldTool
 } from './src/interaction.js';
 import {
-  HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorDefense, armorSlots,
+  HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorAbsorbed, armorDefense, armorSlots,
   consumeSelectedItem, countInventoryItem, currentSlot, equipSlotFor, equipStack,
-  getSelectedStack, inventory, paintArmorBar, selectSlot, setArmorPainter, setPackPainter,
-  unequipSlot
+  getSelectedStack, inventory, selectSlot, setArmorPainter, setPackPainter, unequipSlot,
+  wearArmour
 } from './src/inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -1382,44 +1382,6 @@ function renderArmorBar() {
     shield.classList.toggle('dark', i >= full + (half ? 1 : 0));
     shield.classList.toggle('half', half && i === full);
   }
-}
-
-/**
- * Armour's damage reduction, straight from Minecraft: a set absorbs a share of
- * the incoming hit, and heavy hits get through proportionally more of them.
- */
-function armorAbsorbed(defense, amount) {
-  if (defense <= 0) return 0;
-  const points = Math.min(ARMOR_MAX_DEFENSE, defense);
-  const factor = Math.min(20, Math.max(points / 5, points - amount / 2)) / 25;
-  return amount * factor;
-}
-
-/**
- * A hit costs the set four durability per point it absorbed, Minecraft's rate.
- * One random piece carries the whole cost, which is what wears a set out
- * unevenly instead of every piece at once, and a hit the set barely softens
- * costs nothing at all.
- */
-function wearArmour(absorbed) {
-  const cost = Math.floor(absorbed * 4);
-  if (cost <= 0) return;
-  const worn = [];
-  for (let i = 0; i < armorSlots.length; i++) {
-    if (armorSlots[i]) worn.push(i);
-  }
-  if (worn.length === 0) return;
-
-  const index = worn[Math.floor(Math.random() * worn.length)];
-  const stack = armorSlots[index];
-  if (!consumeDurability(stack, cost)) return;
-
-  armorSlots[index] = null;
-  const item = ITEMS.get(stack.id);
-  say((item ? item.name : 'Armour') + ' broke');
-  playToolBreakSound();
-  paintArmorBar();
-  markWorldDirty();
 }
 
 function damagePlayer(amount, cause = 'unknown') {

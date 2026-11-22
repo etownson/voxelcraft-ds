@@ -15,7 +15,12 @@
  * them with `setPackPainter` at bootstrap.
  */
 
-import { ARMOR_SLOTS, ITEMS, makeStack, stacksMergeable } from './blocks.js';
+import { playToolBreakSound } from './audio.js';
+import {
+  ARMOR_MAX_DEFENSE, ARMOR_SLOTS, ITEMS, consumeDurability, makeStack, stacksMergeable
+} from './blocks.js';
+import { markWorldDirty } from './chunks.js';
+import { say } from './say.js';
 
 export const INVENTORY_SIZE = 36;
 export const HOTBAR_SIZE = 9;
@@ -181,4 +186,42 @@ export function countInventoryItem(itemId) {
     if (slot && slot.id === itemId) total += slot.count;
   }
   return total;
+}
+
+/**
+ * Armour's damage reduction, straight from Minecraft: a set absorbs a share of
+ * the incoming hit, and heavy hits get through proportionally more of them.
+ */
+export function armorAbsorbed(defense, amount) {
+  if (defense <= 0) return 0;
+  const points = Math.min(ARMOR_MAX_DEFENSE, defense);
+  const factor = Math.min(20, Math.max(points / 5, points - amount / 2)) / 25;
+  return amount * factor;
+}
+
+/**
+ * A hit costs the set four durability per point it absorbed, Minecraft's rate.
+ * One random piece carries the whole cost, which is what wears a set out
+ * unevenly instead of every piece at once, and a hit the set barely softens
+ * costs nothing at all.
+ */
+export function wearArmour(absorbed) {
+  const cost = Math.floor(absorbed * 4);
+  if (cost <= 0) return;
+  const worn = [];
+  for (let i = 0; i < armorSlots.length; i++) {
+    if (armorSlots[i]) worn.push(i);
+  }
+  if (worn.length === 0) return;
+
+  const index = worn[Math.floor(Math.random() * worn.length)];
+  const stack = armorSlots[index];
+  if (!consumeDurability(stack, cost)) return;
+
+  armorSlots[index] = null;
+  const item = ITEMS.get(stack.id);
+  say((item ? item.name : 'Armour') + ' broke');
+  playToolBreakSound();
+  paintArmorBar();
+  markWorldDirty();
 }
