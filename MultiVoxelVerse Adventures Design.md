@@ -146,3 +146,12 @@ You understand the following from the transmission:
 —  
 ## Beacon Number 5 Transmission  
 A celebratory transmission telling you that you have fully unlocked teleportation to this world and you can now return a hero. However, it lets you know you can choose to remain and further prepare a base to better assist the colonizers when they arrive.  
+  
+—  
+## Journal Of Previous Transmissions  
+The transmissions are spotty on purpose, so a line is easy to miss the first time it comes through. Give the player an option to keep them:  
+- An option in the settings, off by default, called the Transmission journal.  
+- When it is on, the journal that already holds the received recipes grows a second page holding every transmission received so far. Each entry is headed by the beacon that carried it: Arrival at SP0, then Beacon 1, Beacon 2, and so on. Entries run oldest first, so the story reads in the order it was heard.  
+- Reading the journal is quiet. It carries the words only, with no sound and no line by line timing, and it never replays the transmission. The panel that talks over the hotbar still fires once, at the moment the beacon is lit.  
+- Nothing arrives early. An entry joins the journal only when its transmission is received, so the journal cannot spoil a beacon that has not been lit.  
+- The journal asks for no saving of its own. The text is the same in every world, so the count of lit beacons the save already keeps is enough to know which entries the player has heard, the arrival transmission included.  
