@@ -72,7 +72,7 @@ export const TRANSMISSIONS = [
     'You lit it. 💠 The grid stirs. I have recipes queued — they are in your journal now.',
     'I am sorry. 💔 You are flesh in that world: it will want feeding, and it can be hurt.',
     'The creatures are worst after dark and grow stronger the further you venture. Do not hide from them. Essence is what they pay.',
-    'Find the second beacon. Build a shelter before you light it. Promise me. 🤝'
+    'Find the second beacon. We are preparing it with more recipes. Build a shelter before you light it. Promise me. 🤝'
   ],
   [
     'Two of five. 🌄 The world is waking past this valley.',
