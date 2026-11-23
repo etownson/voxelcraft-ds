@@ -147,11 +147,12 @@ function sharedBubbleMaterial() {
 }
 
 /**
- * Drops one bubble's worth of essence at a point. `scatter` gives it the
+ * Drops one bubble's worth of essence at a point. With `scatter` it gets the
  * small pop item drops get, so a burst of three settles apart rather than
- * stacked on one another.
+ * stacked on one another; without it the pop is straight up, so the bubble
+ * lands back where it was dropped from.
  */
-function spawnEssenceBubble(amount, x, y, z) {
+function spawnEssenceBubble(amount, x, y, z, scatter = true) {
   if (amount <= 0) return null;
   const material = sharedBubbleMaterial();
   const sprite = new THREE.Sprite(material);
@@ -163,9 +164,9 @@ function spawnEssenceBubble(amount, x, y, z) {
     amount,
     pos: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(
-      (Math.random() - 0.5) * 1.6,
+      scatter ? (Math.random() - 0.5) * 1.6 : 0,
       2.2 + Math.random() * 1.2,
-      (Math.random() - 0.5) * 1.6
+      scatter ? (Math.random() - 0.5) * 1.6 : 0
     ),
     age: 0,
     settled: false,
@@ -182,9 +183,11 @@ function spawnEssenceBubble(amount, x, y, z) {
  * The way the mob layer pays: one total for the kill, broken into a few
  * bubbles scattered within a pace or two of where the enemy fell. More than
  * one bubble because one is scenery and three are a decision about which to
- * chase.
+ * chase. A mined block asks for the opposite: `scatter` off puts every bubble
+ * on the block's own spot, so the reward reads as the block's and there is
+ * nowhere to look for it.
  */
-export function spawnEssenceBurst(total, x, y, z) {
+export function spawnEssenceBurst(total, x, y, z, scatter = true) {
   const amount = Math.trunc(Number(total) || 0);
   if (amount <= 0) return [];
   const bubbles = Math.min(amount, 1 + Math.floor(Math.random() * 3));
@@ -193,12 +196,13 @@ export function spawnEssenceBurst(total, x, y, z) {
     // Share the total out, giving the last bubble whatever rounding left over.
     const share = Math.floor(amount / bubbles) + (i === bubbles - 1 ? amount % bubbles : 0);
     const angle = Math.random() * Math.PI * 2;
-    const radius = 0.4 + Math.random() * 1.8;
+    const radius = scatter ? 0.4 + Math.random() * 1.8 : 0;
     entities.push(spawnEssenceBubble(
       share,
       x + Math.cos(angle) * radius,
       y,
-      z + Math.sin(angle) * radius
+      z + Math.sin(angle) * radius,
+      scatter
     ));
   }
   return entities;

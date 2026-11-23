@@ -251,8 +251,10 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
     // Ore also pays essence, the block's own half of the fuel economy. It
     // rides the same canHarvest gate as the item drops: a pickaxe below the
     // ore's tier breaks the block and gets nothing at all, essence included.
+    // The bubbles land on the block's own spot rather than scattering, so
+    // the reward reads as the block's and the player never has to go looking.
     if (block.essence) {
-      spawnEssenceBurst(block.essence, x + 0.5, y + 0.5, z + 0.5);
+      spawnEssenceBurst(block.essence, x + 0.5, y + 0.5, z + 0.5, false);
     }
   }
   spawnBlockBreakParticles(x, y, z, id);
