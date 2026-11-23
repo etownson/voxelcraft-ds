@@ -32,7 +32,7 @@ import {
   stacksMergeable
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
-import { CHUNK_SIZE, DIFFICULTY_MAX, HUNGER_MAX, clamp } from './config.js';
+import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
 import {
   FURNACE_FUEL, FURNACE_FUELS, FURNACE_INPUT, FURNACE_OUTPUT, SMELTING_RECIPES, furnaceHasWork
 } from './containers.js';
@@ -1858,11 +1858,9 @@ export function paintWaypoint(target, pos, yaw) {
 /*
  * Every stretch of ground is under pressure at night, so the line does not
  * pretend some of it is safe. It shows which threat zone the walker stands in
- * (one zone per whole step of difficulty, a pip each) and colours the pips by
- * where that zone sits against the last lit beacon's: behind it, level with
- * it, or beyond it.
+ * (SP0's or a beacon's, a pip each) and colours the pips by where that zone
+ * sits against the last lit beacon's: behind it, level with it, or beyond it. `main.js` hands it the zones; it never asks the mission.
  */
-const THREAT_ZONES = DIFFICULTY_MAX + 1;
 const THREAT_STANDING = {
   behind: 'behind your last beacon',
   level: 'level with your last beacon',
@@ -1873,47 +1871,43 @@ const threatEl = document.getElementById('threat');
 const threatLabelEl = threatEl.querySelector('.threat-label');
 const threatPipsEl = threatEl.querySelector('.threat-pips');
 threatLabelEl.textContent = 'Zone';
-for (let i = 0; i < THREAT_ZONES; i++) {
-  threatPipsEl.appendChild(document.createElement('i'));
-}
 
 let threatShown = false;
 let threatZone = -1;
 let threatStanding = '';
 let threatTitle = '';
 
-function threatZoneOf(difficulty) {
-  return Math.floor(clamp(difficulty, 0, DIFFICULTY_MAX));
-}
-
 /**
- * Paints the zone of `difficulty` (the ground underfoot, depth included) and
- * how it stands against `frontier`, the difficulty at the most recently lit
- * beacon. Like the arrow, it stands aside while a screen is open or the walker
- * is down, and it only writes the page when something it shows has changed.
+ * Paints `zone` of `count` and how it stands against `frontier`, the zone of
+ * the most recently lit beacon. Like the arrow, it stands aside while a
+ * screen is open or the walker is down, and it only writes the page when
+ * something it shows has changed.
  */
-export function paintThreat(difficulty, frontier = 0) {
-  const show = !activeScreen && !player.dead && Number.isFinite(difficulty);
+export function paintThreat(zone, frontier, count) {
+  const show = !activeScreen && !player.dead && Number.isFinite(zone) && count > 0;
   if (show !== threatShown) {
     threatShown = show;
     threatEl.classList.toggle('hidden', !show);
   }
   if (!show) return;
 
-  const zone = threatZoneOf(difficulty);
-  const home = threatZoneOf(Number.isFinite(frontier) ? frontier : 0);
-  const standing = zone < home ? 'behind' : zone > home ? 'beyond' : 'level';
-  if (zone !== threatZone) {
-    threatZone = zone;
+  if (threatPipsEl.children.length !== count) {
+    threatPipsEl.replaceChildren(...Array.from({ length: count }, () => document.createElement('i')));
+    threatZone = -1;
+  }
+  const at = clamp(zone, 0, count - 1);
+  const standing = at < frontier ? 'behind' : at > frontier ? 'beyond' : 'level';
+  if (at !== threatZone) {
+    threatZone = at;
     const pips = threatPipsEl.children;
-    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i <= zone);
+    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i <= at);
   }
   if (standing !== threatStanding) {
     threatEl.classList.remove('threat-' + threatStanding);
     threatStanding = standing;
     threatEl.classList.add('threat-' + standing);
   }
-  const title = 'Threat zone ' + (zone + 1) + ' of ' + THREAT_ZONES + ' · ' + THREAT_STANDING[standing];
+  const title = 'Threat zone ' + (at + 1) + ' of ' + count + ' · ' + THREAT_STANDING[standing];
   if (title !== threatTitle) {
     threatTitle = title;
     threatEl.title = title;

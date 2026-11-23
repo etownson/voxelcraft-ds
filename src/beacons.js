@@ -310,15 +310,30 @@ export function nextBeacon() {
 }
 
 /**
- * The difficulty of the ground the mission has reached: where the most
- * recently lit beacon stands, or SP0's calm before any is lit. The HUD
- * measures the walker's threat zone against it.
+ * Threat zones belong to the beacons: zone 0 is SP0's ground, zone 1 beacon
+ * 1's, and so on, each running halfway to its neighbours so the beacon stands
+ * in the middle of its own zone; the last runs on past the final monument.
+ * Distance is the same difficulty the mobs use, so going below sea level
+ * pushes the walker outward too.
  */
-export function frontierDifficulty() {
-  if (beaconsActivated <= 0) return 0;
-  const site = beaconSites()[beaconsActivated - 1];
-  return site ? difficultyAt(site.x, site.y + 1, site.z) : 0;
+export function threatZoneAt(x, y, z) {
+  const here = difficultyAt(x, y, z);
+  let zone = 0;
+  let previous = 0; // SP0's difficulty
+  for (const site of beaconSites()) {
+    const next = difficultyAt(site.x, site.y + 1, site.z);
+    if (here < (previous + next) / 2) break;
+    zone++;
+    previous = next;
+  }
+  return zone;
 }
+
+/** How many threat zones there are: SP0's and one per beacon. */
+export function threatZoneCount() { return beaconSites().length + 1; }
+
+/** The zone the mission has reached: the most recently lit beacon's, or SP0's. */
+export function frontierZone() { return beaconsActivated; }
 
 /**
  * The starting purse, for a world that has not had a kill yet: the design
