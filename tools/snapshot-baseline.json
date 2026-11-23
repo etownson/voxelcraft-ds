@@ -194,10 +194,10 @@
       "activated": 0,
       "sites": [
         "0@-43,74,30/hop46/46blocks/31essence/dark",
-        "1@-194,80,-102/hop201/234blocks/156essence/dark",
-        "2@-396,51,-324/hop300/529blocks/353essence/dark",
-        "3@-687,67,-599/hop400/930blocks/620essence/dark",
-        "4@-1118,71,-1016/hop600/1529blocks/1019essence/dark"
+        "1@-194,80,-102/hop201/234blocks/129essence/dark",
+        "2@-396,51,-324/hop300/529blocks/167essence/dark",
+        "3@-687,67,-599/hop400/930blocks/226essence/dark",
+        "4@-1118,71,-1016/hop600/1529blocks/306essence/dark"
       ],
       "next": "-43,74,30/31"
     },
