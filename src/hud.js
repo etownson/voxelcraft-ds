@@ -11,7 +11,8 @@
  * `paintArmorBar`, the pack through `paintPack`, the wash through
  * `setDamageFlash`, the cursor through `setCursorView`, the sleep fade and the
  * debug readout through `setInteractionView`, and the controller through
- * `setInputView`. Nothing outside this file needs to know a bar is a list of
+ * `setInputView`. The threat line is handed a number by `main.js` and never
+ * asks the mission layer itself. Nothing outside this file needs to know a bar is a list of
  * spans or that a screen has a body div.
  *
  * It also owns which screen is open. `screen()` answers, `openScreen` and
@@ -31,7 +32,7 @@ import {
   stacksMergeable
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
-import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
+import { CHUNK_SIZE, DIFFICULTY_MAX, HUNGER_MAX, clamp } from './config.js';
 import {
   FURNACE_FUEL, FURNACE_FUELS, FURNACE_INPUT, FURNACE_OUTPUT, SMELTING_RECIPES, furnaceHasWork
 } from './containers.js';
@@ -1849,5 +1850,54 @@ export function paintWaypoint(target, pos, yaw) {
   if (distance !== waypointDistance) {
     waypointDistance = distance;
     waypointDistanceEl.textContent = distance;
+  }
+}
+
+/* ---------- The threat line ---------- */
+
+/* One name per whole step of difficulty, SP0's calm out to the capped edge. */
+const THREAT_NAMES = ['Calm', 'Uneasy', 'Wary', 'Hostile', 'Perilous', 'Deadly', 'Lethal'];
+
+const threatEl = document.getElementById('threat');
+const threatLabelEl = threatEl.querySelector('.threat-label');
+const threatPipsEl = threatEl.querySelector('.threat-pips');
+for (let i = 0; i < DIFFICULTY_MAX; i++) {
+  threatPipsEl.appendChild(document.createElement('i'));
+}
+
+let threatShown = false;
+let threatTier = -1;
+let threatTitle = '';
+
+/**
+ * Names how hard the ground underfoot makes its creatures: the same
+ * difficulty the mobs are bred with, so depth below sea level counts too.
+ * The name and the pips move in whole steps; hovering gives the tenth.
+ * Like the arrow, it stands aside while a screen is open or the walker is down,
+ * and it only writes the page when something it shows has changed.
+ */
+export function paintThreat(difficulty) {
+  const show = !activeScreen && !player.dead && Number.isFinite(difficulty);
+  if (show !== threatShown) {
+    threatShown = show;
+    threatEl.classList.toggle('hidden', !show);
+  }
+  if (!show) return;
+
+  const level = clamp(difficulty, 0, DIFFICULTY_MAX);
+  const tier = Math.min(THREAT_NAMES.length - 1, Math.floor(level));
+  if (tier !== threatTier) {
+    threatEl.classList.remove('threat-' + threatTier);
+    threatTier = tier;
+    threatEl.classList.add('threat-' + tier);
+    threatLabelEl.textContent = 'Threat: ' + THREAT_NAMES[tier];
+    const pips = threatPipsEl.children;
+    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i < tier);
+  }
+  const title = 'Threat: ' + THREAT_NAMES[tier] + ' (' + level.toFixed(1) + ' of ' + DIFFICULTY_MAX + ')';
+  if (title !== threatTitle) {
+    threatTitle = title;
+    threatEl.title = title;
+    threatEl.setAttribute('aria-label', title);
   }
 }
