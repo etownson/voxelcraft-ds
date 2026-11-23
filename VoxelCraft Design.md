@@ -755,8 +755,10 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   (`src/menu-nav.js`). The arrow keys or WASD, the D-pad or left stick, and the mouse
   move one highlight; Enter, Space, A and a click press. Direction comes from where
   things are drawn, so grids, slider columns and the rail need no wiring. Right or A
-  steps from the rail into the page, and left off the page's edge, B, Esc or
-  Backspace steps back. Q/E or LB/RB turn the journal's pages inside the journal and
+  steps from the rail into the page, and left off the page's edge, Esc or Backspace
+  steps back. Once the world has been entered, B on the pad leaves the menu for the
+  world, as Start does: the button that closes every other panel closes this one.
+  Before the first start, and while New world is asking, B steps back instead. Q/E or LB/RB turn the journal's pages inside the journal and
   walk the rail's pages elsewhere. Left and right step a highlighted slider; up and
   down leave it. In a text field every key types except up, down and Esc, which
   leave it, and Enter, which saves. The right stick scrolls the page. Hovering a control highlights it,

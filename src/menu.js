@@ -7,8 +7,9 @@
  * Every control in the card is reachable from every hand. The walker in
  * menu-nav.js moves one highlight for the arrow keys, the D-pad, the left stick
  * and the mouse; Enter, Space, A and a click all press. Going right (or A) from
- * the rail steps into the page, and going left off the page's edge (or B, or
- * Esc) steps back to the rail. Q and E, or LB and RB, turn the journal's pages
+ * the rail steps into the page, and going left off the page's edge (or Esc)
+ * steps back to the rail. On the pad, B goes straight back into the game once
+ * it has been entered, like Start; before that it steps back like Esc. Q and E, or LB and RB, turn the journal's pages
  * and otherwise walk the rail's pages. A line along the bottom says all this in
  * the words of the hand that last moved.
  *
@@ -446,11 +447,11 @@ function paintHints() {
   if (pad) {
     items.push(hint(['D-pad'], 'Move'));
     items.push(hint(['A'], inPage ? 'Select' : 'Open'));
-    if (inPage) items.push(hint(['B'], 'Back'));
+    if (inPage && !padBResumes()) items.push(hint(['B'], 'Back'));
     items.push(hint(['LB', 'RB'], journal && inPage ? 'Journal page' : 'Page'));
     if (journal && inPage) items.push(hint(['X'], 'Next way'));
     if (inPage) items.push(hint(['R stick'], 'Scroll'));
-    items.push(hint(['Start'], played ? 'Resume' : 'Start'));
+    items.push(padBResumes() ? hint(['B', 'Start'], 'Resume') : hint(['Start'], played ? 'Resume' : 'Start'));
   } else {
     items.push(hint(['↑', '↓', '←', '→'], 'Move'));
     items.push(hint(['Enter'], inPage ? 'Select' : 'Open'));
@@ -494,11 +495,20 @@ new MutationObserver(() => {
 
 if (wasOpen) menuOpened();
 
+/** Whether the pad's B leaves the menu for the world rather than stepping back. */
+function padBResumes() {
+  // Not before the world has been entered: B is not a way to start a game.
+  // And not while New world is asking: there B is "keep it".
+  return played && confirmRow.classList.contains('hidden');
+}
+
 /** One frame of pad input while the overlay has the controls. */
 export function padMenuTick(dt) {
   // Start on the pad has always meant "back to the game", wherever the
-  // highlight is.
-  if (gamepadState.pressed[PAD_BUTTON.start]) {
+  // highlight is, and once the world has been entered B means it too: the
+  // button that closes every other panel closes this one.
+  if (gamepadState.pressed[PAD_BUTTON.start] ||
+      (gamepadState.pressed[PAD_BUTTON.b] && padBResumes())) {
     startFromOverlay(true);
     return;
   }
