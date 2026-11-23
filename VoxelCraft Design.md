@@ -735,15 +735,15 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   dawn and dusk the seam). Hovering it gives the clock. Beside it, the sprint latch
   while it is set, and a frame-rate counter only when Settings → Display turns it on
   (a per-browser preference, kept outside the world save)
-- Under those, the threat zone: `Zone` and a pip per zone, one lit per zone reached.
-  There is SP0's zone and one per beacon; each runs halfway to its neighbours, so
+- Under those, the threat zone: `Zone` and a pip per beacon. There is SP0's zone,
+  which lights none, and one per beacon, whose zone lights as many as its number; each runs halfway to its neighbours, so
   a beacon stands in the middle of its own, and the last runs on past the final
   monument. Distance is enemy difficulty (`difficultyAt`), so depth below sea level
   pushes the walker outward too. Every zone is dangerous at night, so the pips
   don't grade danger; their colour says where the walker's zone stands against the
   last lit beacon's (SP0's before any is lit): green behind it, yellow in it, red
   beyond it.
-  Hovering gives the zone and that standing. It hides behind screens and the death
+  Hovering names the zone (SP0 or beacon n) and that standing. It hides behind screens and the death
   screen, like the waypoint arrow
 - Top centre, the waypoint arrow: up is straight ahead, and it turns with the walker
   toward the target, with the target's name, the distance in metres and ▲/▼ when it

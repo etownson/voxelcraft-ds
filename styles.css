@@ -54,7 +54,7 @@ html, body {
 /* Sprint is latched, not held, so the HUD says so while the latch is set. */
 #sprint-state { color: #7ec8e8; }
 #sprint-state.hidden { display: none; }
-/* The threat zone underfoot, SP0's or a beacon's: a pip per zone reached,
+/* The threat zone underfoot, SP0's or a beacon's: beacon n's lights n pips,
    coloured by where it stands against the last lit beacon's. */
 #threat { display: flex; align-items: center; gap: 6px; --threat: #f1e06a; }
 #threat.hidden { display: none; }

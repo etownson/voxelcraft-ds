@@ -1858,7 +1858,7 @@ export function paintWaypoint(target, pos, yaw) {
 /*
  * Every stretch of ground is under pressure at night, so the line does not
  * pretend some of it is safe. It shows which threat zone the walker stands in
- * (SP0's or a beacon's, a pip each) and colours the pips by where that zone
+ * (SP0's or a beacon's, one pip per beacon) and colours the pips by where that zone
  * sits against the last lit beacon's: behind it, level with it, or beyond it. `main.js` hands it the zones; it never asks the mission.
  */
 const THREAT_STANDING = {
@@ -1891,8 +1891,9 @@ export function paintThreat(zone, frontier, count) {
   }
   if (!show) return;
 
-  if (threatPipsEl.children.length !== count) {
-    threatPipsEl.replaceChildren(...Array.from({ length: count }, () => document.createElement('i')));
+  // One pip per beacon: SP0's zone lights none, beacon n's lights n.
+  if (threatPipsEl.children.length !== count - 1) {
+    threatPipsEl.replaceChildren(...Array.from({ length: count - 1 }, () => document.createElement('i')));
     threatZone = -1;
   }
   const at = clamp(zone, 0, count - 1);
@@ -1900,14 +1901,14 @@ export function paintThreat(zone, frontier, count) {
   if (at !== threatZone) {
     threatZone = at;
     const pips = threatPipsEl.children;
-    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i <= at);
+    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i < at);
   }
   if (standing !== threatStanding) {
     threatEl.classList.remove('threat-' + threatStanding);
     threatStanding = standing;
     threatEl.classList.add('threat-' + standing);
   }
-  const title = 'Threat zone ' + (at + 1) + ' of ' + count + ' · ' + THREAT_STANDING[standing];
+  const title = 'Threat zone: ' + (at === 0 ? 'SP0' : 'beacon ' + at) + ' · ' + THREAT_STANDING[standing];
   if (title !== threatTitle) {
     threatTitle = title;
     threatEl.title = title;
