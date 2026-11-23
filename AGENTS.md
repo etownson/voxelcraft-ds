@@ -109,6 +109,12 @@ fetch('tools/snapshot-check.js').then(r => r.text()).then(eval)
 
 It reports each `strict` section that differs from the baseline.
 
+When the page is driven by a script (a page evaluate from an agent or a test
+runner), the wipe and the check are two separate evaluations. The reload ends
+whatever script asked for it, so a check started in the same evaluation is cut
+off partway and returns nothing. Wipe and reload in one, wait for the game to
+boot, then run the check in the next.
+
 `wipeSave()` erases the world saved for that origin. To keep a real save, run
 the guard on another port (each origin has its own localStorage), or copy the
 `SAVE_KEY` entry aside first and put it back afterwards.
