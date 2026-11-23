@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/dev-server.mjs", "8010"],
       "port": 8010
+    },
+    {
+      "name": "voxelcraft-8000",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "8000"],
+      "port": 8000
     }
   ]
 }
