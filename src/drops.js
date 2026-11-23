@@ -69,7 +69,7 @@ function createItemDropMesh(itemId) {
   return sprite;
 }
 
-export function spawnItemDrop(itemId, count, x, y, z, scatter = true, dur) {
+export function spawnItemDrop(itemId, count, x, y, z, scatter = true, dur, contents) {
   if (!ITEMS.has(itemId) || count <= 0) return null;
   const mesh = createItemDropMesh(itemId);
   if (!mesh) return null;
@@ -79,6 +79,7 @@ export function spawnItemDrop(itemId, count, x, y, z, scatter = true, dur) {
     itemId,
     count,
     dur,
+    contents,
     pos: new THREE.Vector3(x, y, z),
     vel: new THREE.Vector3(
       scatter ? (Math.random() - 0.5) * 1.8 : 0,
@@ -135,7 +136,7 @@ export function updateItemEntities(dt) {
       entity.vel.set(0, 0, 0);
 
       if (distance <= 0.6 && itemPickup) {
-        const leftover = itemPickup(entity.itemId, entity.count, entity.dur);
+        const leftover = itemPickup(entity.itemId, entity.count, entity.dur, entity.contents);
         if (leftover <= 0) {
           playPickupSound();
           removeItemEntity(i);

@@ -27,7 +27,8 @@ import {
 } from './audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, CHEST_SLOTS, ITEMS,
-  isChestBlock, isFurnaceBlock, makeStack, mergeStackInto, stackDurability, stacksMergeable
+  isChestBlock, isFurnaceBlock, makeStack, mergeStackInto, packedSlotCount, stackDurability,
+  stacksMergeable
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
@@ -256,6 +257,8 @@ function stackTitle(stack) {
   const item = ITEMS.get(stack.id);
   let name = item ? item.name : stack.id;
   if (item && item.needsCooking) name += ' — needs cooking in a furnace';
+  const packed = packedSlotCount(stack);
+  if (packed) name += ' — ' + packed + (packed === 1 ? ' stack' : ' stacks') + ' inside';
   const info = stackDurability(stack);
   return info ? name + ' — ' + info.current + '/' + info.max : name;
 }
@@ -1313,7 +1316,7 @@ function handleScreenSlotClick(container, index, button, shift) {
     if (result && !held) {
       if (button === 2) {
         const take = Math.ceil(result.count / 2);
-        setCursorStack(makeStack(result.id, take, result.dur));
+        setCursorStack(makeStack(result.id, take, result.dur, result.contents));
         result.count -= take;
         if (result.count <= 0) grid[index] = null;
       } else {
@@ -1339,7 +1342,7 @@ function handleScreenSlotClick(container, index, button, shift) {
     // Right click: split a stack, or place a single item.
     if (held) {
       if (!slot) {
-        grid[index] = makeStack(held.id, 1, held.dur);
+        grid[index] = makeStack(held.id, 1, held.dur, held.contents);
         held.count -= 1;
       } else if (stacksMergeable(slot, held)) {
         const def = ITEMS.get(slot.id);
@@ -1351,7 +1354,7 @@ function handleScreenSlotClick(container, index, button, shift) {
       dropEmptyCursorStack();
     } else if (slot) {
       const take = Math.ceil(slot.count / 2);
-      setCursorStack(makeStack(slot.id, take, slot.dur));
+      setCursorStack(makeStack(slot.id, take, slot.dur, slot.contents));
       slot.count -= take;
       if (slot.count <= 0) grid[index] = null;
     }

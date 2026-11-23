@@ -61,7 +61,7 @@ in its `loose` section, which is not compared. Anything that changes `strict`
 output changes the world and needs a deliberate rebaseline commit.
 
 **Persistence** (`src/save.js`). The save goes to localStorage under `SAVE_KEY`
-(`voxelcraft:world:v6`). It stores only the blocks the player has changed, per
+(`voxelcraft:world:v7`). It stores only the blocks the player has changed, per
 chunk, plus the player's state and the mission's progress. A change to the save
 shape bumps `SAVE_SCHEMA` and `SAVE_KEY` and moves the old key into
 `LEGACY_SAVE_KEYS`. Older saves are refused rather than migrated, and the

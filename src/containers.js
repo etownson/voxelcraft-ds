@@ -201,6 +201,28 @@ export function spillBlockEntityContents(x, y, z) {
 /* ---------- Chests ---------- */
 
 /**
+ * Empties a chest into a list its packed item can carry, for a chest that is
+ * being picked up rather than smashed. Null when there is nothing inside,
+ * which leaves the plain chest item to drop as it always has. The state is
+ * cleared, so a spill asked for afterwards finds nothing to throw.
+ */
+export function packChestContents(x, y, z) {
+  const state = world.blockEntities.get(x + ',' + y + ',' + z);
+  if (!state || state.kind !== 'chest' || !state.slots.some(Boolean)) return null;
+  const contents = state.slots.slice();
+  state.slots.fill(null);
+  return contents;
+}
+
+/** Puts a packed chest's slots back into the chest just placed from it. */
+export function unpackChestContents(x, y, z, contents) {
+  if (!contents || !isChestBlock(world.getBlock(x, y, z))) return;
+  const state = world.blockEntityAt(x, y, z, 'chest');
+  for (let i = 0; i < state.slots.length; i++) state.slots[i] = contents[i] ?? null;
+  markWorldDirty();
+}
+
+/**
  * True when a chest state still belongs where it is saved. The same rule as
  * furnaceEntityValid: an unloadable column is left alone, and only a loaded
  * chunk that says otherwise can clear a state an old save left behind.

@@ -29,7 +29,9 @@ import {
   B, COLLISION_EPSILON, DAY_START, EXHAUSTION, FOCUS_REACH, PLAYER_HALF_WIDTH, PLAYER_HEIGHT,
   WATER_NEIGHBORS, WORLD_HEIGHT, clamp
 } from './config.js';
-import { spillBlockEntityContents } from './containers.js';
+import {
+  packChestContents, spillBlockEntityContents, unpackChestContents
+} from './containers.js';
 import { spawnItemDrop } from './drops.js';
 import { spawnEssenceBurst } from './essence.js';
 import { FARMLAND_WET_REACH, isFarmlandWet } from './farming.js';
@@ -230,8 +232,11 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   const block = BLOCKS[id];
   if (!block.breakable || !isFinite(block.hardness)) return false;
 
-  // A broken chest or furnace empties its contents onto the ground first, so
-  // nothing kept inside is lost.
+  // A chest with anything in it is picked up whole: its slots ride out on a
+  // packed chest, so moving base never means hauling the box out a stack at a
+  // time. A furnace, or a chest that comes away with no harvest, empties its
+  // contents onto the ground first, so nothing kept inside is lost.
+  const packed = canHarvest && isChestBlock(id) ? packChestContents(x, y, z) : null;
   if (block.blockEntity) spillBlockEntityContents(x, y, z);
 
   // Whichever half of a door the player broke, the far half comes away with
@@ -241,7 +246,15 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
 
   world.setBlock(x, y, z, B.AIR);
   addExhaustion(EXHAUSTION.mine);
-  if (canHarvest) {
+  if (packed) {
+    // Straight into the pack when there is a slot for it. A packed chest left
+    // lying on the ground is a whole base's worth of things one walk away
+    // from vanishing, so it only drops when the pack is full.
+    if (addItemToInventory('packed_chest', 1, undefined, packed) > 0) {
+      spawnItemDrop('packed_chest', 1, x + 0.5, y + 0.5, z + 0.5, true, undefined, packed);
+      interactionView.toast('Pack full \u2014 the packed chest fell at your feet');
+    }
+  } else if (canHarvest) {
     for (const drop of block.drops ?? []) {
       // Some drops are a roll rather than a certainty, like seeds in grass.
       if (drop.chance != null && Math.random() >= drop.chance) continue;
@@ -422,6 +435,8 @@ export function tryPlaceSelectedBlock() {
     ? ladderFacing
     : block.facings ? frontFacingTowardsPlayer(px, pz) : null;
   if (!world.setBlock(px, py, pz, block.id, facing)) return false;
+  // A packed chest sets down with everything it was picked up with.
+  if (stack.contents) unpackChestContents(px, py, pz, stack.contents);
   consumeSelectedItem();
   playPlaceSound(block.id, px + 0.5, py + 0.5, pz + 0.5);
   return true;

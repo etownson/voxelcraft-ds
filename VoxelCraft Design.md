@@ -514,11 +514,20 @@ armour column and the 2×2 grid alongside the player's own rows.
 the latch toward whoever placed it, 27 slots that wait for the player to come back.
 Hardness 2.5 with an axe and no tier, so a bare hand takes it apart in 3.75 s and still
 gets the box back. It is structurally a furnace: one id, its facing in the facings map,
-contents in a block entity. Breaking it spills its contents as real item drops and then
-the box — the explosion path owes the same roll as a pickaxe. A chest never ticks
-beyond a stale-state sweep that clears a box whose block is gone; opening a chest
-pauses the world the way the inventory does. Contents do not ride on the dropped box;
-there are no loot chests, because there are still no structures.
+contents in a block entity. Breaking an empty chest drops the plain chest item. Breaking
+one with anything inside picks it up whole as a **Packed Chest**: a separate item id that
+stacks one to a slot, places as an ordinary chest, and carries its 27 slots on the stack
+(`contents`, each slot keeping its count, wear and any packed chest of its own). It goes
+straight into the pack when a slot is free, and only drops at the player's feet when the
+pack is full, since a dropped item can be lost. Setting it down puts every slot back where
+it was. This is the base-moving tool: the mission walks the player from beacon to beacon,
+and the base comes with them. A packed chest never merges with anything, the tooltip
+says how many stacks are inside, and the debug shelf's own packed chest is just an empty
+box. An explosion still blows a chest open: its contents spill as real drops, each with
+its wear and contents intact, and then the box — the explosion path owes the same roll as
+a pickaxe. A chest never ticks beyond a stale-state sweep that clears a box whose block
+is gone; opening a chest pauses the world the way the inventory does. There are no loot
+chests, because there are still no structures.
 
 ## Doors and beds
 
@@ -660,8 +669,11 @@ Edited blocks override generated terrain and persist across reloads:
   position; block contents survive only while the saved block diff still says the block
   stands there — at load time the chunks are not made yet, so the override is the only
   witness
-- Saves go to `localStorage` under `voxelcraft:world:v4` (`SAVE_SCHEMA` 4): seed, block
-  diff, block entities (furnace rows; `entities.chests`, one 57-field row per box),
+- Saves go to `localStorage` under `voxelcraft:world:v7` (`SAVE_SCHEMA` 7): seed, block
+  diff, block entities (furnace rows; `entities.chests`, one 57-field row per box, plus
+  a trailing slot-to-record map for any slot whose wear or packed contents the id and
+  count pairs cannot hold; a packed chest's stack record carries its slots as a fourth
+  element),
   player position, hunger/saturation/exhaustion, and the optional `spawn: { x, z }`.
   Autosave runs every 25 s over dirty state; a death-and-respawn marks the save dirty
   so a fed stomach survives a closed tab

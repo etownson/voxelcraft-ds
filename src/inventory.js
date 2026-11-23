@@ -136,11 +136,11 @@ export function inventoryHasRoom(itemId, count) {
   return false;
 }
 
-export function addItemToInventory(itemId, count, dur) {
+export function addItemToInventory(itemId, count, dur, contents) {
   const def = ITEMS.get(itemId);
   if (!def || count <= 0) return count;
   const maxStack = def.stack;
-  const probe = makeStack(itemId, count, dur);
+  const probe = makeStack(itemId, count, dur, contents);
   let remaining = count;
 
   for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
@@ -154,7 +154,7 @@ export function addItemToInventory(itemId, count, dur) {
   for (let i = 0; i < INVENTORY_SIZE && remaining > 0; i++) {
     if (inventory[i]) continue;
     const moved = Math.min(remaining, maxStack);
-    inventory[i] = makeStack(itemId, moved, dur);
+    inventory[i] = makeStack(itemId, moved, dur, contents);
     remaining -= moved;
   }
 

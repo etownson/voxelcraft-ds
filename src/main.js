@@ -231,13 +231,17 @@ setBlockEntityView({
   redraw: () => renderScreen(),
   spill: (slots, x, y, z) => {
     for (const slot of slots) {
-      if (slot) spawnItemDrop(slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5);
+      if (!slot) continue;
+      spawnItemDrop(
+        slot.id, slot.count, x + 0.5, y + 0.5, z + 0.5, true, slot.dur, slot.contents
+      );
     }
   }
 });
 
 /* Drops go into the pack, and the pack says how much did not fit. */
-setItemPickup((itemId, count, dur) => addItemToInventory(itemId, count, dur));
+setItemPickup((itemId, count, dur, contents) =>
+  addItemToInventory(itemId, count, dur, contents));
 
 /* And the crosshair stops pointing whenever something else has the controls. */
 setAimBlocked(() => !!activeScreen || player.dead || introActive());

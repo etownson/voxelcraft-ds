@@ -55,14 +55,19 @@ import { dayTime } from './sky.js';
  * on, and how many beacons have been lit. The monuments and the difficulty of
  * the ground are both measured from SP0, and it has no default a mismatched
  * one could survive — a world whose SP0 moved would be a different world with
- * the same save in it.
+ * the same save in it. Schema 7 adds the packed chest: a stack record may carry
+ * a fourth element, the packed chest's slots, each a record of its own, and a
+ * chest row may end in a map from slot index to the full record of any slot
+ * whose wear or contents the id and count pairs cannot hold. Before it a chest
+ * forgot the wear on the tools stored in it, so a schema 6 world is no longer
+ * readable.
  */
-export const SAVE_KEY = 'voxelcraft:world:v6';
+export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
   'voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3',
-  'voxelcraft:world:v4', 'voxelcraft:world:v5'
+  'voxelcraft:world:v4', 'voxelcraft:world:v5', 'voxelcraft:world:v6'
 ];
-export const SAVE_SCHEMA = 6;
+export const SAVE_SCHEMA = 7;
 const AUTOSAVE_SECONDS = 25;
 
 let lastSaveAt = 0;
@@ -158,7 +163,8 @@ function serializeWorldSave() {
  * Furnace and chest contents plus block orientations ride along with the block
  * diff, as flat records: [x, y, z, input id, input count, fuel id, fuel count,
  * output id, output count, burn, burn total, cook], [x, y, z, then twenty-seven
- * id and count pairs] and [x, y, z, dx, dz].
+ * id and count pairs, then, only when some slot wears or packs, a map from slot
+ * index to that slot's full stack record] and [x, y, z, dx, dz].
  */
 function serializeBlockEntities() {
   const furnaces = [];
@@ -173,6 +179,13 @@ function serializeBlockEntities() {
       row.push(slot ? slot.id : null, slot ? slot.count : null);
     }
     if (state.kind !== 'furnace') {
+      // The pairs above know nothing of wear or of a packed chest's slots, so
+      // any slot that carries either is written again in full, by index.
+      const full = {};
+      state.slots.forEach((slot, i) => {
+        if (slot && (slot.dur != null || slot.contents)) full[i] = stackRecord(slot);
+      });
+      if (Object.keys(full).length) row.push(full);
       chests.push(row);
       continue;
     }
@@ -309,6 +322,15 @@ export function applySavedBlockEntities(world, save) {
         if (typeof id !== 'string' || !ITEMS.has(id) || count <= 0) continue;
         state.slots[slot] = makeStack(id, Math.min(count, ITEMS.get(id).stack));
       }
+      const full = row[3 + CHEST_SLOTS * 2];
+      if (full && typeof full === 'object' && !Array.isArray(full)) {
+        for (const index in full) {
+          const slot = Math.trunc(Number(index));
+          if (slot < 0 || slot >= CHEST_SLOTS) continue;
+          const restored = stackFromRecord(full[index]);
+          if (restored) state.slots[slot] = restored;
+        }
+      }
       world.blockEntities.set(x + ',' + y + ',' + z, state);
     }
   }
@@ -330,9 +352,15 @@ export function applySavedBlockEntities(world, save) {
   }
 }
 
-/** A saved stack as a compact record: [id, count] plus durability if it has any. */
+/**
+ * A saved stack as a compact record: [id, count] plus durability if it has any,
+ * and a packed chest's slots, each a record of its own, as a fourth element.
+ */
 function stackRecord(stack) {
   if (!stack) return null;
+  if (stack.contents) {
+    return [stack.id, stack.count, stack.dur ?? null, stack.contents.map(stackRecord)];
+  }
   return stack.dur == null
     ? [stack.id, stack.count]
     : [stack.id, stack.count, stack.dur];
@@ -347,6 +375,10 @@ export function stackFromRecord(record) {
   const stack = makeStack(record[0], Math.min(count, def.stack));
   if (def.durability && record[2] != null) {
     stack.dur = clamp(Math.trunc(Number(record[2]) || 0), 0, def.durability);
+  }
+  if (def.packs === 'chest' && Array.isArray(record[3])) {
+    stack.contents = new Array(CHEST_SLOTS).fill(null);
+    for (let i = 0; i < CHEST_SLOTS; i++) stack.contents[i] = stackFromRecord(record[3][i]);
   }
   return stack;
 }

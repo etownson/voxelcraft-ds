@@ -421,6 +421,16 @@ for (const block of BLOCKS) {
   });
 }
 
+// A chest broken with anything inside comes away as a packed chest: the same
+// block on placing, but one to a slot, carrying its twenty-seven slots on the
+// stack as `contents`. It is its own item id rather than a flag on the chest
+// for the reason the full bucket is: an empty chest still stacks sixty-four,
+// and nothing that only compares ids can mistake one for the other.
+defineItem({
+  id: 'packed_chest', name: 'Packed Chest', kind: 'block',
+  blockId: B.CHEST, stack: 1, packs: 'chest'
+});
+
 defineItem({ id: 'coal', name: 'Coal', kind: 'material', stack: 64 });
 defineItem({ id: 'charcoal', name: 'Charcoal', kind: 'material', stack: 64 });
 defineItem({ id: 'raw_iron', name: 'Raw Iron', kind: 'material', stack: 64 });
@@ -466,18 +476,31 @@ defineItem({ id: 'water_bucket', name: 'Water Bucket', kind: 'material', stack: 
 
 /**
  * Stacks are plain { id, count } objects, plus an optional `dur` on tools and
- * armour holding the durability left in that specific item. Keeping `dur`
- * optional means every material stack stays exactly as compact as it was.
+ * armour holding the durability left in that specific item, and an optional
+ * `contents` on a packed chest holding the slots it was broken with. Keeping
+ * both optional means every material stack stays exactly as compact as it was.
  */
-export function makeStack(id, count, dur) {
+export function makeStack(id, count, dur, contents) {
   const stack = { id, count };
   if (dur != null) stack.dur = dur;
+  if (contents) stack.contents = contents;
   return stack;
 }
 
-/** A damaged tool never merges with a fresh one, so slots must agree on `dur`. */
+/**
+ * A damaged tool never merges with a fresh one, so slots must agree on `dur`.
+ * A stack that carries contents never merges at all: there is no adding two
+ * chests' worth of things together into one slot.
+ */
 export function stacksMergeable(a, b) {
+  if (a.contents || b.contents) return false;
   return a.id === b.id && (a.dur == null ? b.dur == null : b.dur === a.dur);
+}
+
+/** True when a packed chest's contents hold anything at all. */
+export function packedSlotCount(stack) {
+  if (!stack || !stack.contents) return 0;
+  return stack.contents.reduce((n, slot) => n + (slot ? 1 : 0), 0);
 }
 
 /** Maximum durability of an item definition, or 0 when it cannot wear down. */
@@ -537,7 +560,7 @@ export function mergeStackInto(source, targetArray, start, end) {
   for (let i = start; i < end && remaining > 0; i++) {
     if (targetArray[i]) continue;
     const moved = Math.min(remaining, maxStack);
-    targetArray[i] = makeStack(source.id, moved, source.dur);
+    targetArray[i] = makeStack(source.id, moved, source.dur, source.contents);
     remaining -= moved;
   }
 

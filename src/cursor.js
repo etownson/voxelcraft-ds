@@ -121,12 +121,13 @@ export function craftCurrent(intoInventory = false) {
 export function returnCursorStack() {
   if (!cursorStack) return;
   const leftover = addItemToInventory(
-    cursorStack.id, cursorStack.count, cursorStack.dur
+    cursorStack.id, cursorStack.count, cursorStack.dur, cursorStack.contents
   );
   if (leftover > 0) {
     spawnItemDrop(
       cursorStack.id, leftover,
-      player.pos.x, player.pos.y + 1.2, player.pos.z, false, cursorStack.dur
+      player.pos.x, player.pos.y + 1.2, player.pos.z, false, cursorStack.dur,
+      cursorStack.contents
     );
   }
   cursorStack = null;
