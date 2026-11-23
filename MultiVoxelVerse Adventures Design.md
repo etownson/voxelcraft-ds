@@ -148,10 +148,19 @@ You understand the following from the transmission:
 A celebratory transmission telling you that you have fully unlocked teleportation to this world and you can now return a hero. However, it lets you know you can choose to remain and further prepare a base to better assist the colonizers when they arrive.  
   
 —  
+## The Recipe Book  
+The journal's first page draws each received recipe instead of listing it:  
+- A card for each thing that can be made, shelved under the beacon that sent it (Beacon 1, survival kit; Beacon 2, farming, building and stone; Beacon 3, iron; Beacon 4, diamond). Recipes that make the same thing share one card and show each way to make it in turn.  
+- The highlighted card is laid out on its real grid: the 2×2 pocket grid or the table's 3×3, then the result with its count, whether it needs the crafting table, and what it uses.  
+- Once the furnace recipe has arrived, the book also shows what the furnace turns into what.  
+- A beacon that has not been lit gets one dim line saying how many recipes are waiting there. It does not show what they are, so the book never spoils a beacon.  
+- The book reads the same in the main menu and in the world, and the keyboard, the mouse and a controller can all reach every card.  
+  
+—  
 ## Journal Of Previous Transmissions  
-The transmissions are spotty on purpose, so a line is easy to miss the first time it comes through. Give the player an option to keep them:  
-- An option in the settings, off by default, called the Transmission journal.  
-- When it is on, the journal that already holds the received recipes grows a second page holding every transmission received so far. Each entry is headed by the beacon that carried it: Arrival at SP0, then Beacon 1, Beacon 2, and so on. Entries run oldest first, so the story reads in the order it was heard.  
+The transmissions are spotty on purpose, so a line is easy to miss the first time it comes through. The journal keeps them:  
+- Every journal has two pages, Recipes and Transmissions. (This was once a setting that was off by default; hiding the way back to a missed line behind a switch read as stingy.)  
+- The Transmissions page holds every transmission received so far. Each entry is headed by the beacon that carried it: Arrival at SP0, then Beacon 1, Beacon 2, and so on. Entries run oldest first, so the story reads in the order it was heard.  
 - Reading the journal is quiet. It carries the words only, with no sound and no line by line timing, and it never replays the transmission. The panel that talks over the hotbar still fires once, at the moment the beacon is lit.  
 - Nothing arrives early. An entry joins the journal only when its transmission is received, so the journal cannot spoil a beacon that has not been lit.  
 - The journal asks for no saving of its own. The text is the same in every world, so the count of lit beacons the save already keeps is enough to know which entries the player has heard, the arrival transmission included.  

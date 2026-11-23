@@ -71,113 +71,151 @@
 </div>
 
 <div id="overlay">
-  <div class="panel">
-    <h1>VoxelVerse</h1>
-    <p class="subtitle">Version .6</p>
+  <div class="panel menu-card" role="dialog" aria-label="Main menu">
+    <header class="menu-header">
+      <h1>VoxelVerse</h1>
+      <p class="subtitle">Version .6</p>
+    </header>
 
-    <nav class="main-menu" aria-label="Main menu">
-      <button id="menu-controls" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-controls-panel">Controls</button>
-      <button id="menu-settings" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-settings-panel">Settings</button>
-      <button id="menu-journal" class="menu-choice" type="button" aria-expanded="false" aria-controls="menu-journal-panel">Journal</button>
-      <button id="menu-start" class="menu-choice start" type="button">Start</button>
-    </nav>
+    <div class="menu-body">
+      <nav class="menu-rail" data-nav-zone="rail" aria-label="Main menu">
+        <button id="menu-start" class="menu-choice start" type="button" data-nav data-page="home">Start</button>
+        <button id="menu-journal" class="menu-choice" type="button" data-nav data-page="journal" aria-controls="menu-journal-panel">Journal</button>
+        <button id="menu-settings" class="menu-choice" type="button" data-nav data-page="settings" aria-controls="menu-settings-panel">Settings</button>
+        <button id="menu-controls" class="menu-choice" type="button" data-nav data-page="controls" aria-controls="menu-controls-panel">Controls</button>
+      </nav>
 
-    <section id="menu-controls-panel" class="controls menu-panel hidden" aria-label="Controls">
-      <div class="controls-head">
-        <span>Action</span>
-        <span>Keyboard &amp; mouse</span>
-        <span>Gamepad</span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Move</span>
-        <span class="control-keys"><kbd>WASD</kbd></span>
-        <span class="control-keys"><kbd>Left stick</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Look</span>
-        <span class="control-keys"><kbd>Mouse</kbd></span>
-        <span class="control-keys"><kbd>Right stick</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Jump / swim</span>
-        <span class="control-keys"><kbd>Space</kbd></span>
-        <span class="control-keys"><kbd>A</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Sprint</span>
-        <span class="control-keys"><kbd>Shift</kbd></span>
-        <span class="control-keys"><kbd>B</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Break / attack</span>
-        <span class="control-keys"><kbd>Left click</kbd></span>
-        <span class="control-keys"><kbd>RT</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Place / use</span>
-        <span class="control-keys"><kbd>Right click</kbd></span>
-        <span class="control-keys"><kbd>LT</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Hotbar</span>
-        <span class="control-keys"><kbd>1&ndash;9</kbd><kbd>Wheel</kbd></span>
-        <span class="control-keys"><kbd>LB</kbd><kbd>RB</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Inventory</span>
-        <span class="control-keys"><kbd>E</kbd></span>
-        <span class="control-keys"><kbd>Y</kbd></span>
-      </div>
-      <div class="control-row">
-        <span class="control-action">Pause / free mouse</span>
-        <span class="control-keys"><kbd>Esc</kbd></span>
-        <span class="control-keys"><kbd>Start</kbd></span>
-      </div>
-      <p class="controls-note">The D-pad, the left stick, and the arrow keys move through this menu; A or Enter picks.</p>
-    </section>
+      <div class="menu-pages" data-nav-zone="page">
+        <section id="menu-home-panel" class="menu-panel menu-home" data-page="home" aria-label="Mission">
+          <div class="menu-heading">The mission</div>
+          <p class="menu-blurb">A distant voice has sent you here to wake the old beacons. Find each one, light it with essence, and it answers with new recipes and the way to the next &mdash; your journal keeps them all.</p>
+          <p id="menu-home-save" class="menu-blurb muted"></p>
+        </section>
 
-    <section id="menu-settings-panel" class="menu-settings menu-panel hidden" aria-label="Settings">
-      <div class="menu-heading">Settings</div>
-      <div class="pad-settings">
-        <span id="pad-status" class="pad-state">Gamepad: not detected</span>
-        <span class="setting-control">
-          <span class="setting-note">Look sensitivity</span>
-          <button id="pad-sens-down" type="button" title="Lower gamepad sensitivity">&minus;</button>
-          <span id="pad-sens-value">1.0&times;</span>
-          <button id="pad-sens-up" type="button" title="Raise gamepad sensitivity">+</button>
-        </span>
-      </div>
-      <div class="save-settings">
-        <span id="save-status" class="save-state">No saved world yet</span>
-        <span class="setting-control">
-          <button id="new-world-button" type="button" title="Erase the saved world and start a new one">New world</button>
-        </span>
-      </div>
-      <div class="audio-settings" id="audio-settings">
-        <div class="audio-row">
-          <span class="audio-label">Master</span>
-          <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume">
-          <span id="audio-volume-value" class="audio-value">70%</span>
-        </div>
-        <div class="audio-row">
-          <span class="audio-label">Sound effects</span>
-          <input id="audio-sfx-volume" type="range" min="0" max="100" step="1" value="60" aria-label="Sound effects volume">
-          <span id="audio-sfx-volume-value" class="audio-value">60%</span>
-        </div>
-        <div class="audio-row">
-          <span class="audio-label">Music</span>
-          <input id="audio-music-volume" type="range" min="0" max="100" step="1" value="50" aria-label="Music volume">
-          <span id="audio-music-volume-value" class="audio-value">50%</span>
-        </div>
-      </div>
-    </section>
+        <section id="menu-journal-panel" class="menu-panel menu-journal hidden" data-page="journal" aria-label="Journal">
+          <div id="journal-menu-body" class="journal-body"></div>
+        </section>
 
-    <section id="menu-journal-panel" class="menu-journal menu-panel hidden" aria-label="Journal">
-      <div id="journal-menu-heading" class="menu-heading">Journal &middot; Received Recipes</div>
-      <div id="journal-menu-body" class="journal-body"></div>
-    </section>
+        <section id="menu-settings-panel" class="menu-panel menu-settings hidden" data-page="settings" aria-label="Settings">
+          <div class="menu-heading">Controller</div>
+          <div class="setting-row">
+            <span id="pad-status" class="pad-state">Gamepad: not detected</span>
+          </div>
+          <div class="setting-row slider-row">
+            <label class="setting-label" for="pad-sens">Look sensitivity</label>
+            <input id="pad-sens" type="range" min="0.3" max="3" step="0.1" value="1" data-nav aria-label="Gamepad look sensitivity">
+            <span id="pad-sens-value" class="setting-value">1.0&times;</span>
+          </div>
 
-    <p class="fineprint">A distant voice has sent you here to wake the old beacons. Find each one, light it with essence, and it answers with new recipes and the way to the next &mdash; your journal keeps them all. Press Start, or click the dark around this panel, to step in.</p>
+          <div class="menu-heading">Sound</div>
+          <div class="audio-settings" id="audio-settings">
+            <div class="setting-row slider-row">
+              <label class="setting-label" for="audio-volume">Master</label>
+              <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" data-nav aria-label="Master volume">
+              <span id="audio-volume-value" class="setting-value">70%</span>
+            </div>
+            <div class="setting-row slider-row">
+              <label class="setting-label" for="audio-sfx-volume">Sound effects</label>
+              <input id="audio-sfx-volume" type="range" min="0" max="100" step="1" value="60" data-nav aria-label="Sound effects volume">
+              <span id="audio-sfx-volume-value" class="setting-value">60%</span>
+            </div>
+            <div class="setting-row slider-row">
+              <label class="setting-label" for="audio-music-volume">Music</label>
+              <input id="audio-music-volume" type="range" min="0" max="100" step="1" value="50" data-nav aria-label="Music volume">
+              <span id="audio-music-volume-value" class="setting-value">50%</span>
+            </div>
+          </div>
+
+          <div class="menu-heading">World</div>
+          <div class="setting-row">
+            <span id="save-status" class="save-state">No saved world yet</span>
+            <button id="new-world-button" class="menu-button" type="button" data-nav title="Erase the saved world and start a new one">New world</button>
+          </div>
+          <div id="new-world-confirm" class="setting-row confirm-row hidden" role="alertdialog" aria-label="Erase this world?">
+            <span class="confirm-text">Erase this world for good?</span>
+            <span class="confirm-buttons">
+              <button id="new-world-keep" class="menu-button" type="button" data-nav>Keep it</button>
+              <button id="new-world-erase" class="menu-button danger" type="button" data-nav>Erase</button>
+            </span>
+          </div>
+        </section>
+
+        <section id="menu-controls-panel" class="menu-panel controls hidden" data-page="controls" aria-label="Controls">
+          <div class="controls-head">
+            <span>Action</span>
+            <span class="kbm">Keyboard &amp; mouse</span>
+            <span class="pad">Gamepad</span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Move</span>
+            <span class="control-keys kbm"><kbd>WASD</kbd></span>
+            <span class="control-keys pad"><kbd>Left stick</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Look</span>
+            <span class="control-keys kbm"><kbd>Mouse</kbd></span>
+            <span class="control-keys pad"><kbd>Right stick</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Jump / swim</span>
+            <span class="control-keys kbm"><kbd>Space</kbd></span>
+            <span class="control-keys pad"><kbd>A</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Sprint</span>
+            <span class="control-keys kbm"><kbd>Shift</kbd></span>
+            <span class="control-keys pad"><kbd>B</kbd> <kbd>L3</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Break / attack</span>
+            <span class="control-keys kbm"><kbd>Left click</kbd></span>
+            <span class="control-keys pad"><kbd>RT</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Place / use</span>
+            <span class="control-keys kbm"><kbd>Right click</kbd></span>
+            <span class="control-keys pad"><kbd>LT</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Hotbar</span>
+            <span class="control-keys kbm"><kbd>1&ndash;9</kbd><kbd>Wheel</kbd></span>
+            <span class="control-keys pad"><kbd>LB</kbd><kbd>RB</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Inventory</span>
+            <span class="control-keys kbm"><kbd>E</kbd></span>
+            <span class="control-keys pad"><kbd>Y</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Journal</span>
+            <span class="control-keys kbm"><kbd>J</kbd></span>
+            <span class="control-keys pad"><kbd>View</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Pause / menu</span>
+            <span class="control-keys kbm"><kbd>Esc</kbd></span>
+            <span class="control-keys pad"><kbd>Start</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Menu: move</span>
+            <span class="control-keys kbm"><kbd>Arrows</kbd><kbd>Mouse</kbd></span>
+            <span class="control-keys pad"><kbd>D-pad</kbd><kbd>Left stick</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Menu: select / back</span>
+            <span class="control-keys kbm"><kbd>Enter</kbd><kbd>Esc</kbd></span>
+            <span class="control-keys pad"><kbd>A</kbd><kbd>B</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Menu: tabs</span>
+            <span class="control-keys kbm"><kbd>Q</kbd><kbd>E</kbd></span>
+            <span class="control-keys pad"><kbd>LB</kbd><kbd>RB</kbd></span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer id="menu-hints" class="menu-hints" aria-hidden="true"></footer>
   </div>
 </div>
 

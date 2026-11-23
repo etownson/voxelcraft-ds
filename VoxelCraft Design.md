@@ -154,9 +154,10 @@ A first-person controller:
 - Gamepad support via the Web Gamepad API: left stick moves, right stick looks
   (configurable sensitivity), A/Cross jumps, right trigger mines/attacks, left trigger
   places/interacts, shoulder buttons scroll the hotbar, B/L3 latches sprint,
-  Start/Menu opens and closes the inventory. Menu grids are walked with the D-pad or
-  stick: A picks up and places whole stacks, X takes half a stack and places one item,
-  Y/Triangle quick-moves, back/Select closes
+  Y opens the inventory, View/Back opens the journal, and Start/Menu opens the main
+  menu. Menu grids are walked with the D-pad or stick: A picks up and places whole
+  stacks, X takes half a stack and places one item, Y/Triangle quick-moves, B or
+  View/Back closes
 
 Health:
 
@@ -721,23 +722,45 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
-- The main menu is the start form and the pause panel in one: four choices —
-  Controls, Settings, Journal, Start — where the first three open one panel at a
-  time under the menu, and choosing an open one again closes it. Controls lists
-  keyboard, mouse, and pad; Settings carries the gamepad status, look sensitivity,
-  the save line with New world, and the volume sliders; Journal turns two pages —
-  the recipes the beacons have transmitted, and the transmissions themselves,
-  whole and in the order they were heard, one block per beacon already lit. Both
-  pages are in every journal: the way back to a line that came through bad is
-  findable, not something to switch on first. Start — or a click on the dark around the panel —
-  locks the pointer and lets the walker go; the pad walks the choices with the
-  D-pad or left stick and picks with A, while Start on the pad means resume.
-  Every choice answers with one neutral click at a fixed pitch — not the
-  world's jittered sample — and a repeated pick inside a moment is swallowed,
-  so a doubled button event still sounds like a single answer. The menu is
-  allowed no other sound: a pick that resumes the game is spent, not a jump —
-  held or tapped again at once — until the thumb has been off A for a quiet
-  moment
+- The main menu is the start form and the pause panel in one card: a rail down the
+  left holds Start (Resume once the world has been entered), Journal, Settings and
+  Controls, and the page for whichever has the highlight fills the right. Start sits
+  at the top of the rail and never moves; only the page scrolls. The Start page is
+  the mission in two lines and the save line. Settings carries the gamepad status, a
+  look-sensitivity slider, the Master, Sound effects and Music sliders, and New
+  world, which asks *Erase this world for good?* inside the card with Keep it
+  highlighted, so a pad can answer. Controls lists keyboard and mouse beside the pad,
+  with the column for the hand in use lit. Journal mounts the same book the `J`
+  screen shows (below)
+- Every control in the card is reachable from every hand, through one walker
+  (`src/menu-nav.js`). The arrow keys or WASD, the D-pad or left stick, and the mouse
+  move one highlight; Enter, Space, A and a click press. Direction comes from where
+  things are drawn, so grids, slider columns and the rail need no wiring. Right or A
+  steps from the rail into the page, and left off the page's edge, B, Esc or
+  Backspace steps back. Q/E or LB/RB turn the journal's pages inside the journal and
+  walk the rail's pages elsewhere. Left and right step a highlighted slider; up and
+  down leave it. The right stick scrolls the page. Hovering a control highlights it,
+  so the mouse and the highlight never disagree. A hint line along the bottom is
+  written for the hand that last moved
+- Start is the only way in: the button, Enter or A on it, or the pad's Start from
+  anywhere in the menu. A click on the dark around the card does nothing (it used to
+  start the game and was the menu's most common misfire). Every press answers with
+  one neutral click at a fixed pitch — not the world's jittered sample — and a
+  repeated pick inside a moment is swallowed, so a doubled button event still sounds
+  like a single answer. The menu is allowed no other sound: a pick that resumes the
+  game is spent, not a jump — held or tapped again at once — until the thumb has been
+  off A for a quiet moment
+- The journal (`src/journal.js`, `J` in the world, View/Back on the pad, or the
+  menu's Journal page) is a book of two pages. Recipes shelves a card per thing that
+  can be made under the beacon that sent it; recipes that make the same thing (coal
+  and charcoal torches, either-handed shears) share a card and step through their
+  ways with R, X or a click. The highlighted card is drawn on the right: its pattern
+  in a 2×2 or 3×3 grid, centred where the matcher accepts it, an arrow, the result
+  with its count, whether it needs the table (anything three cells wide or tall), and
+  what it eats. Once the furnace recipe has arrived, a Furnace shelf shows each
+  smelt, input over flame to output, and what burns. A beacon not yet lit is one dim
+  line with a count of what it will teach and nothing else. Transmissions is every
+  message heard so far, whole and oldest first
 - While the menu has the page, its input belongs to the menu and never reaches the
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`
@@ -851,7 +874,7 @@ per species (`MOB_HURT_GAIN`: cow 0.53, chicken 0.6, pig/sheep 0.7, hostiles 1) 
 the hurt call is also the death cry; a burning mob's hurt calls are gapped to 2.6 s
 even though the burn ticks every 0.65 s.
 
-Settings: three sliders in the menu's Settings panel — Master (70%), Sound effects (100%), Music
+Settings: three sliders in the menu's Settings page — Master (70%), Sound effects (100%), Music
 (70%) — persisted under `voxelcraft:audio:v1`; `M` mutes the master; the context
 suspends when the tab hides. For GitHub Pages: relative fetch paths, a committed
 `.nojekyll`, never Git LFS (Pages serves the pointer, not the sample), the whole bank
@@ -950,6 +973,8 @@ shadow map, which fails if the settlement rule is broken), mobs (`mobs`, `mobInf
 `spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), time and
 simulation (`setTime`, `setTimeScale`, `tick`, `simulate(seconds, input)`), screens and
 the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(stop)`,
-`beaconTour(direction)`, `tourStop()`), and audio (`audio`, `setVolume`).
+`beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
+the rail-or-page zone, the highlighted control and the hand that moved it; drive it
+with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
 The `G` give shelf and the `T` monument tour are the human-facing halves of the same
 door.

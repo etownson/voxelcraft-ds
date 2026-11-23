@@ -80,7 +80,7 @@ import {
   renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
-  toggleInventory, updateCursorVisual, updateDebug,
+  toggleInventory, toggleJournal, updateCursorVisual, updateDebug,
   updateFurnaceGauges, updateGamepadScreen
 } from './hud.js';
 import {
@@ -106,7 +106,7 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
-import { padMenuTick } from './menu.js';
+import { menuState, padMenuTick, setMenuActions } from './menu.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
@@ -129,7 +129,7 @@ import { desiredWaterLevel, updateWater, waterTick } from './water.js';
 import { sampleColumn, treeAt } from './worldgen.js';
 
 const saveStatusEl = document.getElementById('save-status');
-const newWorldButton = document.getElementById('new-world-button');
+const padSensSlider = document.getElementById('pad-sens');
 
 function refreshSaveStatus() {
   if (!saveStatusEl) return;
@@ -149,18 +149,19 @@ function refreshSaveStatus() {
   }
 }
 
+/** New world, once the menu has asked and been told yes: wipe and reload. */
+function eraseWorld() {
+  // Stop the unload-triggered saves from resurrecting the wiped world.
+  stopAutosave();
+  try {
+    localStorage.removeItem(SAVE_KEY);
+    for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
+  } catch (unavailable) {}
+  window.location.reload();
+}
+
 function initSaveUi(hasSavedWorld) {
-  newWorldButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (!window.confirm('Erase this world and start a fresh one?')) return;
-    // Stop the unload-triggered saves from resurrecting the wiped world.
-    stopAutosave();
-    try {
-      localStorage.removeItem(SAVE_KEY);
-      for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
-    } catch (unavailable) {}
-    window.location.reload();
-  });
+  setMenuActions({ newWorld: eraseWorld });
   if (hasSavedWorld) {
     saveStatusEl.textContent = 'Saved world found';
     saveStatusEl.classList.add('found');
@@ -374,6 +375,9 @@ setInputView({
   },
   paintSensitivity: (value) => {
     if (padSensitivityEl) padSensitivityEl.textContent = value.toFixed(1) + '\u00d7';
+    if (padSensSlider && document.activeElement !== padSensSlider) {
+      padSensSlider.value = String(value);
+    }
   },
   paintPadStatus: (text, on) => {
     if (!padStatusEl) return;
@@ -383,6 +387,7 @@ setInputView({
   screenTap: handlePadScreenTap,
   hotbarStep: (delta) => selectHotbarSlot(currentSlot() + delta, true),
   togglePack: toggleInventory,
+  toggleJournal,
   screenTick: updateGamepadScreen,
   menuPad: padMenuTick,
   dismissTransmission
@@ -675,6 +680,10 @@ window.__voxelcraft = {
     forgetSavedWorld();
     refreshSaveStatus();
     return false;
+  },
+  /** Where the main menu's highlight is, which page is up, and which hand moved it. */
+  menuState() {
+    return menuState();
   },
   render() {
     renderGame();

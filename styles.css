@@ -241,31 +241,110 @@ html, body {
   text-transform: uppercase; color: rgba(159, 180, 199, 0.72);
 }
 
-/* The journal: one received recipe per row, icon, result, and what it eats. */
+/* The journal's transmissions page: one column of whole messages. */
 .journal-column {
   display: flex; flex-direction: column; gap: 6px;
-  max-height: 60vh; overflow-y: auto;
-  min-width: 420px; max-width: 74vw;
+  overflow-y: auto; min-height: 0; scrollbar-width: thin;
   padding: 4px 2px;
 }
-.journal-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 8px; border-radius: 3px;
+.journal-none { color: #9fb4c7; font-size: 13px; padding: 8px; margin: 0; }
+
+/* The recipe book: shelves of cards on the left, the card under the highlight
+   drawn on its grid on the right. Its height is set by whoever holds it. */
+.book {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px;
+}
+.book-list {
+  min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  padding: 2px 6px 6px 2px;
+}
+.book-shelf {
+  margin: 12px 0 6px;
+  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8fa3b6;
+}
+.book-shelf:first-child { margin-top: 2px; }
+.book-shelf.waiting {
+  padding: 8px 10px; border-radius: 3px;
+  border: 1px dashed rgba(150, 170, 190, 0.22);
+  color: #5f7184; letter-spacing: 0.1em;
+}
+.book-cards { display: flex; flex-wrap: wrap; gap: 5px; }
+.book-card {
+  position: relative; width: 46px; height: 46px; padding: 0;
+  background: var(--slot); cursor: pointer;
+  border: 2px solid var(--slot-border);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+  outline: none;
+}
+.book-card:hover { background: rgba(60, 64, 74, 0.8); }
+.book-card.shown { background: rgba(78, 82, 94, 0.78); border-color: rgba(255,255,255,0.5); }
+.book-card.nav-focus,
+#overlay .book-card.nav-focus,
+#screen-panel .book-card.nav-focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35), 0 0 10px rgba(244, 208, 111, 0.35);
+}
+.book-card .icon, .book-slot .icon {
+  position: absolute; inset: 5px;
+  background-size: 100% 100%; background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+.book-card .count {
+  position: absolute; right: 3px; bottom: 1px;
+  font-size: 10px; font-weight: 700; color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 0 -1px 0 #000;
+}
+.book-card-more {
+  position: absolute; left: 2px; top: 1px;
+  font-size: 8.5px; color: var(--accent);
+  text-shadow: 1px 1px 0 #000;
+}
+.book-detail {
+  min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  padding: 12px; border-radius: 3px;
   background: rgba(14, 20, 28, 0.72);
   border: 1px solid rgba(150, 170, 190, 0.14);
+  display: flex; flex-direction: column; gap: 9px;
 }
-.journal-row .icon {
-  width: 32px; height: 32px; flex: 0 0 32px;
+.book-name { font-size: 13px; color: #f7fafc; letter-spacing: 0.04em; }
+.book-craft { display: flex; align-items: center; gap: 8px; }
+.book-grid { display: grid; gap: 3px; }
+.book-grid.size-2 { grid-template-columns: repeat(2, 36px); }
+.book-grid.size-3 { grid-template-columns: repeat(3, 36px); }
+.book-slot { display: block; width: 36px; height: 36px; }
+.book-slot .icon { inset: 4px; }
+.book-out { width: 46px; height: 46px; border-color: rgba(244, 208, 111, 0.45); }
+.book-arrow { font-size: 20px; color: #9fb4c7; }
+.book-furnace { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.book-flame { font-size: 16px; line-height: 1; }
+.book-where { font-size: 11px; color: #9fb4c7; }
+.book-label {
+  font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: #7d90a2;
+  margin-bottom: -5px;
+}
+.book-needs { display: flex; flex-direction: column; gap: 4px; }
+.book-fuels { flex-direction: row; flex-wrap: wrap; gap: 4px 10px; }
+.book-need { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #cfdbe6; }
+.book-need-icon {
+  width: 18px; height: 18px; flex: 0 0 18px;
   background-size: contain; background-repeat: no-repeat; background-position: center;
   image-rendering: pixelated;
 }
-.journal-result { color: #f7fafc; font-size: 13px; min-width: 130px; }
-.journal-need { color: #9fb4c7; font-size: 12px; }
-.journal-none { color: #9fb4c7; font-size: 13px; padding: 8px; }
+.book-variants { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #9fb4c7; }
+.book-variant-step {
+  font: inherit; font-size: 12px; line-height: 1; width: 26px; height: 22px; padding: 0;
+  color: #eaf3fb; background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
+  border-radius: 3px; cursor: pointer;
+}
+/* The J screen gives the book a fixed frame; the menu gives it its page. */
+#screen-body .journal-pages { width: min(760px, 90vw); height: min(480px, 66vh); }
 
 /* The journal turns pages when the transmissions are kept: the tabs sit over
    the column, and whichever page is chosen reads underneath them. */
-.journal-pages { display: flex; flex-direction: column; gap: 8px; }
+.journal-pages { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .journal-tabs { display: flex; gap: 6px; }
 .journal-tab {
   font: inherit; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -275,6 +354,7 @@ html, body {
   border-radius: 3px;
 }
 .journal-tab:hover { background: rgba(255,255,255,0.14); }
+.journal-tab.nav-focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .journal-tab.selected {
   color: var(--accent); background: rgba(244, 208, 111, 0.1);
   border-color: rgba(244, 208, 111, 0.5);
@@ -285,6 +365,7 @@ html, body {
    these are, and there is no caret and no pause: read, not performed. */
 .transmission-column { gap: 10px; }
 .transcript-entry {
+  flex: 0 0 auto;
   padding: 8px 10px; border-radius: 3px;
   background: rgba(14, 20, 28, 0.72);
   border: 1px solid rgba(150, 170, 190, 0.14);
@@ -309,73 +390,6 @@ html, body {
 }
 #control-hint.hidden { display: none; }
 
-#overlay {
-  position: fixed; inset: 0; z-index: 20;
-  display: flex; align-items: center; justify-content: center;
-  background:
-    radial-gradient(ellipse at 50% 30%, rgba(26, 50, 76, 0.12), rgba(4, 7, 11, 0.48) 78%),
-    rgba(4, 7, 11, 0.16);
-  cursor: pointer; pointer-events: auto;
-}
-#overlay.hidden { display: none; }
-#overlay .panel {
-  width: min(640px, 94vw);
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
-  background: var(--panel);
-  border: 2px solid var(--panel-border);
-  border-radius: 2px;
-  padding: 28px 32px 22px;
-  text-align: center;
-  box-shadow: 0 24px 70px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.04);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  scrollbar-width: thin;
-}
-#overlay h1 {
-  margin: 0; font-size: clamp(28px, 5vw, 44px); font-weight: 700;
-  letter-spacing: 0.26em; text-indent: 0.26em;
-  color: #f7f3e2; text-shadow: 0 3px 0 #22303d, 0 0 22px rgba(130, 190, 255, 0.25);
-}
-#overlay .subtitle {
-  margin: 8px 0 20px; font-size: 12px; letter-spacing: 0.08em;
-  color: var(--accent); text-transform: uppercase;
-}
-#overlay .controls {
-  border-top: 1px solid rgba(255,255,255,0.1);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  padding: 10px 0;
-  margin-bottom: 16px;
-  text-align: left;
-  font-size: 12.5px;
-  color: #dbe7f2;
-}
-#overlay .controls-head,
-#overlay .control-row {
-  display: grid;
-  grid-template-columns: minmax(122px, 0.95fr) minmax(0, 1.35fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 14px;
-}
-#overlay .controls-head {
-  padding: 0 8px 6px;
-  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #7d90a2;
-}
-#overlay .control-row {
-  padding: 5px 8px;
-  border-radius: 2px;
-}
-#overlay .control-row:nth-of-type(even) { background: rgba(255,255,255,0.028); }
-#overlay .control-action { color: #eaf3fb; }
-#overlay .control-keys {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  min-width: 0;
-}
-#overlay .controls-note {
-  margin: 7px 8px 0; font-size: 10px; line-height: 1.4;
-  letter-spacing: 0.03em; color: #7d90a2;
-}
 kbd {
   display: inline-block; min-width: 22px; padding: 2px 5px;
   font: inherit; font-size: 10.5px; text-align: center;
@@ -383,107 +397,167 @@ kbd {
   border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
   border-radius: 3px; white-space: nowrap;
 }
-#overlay .menu-settings {
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 12px;
-  margin-bottom: 16px;
+
+/* ---------- The main menu: a rail on the left, a page on the right ---------- */
+#overlay {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(26, 50, 76, 0.12), rgba(4, 7, 11, 0.48) 78%),
+    rgba(4, 7, 11, 0.16);
+  pointer-events: auto;
 }
-#overlay .menu-heading {
-  margin: 0 0 7px;
-  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: #7d90a2; text-align: left;
+#overlay.hidden { display: none; }
+#overlay .menu-card {
+  display: flex; flex-direction: column;
+  width: min(900px, 96vw);
+  height: min(620px, 94vh);
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 2px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.04);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
-#overlay .pad-settings,
-#overlay .save-settings {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 4px 8px; text-align: left;
-  font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
+#overlay .menu-header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 18px 26px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
-#overlay .pad-settings .pad-state,
-#overlay .save-settings .save-state {
-  min-width: 0; overflow-wrap: anywhere;
+#overlay h1 {
+  margin: 0; font-size: clamp(24px, 4vw, 36px); font-weight: 700;
+  letter-spacing: 0.26em;
+  color: #f7f3e2; text-shadow: 0 3px 0 #22303d, 0 0 22px rgba(130, 190, 255, 0.25);
 }
-#overlay .pad-settings .pad-state { color: #7d90a2; }
-#overlay .pad-settings .pad-state.on { color: #7ee08a; }
-#overlay .save-settings .save-state { color: #7d90a2; }
-#overlay .save-settings .save-state.found { color: #7ee08a; }
-#overlay .setting-control {
-  display: flex; align-items: center; gap: 6px;
-  flex: 0 0 auto; white-space: nowrap;
+#overlay .subtitle {
+  margin: 0; font-size: 11px; letter-spacing: 0.08em;
+  color: var(--accent); text-transform: uppercase;
 }
-#overlay .setting-note { color: #7d90a2; }
-#overlay .pad-settings button {
-  font: inherit; font-size: 13px; line-height: 1; width: 24px; height: 22px;
-  padding: 0; color: #eaf3fb; background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
-  border-radius: 3px; cursor: pointer;
+#overlay .menu-body {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: 190px minmax(0, 1fr);
 }
-#overlay .pad-settings button:hover { background: rgba(255,255,255,0.16); }
-#overlay .save-settings button {
-  font: inherit; font-size: 11px; line-height: 1; padding: 4px 9px;
-  color: #eaf3fb; background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
-  border-radius: 3px; cursor: pointer;
-}
-#overlay .save-settings button:hover { background: rgba(255,255,255,0.16); }
-#overlay .audio-settings {
-  display: grid; gap: 4px;
-  margin: 4px 0 0; padding: 0 8px;
-  font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
-}
-#overlay .audio-settings .audio-row {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 38px;
-  align-items: center; gap: 10px;
-}
-#overlay .audio-settings .audio-label { text-align: left; }
-#overlay .audio-settings input[type="range"] {
-  width: 100%; accent-color: var(--accent); cursor: pointer;
-}
-#overlay .audio-settings .audio-value {
-  text-align: right; color: #7d90a2; font-variant-numeric: tabular-nums;
-}
-#overlay .main-menu {
-  display: grid; gap: 8px;
-  margin: 4px auto 16px; max-width: 300px;
+#overlay .menu-rail {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 18px 16px;
+  border-right: 1px solid rgba(255,255,255,0.08);
 }
 #overlay .menu-choice {
   display: block; width: 100%; padding: 10px 14px;
-  font: inherit; font-size: 12.5px; color: #eaf3fb; letter-spacing: 0.16em;
-  text-transform: uppercase; text-align: center;
-  background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
-  border-radius: 3px; cursor: pointer;
+  font: inherit; font-size: 12px; color: #c9d6e2; letter-spacing: 0.16em;
+  text-transform: uppercase; text-align: left;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.14); border-bottom-width: 2px;
+  border-radius: 3px; cursor: pointer; outline: none;
 }
-#overlay .menu-choice:hover { background: rgba(255,255,255,0.16); }
-#overlay .menu-choice.selected {
-  color: var(--accent);
-  background: rgba(244, 208, 111, 0.1);
-  border-color: rgba(244, 208, 111, 0.55);
-}
+#overlay .menu-choice.current { color: #f7fafc; background: rgba(255,255,255,0.1); }
 #overlay .menu-choice.start {
-  color: #f7f3e2; font-size: 13px;
-  background: rgba(244, 208, 111, 0.1);
+  margin-bottom: 10px;
+  color: #f7f3e2; font-size: 13px; text-align: center;
+  background: rgba(244, 208, 111, 0.12);
   border-color: rgba(244, 208, 111, 0.42);
-  animation: pulse 2.2s ease-in-out infinite;
 }
-#overlay .menu-choice.start:hover {
-  background: rgba(244, 208, 111, 0.2);
-  border-color: rgba(244, 208, 111, 0.72);
-  animation: none;
+#overlay .menu-choice.start:not(.nav-focus) { animation: pulse 2.2s ease-in-out infinite; }
+/* The one highlight every hand moves. */
+#overlay .nav-focus,
+#screen-panel .nav-focus {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+#overlay .menu-choice.nav-focus {
+  outline: none;
+  color: var(--accent);
+  background: rgba(244, 208, 111, 0.14);
+  border-color: rgba(244, 208, 111, 0.7);
+}
+#overlay .menu-pages {
+  min-width: 0; min-height: 0;
+  overflow-y: auto; scrollbar-width: thin;
+  padding: 18px 24px;
 }
 #overlay .menu-panel.hidden { display: none; }
-#overlay .menu-journal {
+#overlay .menu-heading {
+  margin: 14px 0 8px;
+  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #7d90a2;
+}
+#overlay .menu-heading:first-child { margin-top: 0; }
+#overlay .menu-blurb {
+  margin: 0 0 12px; max-width: 520px;
+  font-size: 12.5px; line-height: 1.6; color: #cfdbe6;
+}
+#overlay .menu-blurb.muted { font-size: 11px; color: #7d90a2; }
+
+/* Settings: one row a control, label, control, value. */
+#overlay .setting-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 8px; font-size: 11.5px; color: #9fb4c7; letter-spacing: 0.03em;
+}
+#overlay .setting-row.slider-row {
+  display: grid; grid-template-columns: 130px minmax(0, 1fr) 48px;
+}
+#overlay .setting-row.hidden { display: none; }
+#overlay .setting-value { text-align: right; color: #7d90a2; font-variant-numeric: tabular-nums; }
+#overlay input[type="range"] {
+  width: 100%; accent-color: var(--accent); cursor: pointer;
+  border-radius: 3px;
+}
+#overlay .pad-state { color: #7d90a2; }
+#overlay .pad-state.on { color: #7ee08a; }
+#overlay .save-state { color: #7d90a2; min-width: 0; overflow-wrap: anywhere; }
+#overlay .save-state.found { color: #7ee08a; }
+#overlay .menu-button {
+  font: inherit; font-size: 11px; line-height: 1; padding: 6px 11px;
+  color: #eaf3fb; background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.2); border-bottom-width: 2px;
+  border-radius: 3px; cursor: pointer; white-space: nowrap;
+}
+#overlay .menu-button:hover { background: rgba(255,255,255,0.16); }
+#overlay .menu-button.danger { color: #ffb4a8; border-color: rgba(224, 138, 126, 0.55); }
+#overlay .confirm-row {
+  background: rgba(224, 138, 126, 0.08);
+  border: 1px solid rgba(224, 138, 126, 0.3); border-radius: 3px;
+}
+#overlay .confirm-text { color: #f3d3cd; }
+#overlay .confirm-buttons { display: flex; gap: 8px; }
+
+/* Controls: the hand in use has its column lit. */
+#overlay .controls { font-size: 12.5px; color: #dbe7f2; }
+#overlay .controls-head,
+#overlay .control-row {
+  display: grid;
+  grid-template-columns: minmax(122px, 0.95fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: center; gap: 14px;
+}
+#overlay .controls-head {
+  padding: 0 8px 6px;
+  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #7d90a2;
+}
+#overlay .control-row { padding: 5px 8px; border-radius: 2px; outline-offset: -2px; }
+#overlay .control-row:nth-of-type(even) { background: rgba(255,255,255,0.028); }
+#overlay .control-action { color: #eaf3fb; }
+#overlay .control-keys {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0;
+}
+#overlay .controls[data-device="pad"] .kbm,
+#overlay .controls:not([data-device="pad"]) .pad { opacity: 0.5; }
+#overlay .controls[data-device="pad"] .controls-head .pad,
+#overlay .controls:not([data-device="pad"]) .controls-head .kbm { color: var(--accent); opacity: 1; }
+
+/* The journal page gets the whole height, and the book scrolls inside it. */
+#overlay .menu-journal:not(.hidden) { height: 100%; display: flex; flex-direction: column; }
+#overlay .journal-body { flex: 1 1 auto; min-height: 0; display: flex; }
+#overlay .journal-body .journal-pages { flex: 1 1 auto; min-height: 0; }
+
+/* The hint line, written for the hand that last moved. */
+#overlay .menu-hints {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center;
+  padding: 10px 18px 12px;
   border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 12px;
-  margin-bottom: 16px;
+  font-size: 10.5px; color: #7d90a2; letter-spacing: 0.04em;
 }
-#overlay .journal-body { text-align: left; padding: 0 4px; }
-#overlay .journal-column { min-width: 0; max-width: 100%; max-height: 40vh; }
-#overlay .fineprint {
-  margin: 14px auto 0; max-width: 500px;
-  font-size: 10.5px; line-height: 1.55; color: #7d90a2; letter-spacing: 0.035em;
-}
+#overlay .menu-hint kbd { margin-right: 3px; }
+
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 /* ---------- Inventory and crafting screens ---------- */
@@ -678,21 +752,18 @@ body.screen-open #crosshair, body.screen-open #bottom-hud { opacity: 0; }
 }
 
 @media (max-width: 640px) {
-  #overlay .panel { padding: 22px 18px 18px; }
+  #overlay .menu-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  #overlay .menu-rail {
+    flex-direction: row; flex-wrap: wrap; padding: 10px 12px;
+    border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  #overlay .menu-choice { width: auto; flex: 1 1 auto; text-align: center; }
+  #overlay .menu-choice.start { margin-bottom: 0; }
   #overlay .controls-head { display: none; }
-  #overlay .control-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 12px;
-    padding: 6px 8px;
-  }
-  #overlay .control-action {
-    grid-column: 1 / -1;
-    font-size: 11px; color: #9fb4c7;
-  }
-  #overlay .pad-settings,
-  #overlay .save-settings { flex-wrap: wrap; }
-  #overlay .setting-control { width: 100%; justify-content: space-between; }
-  #overlay .audio-settings .audio-row { grid-template-columns: 84px minmax(0, 1fr) 38px; }
+  #overlay .control-row { grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 6px 8px; }
+  #overlay .control-action { grid-column: 1 / -1; font-size: 11px; color: #9fb4c7; }
+  #overlay .setting-row.slider-row { grid-template-columns: 96px minmax(0, 1fr) 40px; }
+  .book { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {

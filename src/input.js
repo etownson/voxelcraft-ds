@@ -57,6 +57,7 @@ const inputView = {
   screenTap: () => {},
   hotbarStep: () => {},
   togglePack: () => {},
+  toggleJournal: () => {},
   screenTick: () => {},
   menuPad: () => {},
   dismissTransmission: () => false
@@ -664,8 +665,8 @@ export function requestLock() {
 }
 
 /**
- * Hand the game back to the player: the menu's Start choice, a click on the
- * dark around the panel, or a Start press on the pad. A pad that opened the
+ * Hand the game back to the player: the menu's Start choice, or a Start
+ * press on the pad. A pad that opened the
  * overlay never let go of the mouse lock, so it only has to put the panel
  * down; and when the pad asks, its stick reads centred for a frame so a
  * press on the way out of the menu does not turn anyone.
@@ -691,22 +692,16 @@ export function startFromOverlay(padResume = false) {
   }
 }
 
-overlayEl.addEventListener('click', (event) => {
-  // The panel belongs to the menu now: its buttons and settings do their own
-  // thing. Only the dark around it is a shortcut back into the game.
-  if (event.target && event.target.closest && event.target.closest('.panel')) return;
-  if (player.dead) return;
-  startFromOverlay(false);
-});
-
-document.getElementById('pad-sens-down').addEventListener('click', (event) => {
-  event.stopPropagation();
-  setGamepadSensitivity(gamepadState.sensitivity - 0.1);
-});
-document.getElementById('pad-sens-up').addEventListener('click', (event) => {
-  event.stopPropagation();
-  setGamepadSensitivity(gamepadState.sensitivity + 0.1);
-});
+/* The dark around the menu used to be a shortcut back into the game, and it
+   was the menu's most common misfire: a click that missed a slider started the
+   world. Start is the way in now — the button, Enter or A on it, or the pad's
+   own Start. The sensitivity slider is the menu's, and tunes the pad here. */
+const padSensSlider = document.getElementById('pad-sens');
+if (padSensSlider) {
+  padSensSlider.addEventListener('input', () => {
+    setGamepadSensitivity(Number(padSensSlider.value));
+  });
+}
 
 window.addEventListener('gamepadconnected', (event) => {
   gamepadState.index = event.gamepad.index;
@@ -1217,6 +1212,12 @@ export function updateGamepad(dt) {
 
   if (gamepadState.pressed[PAD_BUTTON.y]) {
     inputView.togglePack();
+    return;
+  }
+  // The View (Back) button is the pad's J: the journal, from anywhere in the
+  // world, closed again by B or by View.
+  if (gamepadState.pressed[PAD_BUTTON.back]) {
+    inputView.toggleJournal();
     return;
   }
   if (gamepadState.pressed[PAD_BUTTON.start]) {
