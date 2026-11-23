@@ -137,7 +137,6 @@ const AUDIO_ASSETS = {
   music_mission_complete: ['music/mission-complete/mission-complete.m4a']
 };
 
-const audioStateEl = document.getElementById('audio-state');
 const audioVolumeEl = document.getElementById('audio-volume');
 const audioVolumeValueEl = document.getElementById('audio-volume-value');
 const audioSfxVolumeEl = document.getElementById('audio-sfx-volume');
@@ -212,7 +211,6 @@ let audioAmbientSnapshot = {
   missionSong: false, arrivalHold: false
 };
 let audioUnderwaterShown = false;
-let audioHudText = '';
 
 function audioStorageGet(key) {
   try { return window.localStorage.getItem(key); } catch (unavailable) { return null; }
@@ -349,23 +347,8 @@ function buildAudioGraph() {
 }
 
 function updateAudioHud() {
-  if (!audioStateEl) return;
-  let text;
-  let off = false;
-  if (!audioSupported()) {
-    text = 'Audio unavailable';
-    off = true;
-  } else if (audioMuted) {
-    text = 'Sound muted \u00b7 M';
-    off = true;
-  } else {
-    text = 'Sound on \u00b7 ' + Math.round(audioVolume * 100) + '% \u00b7 M mute';
-  }
-  if (text !== audioHudText) {
-    audioHudText = text;
-    audioStateEl.textContent = text;
-  }
-  audioStateEl.classList.toggle('off', off);
+  // The HUD prints no sound line: M answers with a toast, and the levels live
+  // on the settings page, which is what this paints.
   const masterPercent = Math.round(audioVolume * 100);
   const sfxPercent = Math.round(audioSfxVolume * 100);
   const musicPercent = Math.round(audioMusicVolume * 100);

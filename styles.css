@@ -40,20 +40,57 @@ html, body {
 #crosshair::before { left: 0; top: 9px; width: 20px; height: 2px; }
 #crosshair::after { left: 9px; top: 0; width: 2px; height: 20px; }
 
-#debug {
+/* Top left: the day dial, then the optional frame rate and the sprint latch. */
+#top-left {
   position: absolute; top: 10px; left: 12px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; line-height: 1.55; letter-spacing: 0.02em;
+  color: #e8f1fa;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.55);
+}
+#top-lines:empty { display: none; }
+#fps { color: #e8f1fa; }
+#fps.hidden { display: none; }
+/* Sprint is latched, not held, so the HUD says so while the latch is set. */
+#sprint-state { color: #7ec8e8; }
+#sprint-state.hidden { display: none; }
+#top-lines .muted { color: #9fb4c7; }
+
+/* The day dial: a disc, day on its top half and night on its bottom half,
+   turned so the hour now sits under the notch. */
+#day-dial {
+  position: relative; width: 34px; height: 34px; flex: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(10,16,24,0.75), 0 2px 8px rgba(0,0,0,0.45);
+  overflow: hidden;
+}
+#day-dial .dial-face {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 18%, #fff3b0 0 4px, #f4c64f 4.5px 6px, transparent 6.5px),
+    radial-gradient(circle at 50% 82%, #eef2ff 0 4px, transparent 4.5px),
+    linear-gradient(to bottom, #7cc3f2 0%, #a9dcf7 47%, #f2a65a 50%, #26305c 53%, #121a38 100%);
+  will-change: transform;
+}
+#day-dial .dial-notch {
+  position: absolute; left: 50%; top: -1px; width: 0; height: 0;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 6px solid #f1f5f9;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.8));
+}
+
+/* The builder's readout, only with ?debug: position and the chunk line. */
+#debug {
+  position: absolute; top: 52px; left: 12px;
   font-size: 12px; line-height: 1.55; letter-spacing: 0.02em;
   color: #e8f1fa;
   text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.55);
   white-space: pre;
 }
+#debug.hidden { display: none; }
 #debug .muted { color: #9fb4c7; }
-#clock { color: #f4d06f; }
-#audio-state { color: #7ee08a; }
-#audio-state.off { color: #e08a7e; }
-/* Sprint is latched, not held, so the HUD says so while the latch is set. */
-#sprint-state { color: #7ec8e8; }
-#sprint-state.hidden { display: none; }
+
 
 #bottom-hud {
   position: absolute; left: 50%; bottom: 16px;
@@ -513,6 +550,11 @@ kbd {
 }
 #overlay .menu-button:hover { background: rgba(255,255,255,0.16); }
 #overlay .menu-button.danger { color: #ffb4a8; border-color: rgba(224, 138, 126, 0.55); }
+#overlay .menu-button.toggle { min-width: 46px; }
+#overlay .menu-button.toggle[aria-pressed="true"] {
+  color: #10161d; background: var(--accent); border-color: var(--accent);
+}
+
 #overlay .control-row.hidden { display: none; }
 
 #overlay .confirm-row {

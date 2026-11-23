@@ -57,16 +57,17 @@ import {
 import { mobs } from './mob.js';
 import { player } from './player.js';
 import { camera, renderer } from './render.js';
-import {
-  applyDayNight, formatClock, isNight, nudgeDayTime, timeScale
-} from './sky.js';
+import { applyDayNight, clockHours, formatClock, isNight, nudgeDayTime } from './sky.js';
 import { nextBeacon } from './beacons.js';
 import { debugEnabled } from './debug.js';
+import { fpsShown, onSettingsChanged } from './settings.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { createNav } from './menu-nav.js';
 
 const fpsEl = document.getElementById('fps');
-const clockEl = document.getElementById('clock');
+const dayDialEl = document.getElementById('day-dial');
+const dayDialFaceEl = dayDialEl.querySelector('.dial-face');
+const debugEl = document.getElementById('debug');
 const coordsEl = document.getElementById('coords');
 const chunklineEl = document.getElementById('chunkline');
 const missionEl = document.getElementById('mission');
@@ -1762,16 +1763,51 @@ export function sampleFrameRate(seconds) {
   return true;
 }
 
+/* The readout. The day dial and the frame rate are the player's; the position
+   and the chunk line are the builder's and only show with ?debug. */
+debugEl.classList.toggle('hidden', !debugEnabled);
+fpsEl.classList.toggle('hidden', !fpsShown());
+onSettingsChanged(() => {
+  fpsEl.classList.toggle('hidden', !fpsShown());
+  updateDebug();
+});
+
+let dialAngle = null;
+let dialLabel = '';
+
+/**
+ * The day dial: a disc, half day and half night, turned so the hour now sits
+ * under the notch at the top. Noon puts the sun's middle there and midnight
+ * the moon's; dawn and dusk are where the two halves meet.
+ */
+function paintDayDial() {
+  const angle = Math.round((clockHours() / 24) * 360 * 2) / 2;
+  if (angle !== dialAngle) {
+    dialAngle = angle;
+    // The face is drawn with noon at the top, so the turn is measured from
+    // noon: half a turn at midnight, a quarter either way at dawn and dusk.
+    dayDialFaceEl.style.transform = 'rotate(' + (180 - angle) + 'deg)';
+  }
+  const label = formatClock() + ' · ' + (isNight() ? 'Night' : 'Day');
+  if (label !== dialLabel) {
+    dialLabel = label;
+    dayDialEl.title = label;
+    dayDialEl.setAttribute('aria-label', label);
+    dayDialEl.classList.toggle('night', isNight());
+  }
+}
+
 export function updateDebug() {
+  paintDayDial();
+  if (fpsShown()) fpsEl.textContent = 'FPS ' + fps;
+  if (!debugEnabled) return;
   const pos = camera.position;
   const cx = Math.floor(pos.x / CHUNK_SIZE);
   const cz = Math.floor(pos.z / CHUNK_SIZE);
-  fpsEl.textContent = 'FPS ' + fps;
-  clockEl.textContent = formatClock() + ' \u00b7 ' + (isNight() ? 'Night' : 'Day') +
-    (timeScale === 0 ? ' \u00b7 paused' : '');
   coordsEl.textContent =
     'XYZ ' + pos.x.toFixed(1) + ' / ' + pos.y.toFixed(1) + ' / ' + pos.z.toFixed(1);
   chunklineEl.textContent =
-    'Chunk ' + cx + ', ' + cz + ' \u00b7 ' + world.chunks.size + ' loaded \u00b7 ' +
-    mobs.length + ' mobs \u00b7 ' + renderer.info.render.triangles + ' tris';
+    'Chunk ' + cx + ', ' + cz + ' · ' + world.chunks.size + ' loaded · ' +
+    mobs.length + ' mobs · ' + renderer.info.render.triangles + ' tris';
 }
+

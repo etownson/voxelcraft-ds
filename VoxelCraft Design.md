@@ -136,7 +136,7 @@ A first-person controller:
   The latch drops whenever the controls leave the player — pause, any open screen,
   death, respawn, window blur, gamepad disconnect — so a sprint never resumes by
   surprise. Standing still or being in water pauses the effect without dropping the
-  latch. The debug stack shows a `Sprint on` line while it is set
+  latch. The HUD shows a `Sprint on` line beside the day dial while it is set
 - Step-up walking: `PLAYER_STEP_HEIGHT = 0.6`. When a grounded frame's horizontal move
   is blocked, the move is replayed stood a little taller, in lifts up to 0.6, so half-
   block stair treads are walked up rather than jumped. Anything taller still has to be
@@ -716,18 +716,24 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 ## HUD and UI
 
 - Crosshair; hotbar with icons, counts and selection; heart bar; hunger shanks with a
-  jitter animation; ten armour shields (hidden when empty); durability bars; FPS
-  counter and current chunk coordinates for debugging; toasts for every refusal and
-  confirmation
+  jitter animation; ten armour shields (hidden when empty); durability bars; toasts
+  for every refusal and confirmation
+- Top left, a day dial: a disc, day on its top half and night on its bottom, turned
+  so the hour now sits under a notch (noon puts the sun there, midnight the moon,
+  dawn and dusk the seam). Hovering it gives the clock. Beside it, the sprint latch
+  while it is set, and a frame-rate counter only when Settings → Display turns it on
+  (a per-browser preference, kept outside the world save)
+- The position readout (XYZ, chunk, loaded chunks, mobs, triangles) is a debug tool
+  and only shows when the page is opened with `?debug`
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
 - The main menu is the start form and the pause panel in one card: a rail down the
   left holds Start (Resume once the world has been entered), Journal, Settings and
-  Controls, and the page for whichever has the highlight fills the right. Start sits
-  at the top of the rail and never moves; only the page scrolls. The Start page is
-  the mission in two lines and the save line. Settings carries the gamepad status, a
-  look-sensitivity slider, the Master, Sound effects and Music sliders, and New
+  Controls, and the page for whichever has the highlight fills the right. Start sits at the top of the rail and never moves; only the page scrolls.
+  The Start page is the mission in two lines and the save line.
+  Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
+  toggle, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
   highlighted, so a pad can answer. Controls lists keyboard and mouse beside the pad,
   with the column for the hand in use lit. Journal mounts the same book the `J`
@@ -779,7 +785,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   monument on the side they would have walked up from, facing the machine, and says
   which beacon it is and what it wants. Like the shelf, it answers only while the
   walker is in the world with no screen up
-- `M` mutes audio; the debug stack reads sprint state and sound state
+- `M` mutes audio and says so in a toast; the HUD keeps no sound line
 
 ## Particles and feedback
 
@@ -979,5 +985,5 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
-The API is always there, `?debug` or not; the `G` give shelf and the `B` monument tour
-are the human-facing halves of the same door, and only those need the flag.
+The API is always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
+human-facing halves of the same door, and only those need the flag.

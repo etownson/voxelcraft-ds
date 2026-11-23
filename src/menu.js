@@ -15,6 +15,7 @@
  * The journal page mounts the same book the J screen shows (journal.js),
  * rebuilt each time the menu comes up so a fresh transmission is there to read.
  * New world asks before it erases, inside the card, where a pad can answer.
+
  *
  * Every pick answers with the same neutral click: the menu is allowed no other
  * voice, and a walker browsing it must never hear the world answer back.
@@ -25,6 +26,7 @@ import { debugEnabled } from './debug.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
+import { fpsShown, setFpsShown } from './settings.js';
 
 const card = overlayEl.querySelector('.menu-card');
 const rail = overlayEl.querySelector('.menu-rail');
@@ -39,6 +41,7 @@ const confirmRow = document.getElementById('new-world-confirm');
 const keepButton = document.getElementById('new-world-keep');
 const eraseButton = document.getElementById('new-world-erase');
 const controlsPanel = document.getElementById('menu-controls-panel');
+const fpsToggle = document.getElementById('fps-toggle');
 
 for (const row of overlayEl.querySelectorAll('.debug-only')) {
   row.classList.toggle('hidden', !debugEnabled);
@@ -123,6 +126,7 @@ function showPage(name) {
   }
   if (name === 'journal' && !journalBook) mountJournal();
   if (name === 'home') paintHome();
+  if (name === 'settings') paintFpsToggle();
   pagesEl.scrollTop = 0;
   paintHints();
 }
@@ -131,6 +135,21 @@ function paintHome() {
   if (!homeSaveEl) return;
   homeSaveEl.textContent = saveStatusEl ? saveStatusEl.textContent : '';
 }
+
+/* ---------- Display settings ---------- */
+
+function paintFpsToggle() {
+  const on = fpsShown();
+  fpsToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+  fpsToggle.textContent = on ? 'On' : 'Off';
+}
+
+fpsToggle.addEventListener('click', () => {
+  if (!freshPick(fpsToggle)) return;
+  setFpsShown(!fpsShown());
+  paintFpsToggle();
+});
+paintFpsToggle();
 
 /** Steps from the rail into the shown page, back where the highlight left it. */
 function enterPage(name = shownPage) {

@@ -19,14 +19,20 @@
 
 <div id="hud">
   <div id="crosshair"></div>
-  <div id="debug">
-    <div id="fps">FPS --</div>
-    <div id="clock">06:00 &middot; Day</div>
-    <div id="coords" class="muted">XYZ -- / -- / --</div>
+  <div id="top-left">
+    <div id="day-dial" role="img" aria-label="06:00 &middot; Day" title="06:00 &middot; Day">
+      <div class="dial-face"></div>
+      <div class="dial-notch"></div>
+    </div>
+    <div id="top-lines">
+      <div id="fps" class="hidden">FPS --</div>
+      <div id="sprint-state" class="hidden">Sprint on</div>
+      <div id="mission" class="muted">Beacon --</div>
+    </div>
+  </div>
+  <div id="debug" class="hidden">
+    <div id="coords">XYZ -- / -- / --</div>
     <div id="chunkline" class="muted">Chunk --, -- &middot; 0 loaded</div>
-    <div id="mission" class="muted">Beacon --</div>
-    <div id="sprint-state" class="hidden">Sprint on</div>
-    <div id="audio-state">Sound on &middot; M mute</div>
   </div>
 
   <div id="item-toast"></div>
@@ -105,6 +111,12 @@
             <label class="setting-label" for="pad-sens">Look sensitivity</label>
             <input id="pad-sens" type="range" min="0.3" max="3" step="0.1" value="1" data-nav aria-label="Gamepad look sensitivity">
             <span id="pad-sens-value" class="setting-value">1.0&times;</span>
+          </div>
+
+          <div class="menu-heading">Display</div>
+          <div class="setting-row">
+            <span class="setting-label">Frame rate counter</span>
+            <button id="fps-toggle" class="menu-button toggle" type="button" data-nav aria-pressed="false">Off</button>
           </div>
 
           <div class="menu-heading">Sound</div>
@@ -210,6 +222,11 @@
             <span class="control-action">Menu: tabs</span>
             <span class="control-keys kbm"><kbd>Q</kbd><kbd>E</kbd></span>
             <span class="control-keys pad"><kbd>LB</kbd><kbd>RB</kbd></span>
+          </div>
+          <div class="control-row" data-nav>
+            <span class="control-action">Mute</span>
+            <span class="control-keys kbm"><kbd>M</kbd></span>
+            <span class="control-keys pad"></span>
           </div>
           <div class="control-row debug-only hidden" data-nav>
             <span class="control-action">Debug: time</span>
