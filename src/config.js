@@ -235,13 +235,23 @@ export const BEACON_TARGET_HOPS = [40, 200, 300, 400, 600];
  */
 export const BEACON_OUTWARD_BEARING = (26 * Math.PI) / 180;
 /**
- * One essence per this many blocks from SP0; the purse opens at beacon 1's
- * price. The divisor is deliberately mean. A beacon should cost enough that
- * the walker has to live in the band they have already unlocked — farm it,
- * fortify it, learn it — rather than walk up to the next monument and pay for
- * it out of the walk there.
+ * Beacon 1's price: one essence per this many blocks from SP0. The purse
+ * opens holding exactly that, so the first beacon is a walk, not a hunt.
  */
 export const BEACON_ESSENCE_PER_BLOCK = 1.5;
+/**
+ * Every later beacon is priced in kills: about this many hostile kills on the
+ * ground of the beacon lit before it. Enough that the walker has to live in
+ * the zone they have already unlocked — farm it, fortify it, learn it —
+ * before the next monument will answer.
+ */
+export const BEACON_KILLS_TO_LIGHT = 30;
+/**
+ * The middle of a hostile's base essence roll (zombie and creeper both pay
+ * 3–5 in `src/mob.js`), before the ground's difficulty scales it. Keep it in
+ * step with those rolls, or the kill count above drifts.
+ */
+export const HOSTILE_ESSENCE_AVERAGE = 4;
 /**
  * The colour each monument wears once it runs, in mission order: the walk out
  * from SP0 steps through the spectrum, so a lit beacon says which one it is

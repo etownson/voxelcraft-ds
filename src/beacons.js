@@ -15,7 +15,8 @@
  * what the design means by positions that "make sense".
  *
  * Lighting is this layer's whole verb. A right-click on a dark monument asks
- * the essence purse for the beacon's price — one per four blocks from SP0 —
+ * the essence purse for the beacon's price — about thirty kills' worth on
+ * the ground of the beacon before it —
  * and pays it: the block swaps to its lit id, a beam rises off it into the
  * sky, the recipes of the next transmission land in the journal, and the page
  * is handed the transmission's words and the next beacon's price. The
@@ -27,7 +28,8 @@ import { BLOCKS } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { setRecipesTransmitted } from './crafting.js';
 import {
-  B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_OUTWARD_BEARING,
+  B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_KILLS_TO_LIGHT,
+  BEACON_OUTWARD_BEARING, DIFFICULTY_ESSENCE_SCALE, HOSTILE_ESSENCE_AVERAGE,
   BEACON_TARGET_HOPS, CHUNK_SIZE,
   DIFFICULTY_MAX, DIFFICULTY_XZ_STEP, DIFFICULTY_Y_STEP, SEA_LEVEL, WORLD_HEIGHT,
   WORLD_SEED, blockIndex, clamp
@@ -214,18 +216,24 @@ function chooseMonumentColumns() {
 
 /**
  * What a monument knows about itself: where it stands, the leg that reaches it
- * and the price asked there. Price reads distance from SP0, not the length of
- * the leg, because the design charges for how far the walker has come from
- * home, and a chain that curls back toward the spawn should not pay them for
- * the trip.
+ * and the price asked there. Beacon 1 asks for its distance from SP0, which is
+ * what the purse opens with. Every later beacon asks for about
+ * `BEACON_KILLS_TO_LIGHT` kills' essence on the surface where the one before
+ * it stands (`from`), so each is the same hunt in the zone the walker has
+ * just unlocked, however far apart the monuments fall.
  */
 function monumentSite(index, from, x, z, height) {
   const hop = Math.round(Math.hypot(x - from.x, z - from.z));
   const distance = Math.round(Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z));
-  return {
-    index, x, z, y: height, hop, distance,
-    cost: Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK))
-  };
+  let cost;
+  if (index === 0) {
+    cost = Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK));
+  } else {
+    const perKill = HOSTILE_ESSENCE_AVERAGE *
+      (1 + DIFFICULTY_ESSENCE_SCALE * difficultyAt(from.x, SEA_LEVEL, from.z));
+    cost = Math.round(BEACON_KILLS_TO_LIGHT * perKill);
+  }
+  return { index, x, z, y: height, hop, distance, cost };
 }
 
 /** The five monument columns, computed once per world. */

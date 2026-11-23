@@ -16,7 +16,7 @@ Enemy difficulty scales based on their distance along the X and Z axes from wher
   
 You earn essence by killing enemies. The amount of essence received scales with the enemy difficulty. Enemies drop essence bubbles within a close random distance near the area where they die. You must pick them up by running over them (intersecting with them). Otherwise they fade out and are lost. They take a short time to appear so that the player has to be more conscious about navigating to pick them while in the heat of battle.  
   
-The amount of essence required to unlock a new beacon scales with the beacon’s distance from SP0.  
+The first beacon costs what the walker starts with, one essence per 1.5 blocks from SP0. Every later beacon costs about thirty kills’ worth of essence, at the yield an enemy pays on the ground of the beacon lit before it, so each new beacon asks for the same hunt in the zone the last one opened.  
   
 Each time you activate a new beacon you receive a unique transmission with the following:  
 - A little more of the story narrative.  
