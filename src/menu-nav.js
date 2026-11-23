@@ -55,6 +55,12 @@ function reachable(el) {
   return el.getClientRects().length > 0;
 }
 
+/** A field the walker types into: its letters are words, not directions. */
+function isTextField(el) {
+  return !!el && ((el.tagName === 'INPUT' && /^(text|search)$/.test(el.type)) ||
+    el.tagName === 'TEXTAREA');
+}
+
 function isSlider(el) {
   return !!el && el.tagName === 'INPUT' && el.type === 'range';
 }
@@ -260,6 +266,26 @@ export function createNav(root, hooks = {}) {
   function handleKey(event) {
     const code = event.code;
     let spent = true;
+    // Inside a text field only the keys that cannot be typed still walk: up
+    // and down leave the field, Esc steps back. Everything else, WASD, Q, E,
+    // Space and Backspace included, is the walker writing; the field's owner
+    // answers Enter.
+    if (isTextField(event.target) || isTextField(document.activeElement)) {
+      if (code === 'ArrowUp') move(0, -1);
+      else if (code === 'ArrowDown') move(0, 1);
+      else if (code === 'Escape') {
+        if (event.repeat) return true;
+        spent = back();
+      } else {
+        return false;
+      }
+      if (spent) {
+        event.preventDefault();
+        pressedKeys.delete(code);
+        setDevice('keyboard');
+      }
+      return spent;
+    }
     if (code === 'ArrowUp' || code === 'KeyW') move(0, -1);
     else if (code === 'ArrowDown' || code === 'KeyS') move(0, 1);
     else if (code === 'ArrowLeft' || code === 'KeyA') move(-1, 0);

@@ -90,6 +90,26 @@ html, body {
 #debug.hidden { display: none; }
 #debug .muted { color: #9fb4c7; }
 
+/* The waypoint arrow, top centre: up is straight ahead. */
+#waypoint {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: 12px; letter-spacing: 0.02em; color: #f1f5f9;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.55);
+  white-space: nowrap;
+}
+#waypoint.hidden { display: none; }
+#waypoint .waypoint-arrow {
+  width: 26px; height: 26px;
+  background: #f4d06f;
+  clip-path: polygon(50% 0, 100% 72%, 62% 60%, 62% 100%, 38% 100%, 38% 60%, 0 72%);
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.9));
+  transition: transform 60ms linear;
+}
+#waypoint.here .waypoint-arrow {
+  clip-path: circle(32% at 50% 50%);
+}
+#waypoint .waypoint-distance { color: #c7d6e4; }
 
 #bottom-hud {
   position: absolute; left: 50%; bottom: 16px;
@@ -415,7 +435,8 @@ html, body {
 .transcript-line + .transcript-line { margin-top: 5px; }
 
 #control-hint {
-  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  /* Under the waypoint arrow, which has the top centre. */
+  position: absolute; left: 50%; top: 66px; transform: translateX(-50%);
   padding: 5px 11px; border-radius: 3px;
   max-width: 92vw; text-align: center; line-height: 1.4;
   font-size: 11px; color: #f4d06f;
@@ -567,6 +588,32 @@ kbd {
 }
 #overlay .mission-status li.dark { color: #66788a; }
 
+/* Waypoints: one row a target, the followed one marked. */
+#overlay .waypoint-list { display: flex; flex-direction: column; gap: 2px; max-width: 520px; }
+#overlay .waypoint-row { display: flex; align-items: center; gap: 8px; }
+#overlay .waypoint-pick {
+  flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 12px;
+  font: inherit; font-size: 12px; text-align: left; padding: 6px 10px;
+  color: #cfdbe6; background: transparent;
+  border: 1px solid transparent; border-radius: 3px; cursor: pointer;
+}
+#overlay .waypoint-pick:hover { background: rgba(255,255,255,0.06); }
+#overlay .waypoint-pick.current {
+  color: #f1f5f9; background: rgba(244, 208, 111, 0.12);
+  border-color: rgba(244, 208, 111, 0.45);
+}
+#overlay .waypoint-pick.current .waypoint-name::before { content: "\25B2  "; color: var(--accent); }
+#overlay .waypoint-where {
+  color: #7d90a2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+#overlay .waypoint-save-row { justify-content: flex-start; max-width: 520px; }
+#overlay .waypoint-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 6px 9px;
+  color: #eaf3fb; background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+}
+#overlay .waypoint-input::placeholder { color: #66788a; }
+#overlay .waypoint-empty { font-size: 11px; color: #7d90a2; padding: 6px 10px; }
 #overlay .control-row.hidden { display: none; }
 
 #overlay .confirm-row {

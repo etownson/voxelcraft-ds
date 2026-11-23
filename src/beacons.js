@@ -353,9 +353,9 @@ export function tryLightBeacon(x, y, z) {
   deliverTransmission(TRANSMISSIONS[index]);
   const next = nextBeacon();
   if (next) {
-    // No coordinates: the menu's mission page keeps the price, and the
-    // walker finds the way.
-    say('The next beacon wants ' + next.cost + ' essence.');
+    // No coordinates: the HUD arrow points the way, and the menu's mission
+    // page keeps the price.
+    say('The next beacon wants ' + next.cost + ' essence. Follow the arrow.');
   }
   paintMission();
   return true;

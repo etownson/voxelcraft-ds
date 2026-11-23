@@ -77,7 +77,7 @@ import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
-  renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
+  paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, toggleJournal, updateCursorVisual, updateDebug,
@@ -126,6 +126,9 @@ import {
   setDayTime, setTimeScale, timeScale, updateDayNight, updateWaterLook
 } from './sky.js';
 import { desiredWaterLevel, updateWater, waterTick } from './water.js';
+import {
+  activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, waypointTargets
+} from './waypoints.js';
 import { sampleColumn, treeAt } from './worldgen.js';
 
 const saveStatusEl = document.getElementById('save-status');
@@ -157,11 +160,17 @@ function eraseWorld() {
     localStorage.removeItem(SAVE_KEY);
     for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
   } catch (unavailable) {}
+  // The saved spots belong to the world that is going.
+  forgetWaypoints();
   window.location.reload();
 }
 
 function initSaveUi(hasSavedWorld) {
-  setMenuActions({ newWorld: eraseWorld });
+  setMenuActions({
+    newWorld: eraseWorld,
+    // The menu names the spot; where the walker's feet are is the page's to say.
+    saveSpot: (label) => saveWaypoint(label, player.pos.x, player.pos.y, player.pos.z)
+  });
   if (hasSavedWorld) {
     saveStatusEl.textContent = 'Saved world found';
     saveStatusEl.classList.add('found');
@@ -251,7 +260,8 @@ setEssencePainter(() => {
 });
 
 /* The beacon layer speaks through the page too: the mission page in the menu,
-   and the panel the transmissions arrive in. The page also keeps
+   and the panel the transmissions arrive in. The HUD arrow needs no word of
+   it: it asks the waypoint layer every frame, and that reads the beacons live. The page also keeps
    which block of words went up, because one of them is the block the finale
    song waits on. A beacon is lit before its words arrive, so the transmission
    that leaves no beacon to point at is the fifth one. */
@@ -437,6 +447,8 @@ if (loadedSave && loadedSave.sp0) {
   setSpawnPoint0(spawnColumn);
 }
 plantBeaconMonuments();
+// The saved spots are this world's only if they were written for this SP0.
+loadWaypoints();
 
 prepareSpawnChunks(
   Math.floor(spawnColumn.x / CHUNK_SIZE),
@@ -678,8 +690,13 @@ window.__voxelcraft = {
     // Same guard the "New world" button uses: pagehide also writes a save, so
     // without this the wiped world comes straight back on the next load.
     forgetSavedWorld();
+    forgetWaypoints();
     refreshSaveStatus();
     return false;
+  },
+  /** What the HUD arrow could follow, which one it does, and where that is. */
+  waypoints() {
+    return { targets: waypointTargets(), active: activeWaypoint() };
   },
   /** Where the main menu's highlight is, which page is up, and which hand moved it. */
   menuState() {
@@ -2080,6 +2097,7 @@ function animate(now) {
   // Runs after the day/night pass so the water's murk sits on top of the sky's
   // fog, and outside the pause branch so the sea keeps breathing behind a screen.
   updateWaterLook(dt, player.headInWater);
+  paintWaypoint(activeWaypoint(), player.pos, view.yaw);
 
   world.updateStreaming(player.pos.x, player.pos.z);
   updateAudio(dt, player);

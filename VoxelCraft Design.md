@@ -723,17 +723,28 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   dawn and dusk the seam). Hovering it gives the clock. Beside it, the sprint latch
   while it is set, and a frame-rate counter only when Settings → Display turns it on
   (a per-browser preference, kept outside the world save)
+- Top centre, the waypoint arrow: up is straight ahead, and it turns with the walker
+  toward the target, with the target's name, the distance in metres and ▲/▼ when it
+  stands more than four blocks above or below. Within a couple of blocks it becomes
+  a dot. It follows the next beacon by default and moves on by itself when one is
+  lit; the menu's Waypoints page picks any lit beacon or saved spot instead, or no
+  arrow at all
 - The position readout (XYZ, chunk, loaded chunks, mobs, triangles) is a debug tool
   and only shows when the page is opened with `?debug`
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
 - The main menu is the start form and the pause panel in one card: a rail down the
-  left holds Start (Resume once the world has been entered), Journal, Settings and
-  Controls, and the page for whichever has the highlight fills the right. Start sits at the top of the rail and never moves; only the page scrolls.
+  left holds Start (Resume once the world has been entered), Journal, Waypoints,
+  Settings and Controls, and the page for whichever has the highlight fills the
+  right. Start sits at the top of the rail and never moves; only the page scrolls.
   The Start page is the mission: two lines of what the walker was sent for, then one
   line a beacon (lit, the next one with its price and the essence carried, or not
-  found yet; never coordinates), and the save line.
+  found yet; never coordinates), and the save line. Waypoints lists what the HUD
+  arrow can follow and saves the spot the walker stands on under a typed label (a
+  blank label, as from a pad, is numbered); saved spots show their coordinates and
+  can be deleted. They live in their own localStorage key, written for this world's
+  seed and SP0, so a save-schema bump never costs them and New world forgets them.
   Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
   toggle, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
@@ -747,7 +758,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   steps from the rail into the page, and left off the page's edge, B, Esc or
   Backspace steps back. Q/E or LB/RB turn the journal's pages inside the journal and
   walk the rail's pages elsewhere. Left and right step a highlighted slider; up and
-  down leave it. The right stick scrolls the page. Hovering a control highlights it,
+  down leave it. In a text field every key types except up, down and Esc, which
+  leave it, and Enter, which saves. The right stick scrolls the page. Hovering a control highlights it,
   so the mouse and the highlight never disagree. A hint line along the bottom is
   written for the hand that last moved
 - Start is the only way in: the button, Enter or A on it, or the pad's Start from
@@ -987,5 +999,6 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
-The API is always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
+`waypoints()` lists what the arrow can follow and where it points now. The API is
+always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
 human-facing halves of the same door, and only those need the flag.

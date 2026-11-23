@@ -33,6 +33,10 @@
     <div id="coords">XYZ -- / -- / --</div>
     <div id="chunkline" class="muted">Chunk --, -- &middot; 0 loaded</div>
   </div>
+  <div id="waypoint" class="hidden" aria-live="off">
+    <div class="waypoint-arrow" aria-hidden="true"></div>
+    <div class="waypoint-text"><span class="waypoint-label"></span> <span class="waypoint-distance"></span></div>
+  </div>
 
   <div id="item-toast"></div>
   <div id="transmission"></div>
@@ -86,6 +90,7 @@
       <nav class="menu-rail" data-nav-zone="rail" aria-label="Main menu">
         <button id="menu-start" class="menu-choice start" type="button" data-nav data-page="home">Start</button>
         <button id="menu-journal" class="menu-choice" type="button" data-nav data-page="journal" aria-controls="menu-journal-panel">Journal</button>
+        <button id="menu-waypoints" class="menu-choice" type="button" data-nav data-page="waypoints" aria-controls="menu-waypoints-panel">Waypoints</button>
         <button id="menu-settings" class="menu-choice" type="button" data-nav data-page="settings" aria-controls="menu-settings-panel">Settings</button>
         <button id="menu-controls" class="menu-choice" type="button" data-nav data-page="controls" aria-controls="menu-controls-panel">Controls</button>
       </nav>
@@ -100,6 +105,16 @@
 
         <section id="menu-journal-panel" class="menu-panel menu-journal hidden" data-page="journal" aria-label="Journal">
           <div id="journal-menu-body" class="journal-body"></div>
+        </section>
+
+        <section id="menu-waypoints-panel" class="menu-panel menu-waypoints hidden" data-page="waypoints" aria-label="Waypoints">
+          <div class="menu-heading">The arrow points to</div>
+          <div id="waypoint-list" class="waypoint-list"></div>
+          <div class="menu-heading">Save this spot</div>
+          <div class="setting-row waypoint-save-row">
+            <input id="waypoint-label" class="waypoint-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Waypoint 1" data-nav aria-label="Waypoint label">
+            <button id="waypoint-save" class="menu-button" type="button" data-nav>Save</button>
+          </div>
         </section>
 
         <section id="menu-settings-panel" class="menu-panel menu-settings hidden" data-page="settings" aria-label="Settings">

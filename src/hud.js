@@ -69,6 +69,10 @@ const dayDialFaceEl = dayDialEl.querySelector('.dial-face');
 const debugEl = document.getElementById('debug');
 const coordsEl = document.getElementById('coords');
 const chunklineEl = document.getElementById('chunkline');
+const waypointEl = document.getElementById('waypoint');
+const waypointArrowEl = waypointEl.querySelector('.waypoint-arrow');
+const waypointLabelEl = waypointEl.querySelector('.waypoint-label');
+const waypointDistanceEl = waypointEl.querySelector('.waypoint-distance');
 const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
 const armorEl = document.getElementById('armor');
@@ -1792,3 +1796,55 @@ export function updateDebug() {
     mobs.length + ' mobs · ' + renderer.info.render.triangles + ' tris';
 }
 
+/* ---------- The waypoint arrow ---------- */
+
+let waypointShown = false;
+let waypointAngle = null;
+let waypointText = '';
+let waypointDistance = '';
+
+/**
+ * Points the arrow at `target` from `pos`, for a walker facing `yaw`. Up on
+ * the screen is straight ahead. Yaw follows the camera's convention: facing
+ * the point (dx, dz) away is yaw = atan2(-dx, -dz), and a larger yaw has turned
+ * the walker to the left, so the arrow turns the other way.
+ *
+ * The page is only written when something it shows has moved, because this
+ * runs every frame.
+ */
+export function paintWaypoint(target, pos, yaw) {
+  const show = !!target && !activeScreen && !player.dead;
+  if (show !== waypointShown) {
+    waypointShown = show;
+    waypointEl.classList.toggle('hidden', !show);
+  }
+  if (!show) return;
+
+  const dx = target.x - pos.x;
+  const dz = target.z - pos.z;
+  const dy = target.y - pos.y;
+  const flat = Math.hypot(dx, dz);
+  let turn = 0;
+  if (flat > 0.5) {
+    const targetYaw = Math.atan2(-dx, -dz);
+    turn = yaw - targetYaw;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  }
+  const degrees = Math.round(turn * 180 / Math.PI);
+  if (degrees !== waypointAngle) {
+    waypointAngle = degrees;
+    waypointArrowEl.style.transform = 'rotate(' + degrees + 'deg)';
+  }
+  waypointEl.classList.toggle('here', flat <= 2.5);
+
+  if (target.label !== waypointText) {
+    waypointText = target.label;
+    waypointLabelEl.textContent = target.label;
+  }
+  const rise = Math.abs(dy) > 4 ? (dy > 0 ? ' ▲' : ' ▼') : '';
+  const distance = Math.round(Math.hypot(flat, dy)) + ' m' + rise;
+  if (distance !== waypointDistance) {
+    waypointDistance = distance;
+    waypointDistanceEl.textContent = distance;
+  }
+}

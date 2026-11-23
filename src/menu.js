@@ -1,6 +1,6 @@
 /*
  * The main menu: the start form and the pause panel in one card. A rail down
- * the left holds Start, Journal, Settings and Controls; the page for whichever
+ * the left holds Start, Journal, Waypoints, Settings and Controls; the page for whichever
  * of them has the highlight fills the right. Start sits at the top of the rail
  * and never moves, and only the page scrolls.
  *
@@ -17,7 +17,8 @@
  * New world asks before it erases, inside the card, where a pad can answer.
  *
  * The Start page is also the mission's: how many beacons are lit and what the
- * next one wants, without coordinates.
+ * next one wants, without coordinates. The Waypoints page picks what the HUD
+ * arrow follows and saves the spot the walker stands on under a name.
  *
  * Every pick answers with the same neutral click: the menu is allowed no other
  * voice, and a walker browsing it must never hear the world answer back.
@@ -31,6 +32,9 @@ import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
 import { fpsShown, setFpsShown } from './settings.js';
+import {
+  deleteWaypoint, nextWaypointLabel, setActiveWaypoint, waypointTargets
+} from './waypoints.js';
 
 const card = overlayEl.querySelector('.menu-card');
 const rail = overlayEl.querySelector('.menu-rail');
@@ -46,6 +50,9 @@ const keepButton = document.getElementById('new-world-keep');
 const eraseButton = document.getElementById('new-world-erase');
 const controlsPanel = document.getElementById('menu-controls-panel');
 const missionStatusEl = document.getElementById('menu-mission-status');
+const waypointListEl = document.getElementById('waypoint-list');
+const waypointLabelInput = document.getElementById('waypoint-label');
+const waypointSaveButton = document.getElementById('waypoint-save');
 const fpsToggle = document.getElementById('fps-toggle');
 
 for (const row of overlayEl.querySelectorAll('.debug-only')) {
@@ -62,7 +69,9 @@ for (const section of pagesEl.querySelectorAll('.menu-panel[data-page]')) {
 
 const menuActions = {
   /** Erase the saved world and start a fresh one. */
-  newWorld: () => {}
+  newWorld: () => {},
+  /** Save where the walker stands under this label; answers the saved spot. */
+  saveSpot: () => null
 };
 
 /** main.js hands the menu the verbs it cannot do itself. */
@@ -131,6 +140,7 @@ function showPage(name) {
   }
   if (name === 'journal' && !journalBook) mountJournal();
   if (name === 'home') paintHome();
+  if (name === 'waypoints') paintWaypoints();
   if (name === 'settings') paintFpsToggle();
   pagesEl.scrollTop = 0;
   paintHints();
@@ -184,6 +194,97 @@ export function paintMenuMission() {
   }
   missionStatusEl.replaceChildren(...lines);
 }
+
+/* ---------- Waypoints ---------- */
+
+function waypointRow(target) {
+  const row = document.createElement('div');
+  row.className = 'waypoint-row';
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'waypoint-pick' + (target.active ? ' current' : '');
+  pick.dataset.nav = '';
+  pick.dataset.waypoint = target.key;
+  pick.setAttribute('aria-pressed', target.active ? 'true' : 'false');
+  const name = document.createElement('span');
+  name.className = 'waypoint-name';
+  name.textContent = target.label;
+  pick.append(name);
+  if (target.kind === 'saved') {
+    const where = document.createElement('span');
+    where.className = 'waypoint-where';
+    where.textContent = target.x + ' / ' + target.y + ' / ' + target.z;
+    pick.append(where);
+  }
+  pick.addEventListener('click', () => {
+    if (!freshPick(pick)) return;
+    setActiveWaypoint(target.key);
+    paintWaypoints(target.key);
+  });
+  row.append(pick);
+
+  if (target.kind === 'saved') {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'menu-button danger';
+    remove.dataset.nav = '';
+    remove.dataset.waypointDelete = target.key;
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', 'Delete ' + target.label);
+    remove.addEventListener('click', () => {
+      if (!freshPick(remove)) return;
+      deleteWaypoint(target.id);
+      paintWaypoints('next');
+    });
+    row.append(remove);
+  }
+  return row;
+}
+
+/**
+ * Rebuilds the list, and puts the highlight back on `focusKey` when it was in
+ * the list before, so picking a row leaves the hand where it was.
+ */
+function paintWaypoints(focusKey = null) {
+  if (!waypointListEl) return;
+  const targets = waypointTargets();
+  const anyActive = targets.some((t) => t.active);
+  const rows = targets.map(waypointRow);
+  rows.push(waypointRow({ key: 'none', kind: 'none', label: 'No arrow', active: !anyActive }));
+  waypointListEl.replaceChildren(...rows);
+  if (!targets.some((t) => t.kind === 'saved')) {
+    const empty = document.createElement('div');
+    empty.className = 'waypoint-empty';
+    empty.textContent = 'No saved spots yet.';
+    waypointListEl.append(empty);
+  }
+  waypointLabelInput.placeholder = nextWaypointLabel();
+  delete lastFocus.waypoints;
+  if (focusKey) {
+    const again = waypointListEl.querySelector('[data-waypoint="' + focusKey + '"]');
+    if (again) nav.focus(again);
+  }
+}
+
+function saveSpotHere() {
+  const saved = menuActions.saveSpot(waypointLabelInput.value);
+  if (!saved) return;
+  waypointLabelInput.value = '';
+  setActiveWaypoint('saved:' + saved.id);
+  paintWaypoints('saved:' + saved.id);
+}
+
+waypointSaveButton.addEventListener('click', () => {
+  if (!freshPick(waypointSaveButton)) return;
+  saveSpotHere();
+});
+waypointLabelInput.addEventListener('keydown', (event) => {
+  if (event.code !== 'Enter' && event.code !== 'NumpadEnter') return;
+  if (event.repeat) return;
+  event.preventDefault();
+  playMenuClickSound();
+  saveSpotHere();
+});
 
 /* ---------- Display settings ---------- */
 
