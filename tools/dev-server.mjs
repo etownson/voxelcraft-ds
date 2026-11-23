@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /*
- * Static dev server for the game, with a /health endpoint.
+ * Static dev server for the game.
  *
- * `python3 -m http.server` serves the page fine but answers /health with 404,
- * and the local supervisor that polls /health every thirty seconds treats the
- * 404s as a dead server and stops the process. This one answers /health with a
- * 200 so the server stays up, and serves the repo root as plain static files.
+ * It serves the repo root as plain static files, every one with
+ * `Cache-Control: no-store`. `python3 -m http.server` lets the browser cache,
+ * so a reload after an edit or a rebaseline can quietly run stale modules.
+ * It also answers /health with a 200, for anything that wants to check the
+ * server is up.
  *
  * Usage: node tools/dev-server.mjs [port]   (default 8000)
  */

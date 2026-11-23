@@ -14,7 +14,7 @@
  * harness ever clicks one. Then flushChunks/flushLight inside the harness to
  * drain the streaming queue, because lighting over an unloaded chunk reads 0/0.
  *
- * Usage, against a static server on the repo root (python3 -m http.server):
+ * Usage, against a static server on the repo root (node tools/dev-server.mjs):
  *
  *   wipeSave(); reload; then
  *   fetch('tools/snapshot-harness.js').then(r => r.text()).then(eval)

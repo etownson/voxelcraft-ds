@@ -2,7 +2,7 @@
  * Compares the live world against tools/snapshot-baseline.json.
  *
  * Run it as the whole script of a page evaluate, against a static server on the
- * repo root (python3 -m http.server), after wiping the save and reloading:
+ * repo root (node tools/dev-server.mjs), after wiping the save and reloading:
  *
  *   window.__voxelcraft.wipeSave();   // then reload
  *   fetch('tools/snapshot-check.js').then(r => r.text()).then(eval)
