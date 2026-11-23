@@ -15,14 +15,18 @@
  * The journal page mounts the same book the J screen shows (journal.js),
  * rebuilt each time the menu comes up so a fresh transmission is there to read.
  * New world asks before it erases, inside the card, where a pad can answer.
-
+ *
+ * The Start page is also the mission's: how many beacons are lit and what the
+ * next one wants, without coordinates.
  *
  * Every pick answers with the same neutral click: the menu is allowed no other
  * voice, and a walker browsing it must never hear the world answer back.
  */
 
 import { playMenuClickSound } from './audio.js';
+import { beaconSites, beaconsActivatedCount, nextBeacon } from './beacons.js';
 import { debugEnabled } from './debug.js';
+import { essenceCount } from './essence.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
@@ -41,6 +45,7 @@ const confirmRow = document.getElementById('new-world-confirm');
 const keepButton = document.getElementById('new-world-keep');
 const eraseButton = document.getElementById('new-world-erase');
 const controlsPanel = document.getElementById('menu-controls-panel');
+const missionStatusEl = document.getElementById('menu-mission-status');
 const fpsToggle = document.getElementById('fps-toggle');
 
 for (const row of overlayEl.querySelectorAll('.debug-only')) {
@@ -132,8 +137,52 @@ function showPage(name) {
 }
 
 function paintHome() {
+  if (missionLive) paintMenuMission();
   if (!homeSaveEl) return;
   homeSaveEl.textContent = saveStatusEl ? saveStatusEl.textContent : '';
+}
+
+/* ---------- The mission's progress ---------- */
+
+/* The monuments are measured from SP0, which main.js only knows once the save
+   has been read, and the menu comes up before that. So the list stays empty
+   until the page says the mission is there to read. */
+let missionLive = false;
+
+/**
+ * One line a beacon: lit, the one the transmission wants with its price and
+ * the purse, or still dark. No coordinates: the arrow finds the way.
+ */
+export function paintMenuMission() {
+  missionLive = true;
+  if (!missionStatusEl) return;
+  const lit = beaconsActivatedCount();
+  const next = nextBeacon();
+  const total = beaconSites().length;
+  const lines = [];
+  for (const site of beaconSites()) {
+    const li = document.createElement('li');
+    const name = 'Beacon ' + (site.index + 1) + ' of ' + total;
+    if (site.index < lit) {
+      li.className = 'lit';
+      li.textContent = name + ' \u00b7 lit';
+    } else if (next && site.index === next.index) {
+      li.className = 'next';
+      li.textContent = name + ' \u00b7 wants ' + site.cost + ' essence \u00b7 you carry ' +
+        essenceCount();
+    } else {
+      li.className = 'dark';
+      li.textContent = name + ' \u00b7 not found yet';
+    }
+    lines.push(li);
+  }
+  if (!next) {
+    const li = document.createElement('li');
+    li.className = 'lit';
+    li.textContent = 'All ' + total + ' beacons lit';
+    lines.push(li);
+  }
+  missionStatusEl.replaceChildren(...lines);
 }
 
 /* ---------- Display settings ---------- */

@@ -18,7 +18,7 @@
  * the essence purse for the beacon's price — one per four blocks from SP0 —
  * and pays it: the block swaps to its lit id, a beam rises off it into the
  * sky, the recipes of the next transmission land in the journal, and the page
- * is handed the transmission's words and the next beacon's coordinates. The
+ * is handed the transmission's words and the next beacon's price. The
  * order is the mission: beacon 2 will not answer until beacon 1 runs.
  */
 
@@ -353,8 +353,9 @@ export function tryLightBeacon(x, y, z) {
   deliverTransmission(TRANSMISSIONS[index]);
   const next = nextBeacon();
   if (next) {
-    say('Next beacon: ' + next.x + ', ' + (next.y + 1) + ', ' + next.z +
-      ' — it wants ' + next.cost + ' essence.');
+    // No coordinates: the menu's mission page keeps the price, and the
+    // walker finds the way.
+    say('The next beacon wants ' + next.cost + ' essence.');
   }
   paintMission();
   return true;

@@ -731,7 +731,9 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 - The main menu is the start form and the pause panel in one card: a rail down the
   left holds Start (Resume once the world has been entered), Journal, Settings and
   Controls, and the page for whichever has the highlight fills the right. Start sits at the top of the rail and never moves; only the page scrolls.
-  The Start page is the mission in two lines and the save line.
+  The Start page is the mission: two lines of what the walker was sent for, then one
+  line a beacon (lit, the next one with its price and the essence carried, or not
+  found yet; never coordinates), and the save line.
   Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
   toggle, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it

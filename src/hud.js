@@ -58,7 +58,6 @@ import { mobs } from './mob.js';
 import { player } from './player.js';
 import { camera, renderer } from './render.js';
 import { applyDayNight, clockHours, formatClock, isNight, nudgeDayTime } from './sky.js';
-import { nextBeacon } from './beacons.js';
 import { debugEnabled } from './debug.js';
 import { fpsShown, onSettingsChanged } from './settings.js';
 import { buildJournalBody, journalTitle } from './journal.js';
@@ -70,7 +69,6 @@ const dayDialFaceEl = dayDialEl.querySelector('.dial-face');
 const debugEl = document.getElementById('debug');
 const coordsEl = document.getElementById('coords');
 const chunklineEl = document.getElementById('chunkline');
-const missionEl = document.getElementById('mission');
 const hotbarEl = document.getElementById('hotbar');
 const healthEl = document.getElementById('health');
 const armorEl = document.getElementById('armor');
@@ -148,23 +146,6 @@ export function renderEssence() {
   const total = essenceCount();
   essenceEl.classList.toggle('hidden', total <= 0);
   essenceCountEl.textContent = String(total);
-}
-
-/**
- * The mission line: where the beacon the transmission wants stands, what it
- * will ask for, and what the walker happens to be carrying toward it. Once
- * all five are lit the line says so and stops pointing anywhere.
- */
-export function renderMission() {
-  const beacon = nextBeacon();
-  if (!beacon) {
-    missionEl.textContent = 'All five beacons lit';
-    return;
-  }
-  missionEl.textContent =
-    'Beacon ' + (beacon.index + 1) + '/5 \u00b7 ' +
-    beacon.x + ' / ' + (beacon.y + 1) + ' / ' + beacon.z +
-    ' \u00b7 wants ' + beacon.cost + ' \u00b7 carrying ' + essenceCount();
 }
 
 /**

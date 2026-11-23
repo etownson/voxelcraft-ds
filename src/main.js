@@ -77,7 +77,7 @@ import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
-  renderHealth, renderHotbar, renderHunger, renderMission, renderScreen, sampleFrameRate,
+  renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, toggleJournal, updateCursorVisual, updateDebug,
@@ -106,7 +106,7 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
-import { menuState, padMenuTick, setMenuActions } from './menu.js';
+import { menuState, padMenuTick, paintMenuMission, setMenuActions } from './menu.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
@@ -242,21 +242,21 @@ registerSpeaker(showToast);
 setHungerPainter(renderHunger);
 
 /* The carried essence gets its picture the same way: the essence layer says
-   when the total moves, and never names the row it draws. The mission line
-   quotes what is being carried toward the next beacon, so the purse repaints
-   both. */
+   when the total moves, and never names the row it draws. The menu's mission
+   page quotes what is being carried toward the next beacon, so the purse
+   repaints both. */
 setEssencePainter(() => {
   renderEssence();
-  renderMission();
+  paintMenuMission();
 });
 
-/* The beacon layer speaks through the page too: the mission line under the
-   readout, and the panel the transmissions arrive in. The page also keeps
+/* The beacon layer speaks through the page too: the mission page in the menu,
+   and the panel the transmissions arrive in. The page also keeps
    which block of words went up, because one of them is the block the finale
    song waits on. A beacon is lit before its words arrive, so the transmission
    that leaves no beacon to point at is the fifth one. */
 let finaleSongWaiting = false;
-setBeaconPainter(renderMission);
+setBeaconPainter(paintMenuMission);
 setTransmissionDeliverer((lines) => {
   finaleSongWaiting = nextBeacon() === null;
   showTransmission(lines);
@@ -499,7 +499,7 @@ if (!loadedSave) {
   // talks. Its first music is the arrival song, at the end of all that.
   setArrivalHold(true);
 }
-renderMission();
+paintMenuMission();
 
 /* Both mission songs land when the transmitter stops talking: the last line
    typed out, or the panel closed early. The arrival song is the tail of the

@@ -54,7 +54,6 @@ html, body {
 /* Sprint is latched, not held, so the HUD says so while the latch is set. */
 #sprint-state { color: #7ec8e8; }
 #sprint-state.hidden { display: none; }
-#top-lines .muted { color: #9fb4c7; }
 
 /* The day dial: a disc, day on its top half and night on its bottom half,
    turned so the hour now sits under the notch. */
@@ -554,6 +553,19 @@ kbd {
 #overlay .menu-button.toggle[aria-pressed="true"] {
   color: #10161d; background: var(--accent); border-color: var(--accent);
 }
+
+/* The mission page: one line a beacon, the next one lit up. */
+#overlay .mission-status {
+  list-style: none; margin: 4px 0 14px; padding: 0; max-width: 520px;
+  font-size: 12px; line-height: 1.5; color: #9fb4c7;
+}
+#overlay .mission-status li { padding: 4px 8px; }
+#overlay .mission-status li.lit { color: #7ee08a; }
+#overlay .mission-status li.next {
+  color: #f1f5f9; background: rgba(244, 208, 111, 0.1);
+  border-left: 2px solid var(--accent);
+}
+#overlay .mission-status li.dark { color: #66788a; }
 
 #overlay .control-row.hidden { display: none; }
 

@@ -21,7 +21,7 @@ The amount of essence required to unlock a new beacon scales with the beacon’s
 Each time you activate a new beacon you receive a unique transmission with the following:  
 - A little more of the story narrative.  
 - Some new recipes that help you survive well enough in the outer areas necessary to reach the next beacon.  
-- The XYZ coordinate of the next beacon to find. Your current XYZ coordinate is always displayed in the HUD as well as the XYZ coordinate of the next beacon.  Note: The current game’s world generation will need to be adjusted so that the first two beacon positions are created after the initial part of the world is generated such that they make sense. For example, the beacon position cannot be within a body of water.  
+- The next beacon to find. The main menu's mission page says what it wants and what you carry; no coordinates are shown.  Note: The current game’s world generation will need to be adjusted so that the first two beacon positions are created after the initial part of the world is generated such that they make sense. For example, the beacon position cannot be within a body of water.  
 —  
 ## Beacon Number 1 Transmission  
 You understand the following from the transmission:  
