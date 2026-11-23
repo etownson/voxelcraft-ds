@@ -31,6 +31,7 @@ import {
 } from './config.js';
 import { spillBlockEntityContents } from './containers.js';
 import { spawnItemDrop } from './drops.js';
+import { spawnEssenceBurst } from './essence.js';
 import { FARMLAND_WET_REACH, isFarmlandWet } from './farming.js';
 import { spawnBlockBreakParticles } from './fx.js';
 import { triggerHeldSwing } from './held.js';
@@ -246,6 +247,12 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
       if (drop.chance != null && Math.random() >= drop.chance) continue;
       const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
       spawnItemDrop(drop.item, count, x + 0.5, y + 0.5, z + 0.5);
+    }
+    // Ore also pays essence, the block's own half of the fuel economy. It
+    // rides the same canHarvest gate as the item drops: a pickaxe below the
+    // ore's tier breaks the block and gets nothing at all, essence included.
+    if (block.essence) {
+      spawnEssenceBurst(block.essence, x + 0.5, y + 0.5, z + 0.5);
     }
   }
   spawnBlockBreakParticles(x, y, z, id);

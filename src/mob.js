@@ -826,6 +826,8 @@ function explodeCreeper(mob) {
   const radius = 2.2;
   const edits = [];
   const drops = [];
+  // The ore the crater eats pays essence the way a pickaxe break does.
+  let blastEssence = 0;
   // One door spread over two cells should only pay out its item once.
   const blastDoors = new Set();
 
@@ -860,6 +862,7 @@ function explodeCreeper(mob) {
             x: x + 0.5, y: y + 0.5, z: z + 0.5
           });
         }
+        if (block.essence) blastEssence += block.essence;
       }
     }
   }
@@ -867,6 +870,9 @@ function explodeCreeper(mob) {
   if (edits.length) world.setBlocksBatch(edits);
   for (const drop of drops) {
     mobDrop(drop.id, drop.count, drop.x, drop.y, drop.z);
+  }
+  if (blastEssence > 0 && dropEssence) {
+    dropEssence(blastEssence, cx, cy, cz);
   }
 
   spawnBurstParticles(cx, cy, cz, 0xff9a3c, 26, 10);

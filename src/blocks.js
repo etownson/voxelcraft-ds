@@ -47,13 +47,20 @@ export const BLOCKS = [
     id: B.COAL_ORE, key: 'coal_ore', name: 'Coal Ore',
     tiles: { top: 'coal_ore', bottom: 'coal_ore', side: 'coal_ore' },
     solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 1,
-    drops: [{ item: 'coal', min: 1, max: 2 }], placeable: true
+    drops: [{ item: 'coal', min: 1, max: 2 }],
+    // Broken ore also pays essence, the safe half of the fuel economy. One
+    // per coal is the base rung of the ladder: a kill still pays more, three
+    // to five before difficulty, so fighting stays the fast road and mining
+    // the patient one.
+    essence: 1, placeable: true
   },
   {
     id: B.IRON_ORE, key: 'iron_ore', name: 'Iron Ore',
     tiles: { top: 'iron_ore', bottom: 'iron_ore', side: 'iron_ore' },
     solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 2,
-    drops: [{ item: 'raw_iron', min: 1, max: 1 }], placeable: true
+    drops: [{ item: 'raw_iron', min: 1, max: 1 }],
+    // Two: the middle rung of the ore essence ladder above.
+    essence: 2, placeable: true
   },
   {
     id: B.SAND, key: 'sand', name: 'Sand',
@@ -124,7 +131,10 @@ export const BLOCKS = [
     id: B.DIAMOND_ORE, key: 'diamond_ore', name: 'Diamond Ore',
     tiles: { top: 'diamond_ore', bottom: 'diamond_ore', side: 'diamond_ore' },
     solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', tier: 3,
-    drops: [{ item: 'diamond', min: 1, max: 1 }], placeable: true
+    drops: [{ item: 'diamond', min: 1, max: 1 }],
+    // Four: the deep, rare end of the ladder — a single diamond block is
+    // worth nearly a full low-difficulty kill.
+    essence: 4, placeable: true
   },
   {
     id: B.FURNACE, key: 'furnace', name: 'Furnace',
