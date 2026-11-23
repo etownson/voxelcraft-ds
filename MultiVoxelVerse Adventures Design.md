@@ -29,6 +29,7 @@ You understand the following from the transmission:
 - You are now incarnated as a biological creature and the transmitter apologizes for subjecting you to the horrors of dealing with health and hunger.  
 - The transmitter warns about awful creatures at night but urges you to be brave and extract essence from them.  
 - The transmitter expresses urgency for you to find the second beacon but warns you to first establish a base before attempting to activate it.  
+- The transmission closes by urging you to prepare for nightfall: torches lit, a door hung and food cooked before the sun goes down.  
   
 The initial transmission provides enough recipes so that a player can survive in the area around SP0, establish a base, and ultimately make it to the second beacon for further unlocks.  
   
