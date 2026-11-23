@@ -412,19 +412,6 @@ kbd {
   flex: 0 0 auto; white-space: nowrap;
 }
 #overlay .setting-note { color: #7d90a2; }
-#overlay .transmission-settings {
-  display: grid; gap: 2px;
-  padding: 4px 8px; text-align: left;
-  font-size: 11px; color: #9fb4c7; letter-spacing: 0.03em;
-}
-#overlay .transmission-settings .setting-check {
-  display: flex; align-items: center; gap: 7px; cursor: pointer;
-}
-#overlay .transmission-settings input[type="checkbox"] {
-  width: 14px; height: 14px; margin: 0; cursor: pointer;
-  accent-color: var(--accent);
-}
-#overlay .transmission-settings .setting-note { font-size: 10.5px; }
 #overlay .pad-settings button {
   font: inherit; font-size: 13px; line-height: 1; width: 24px; height: 22px;
   padding: 0; color: #eaf3fb; background: rgba(255,255,255,0.07);

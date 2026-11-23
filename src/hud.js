@@ -61,7 +61,7 @@ import {
   applyDayNight, formatClock, isNight, nudgeDayTime, timeScale, toggleTimeFrozen
 } from './sky.js';
 import { nextBeacon } from './beacons.js';
-import { buildTransmissionColumn, transmissionJournalOn } from './transmissions.js';
+import { buildTransmissionColumn } from './transmissions.js';
 
 const fpsEl = document.getElementById('fps');
 const clockEl = document.getElementById('clock');
@@ -673,11 +673,10 @@ function buildFurnaceColumn() {
 
    Beside it sits the second page — the transmissions themselves, whole and in
    the order they were heard — for a walker who missed a line while the line was
-   bad. It is a Settings switch, off until it is asked for, so most journals have
-   one page and the story stays something the player overheard. */
-const JOURNAL_SCREEN_HINT =
-  'Recipes arrive whole from the beacons \u00b7 J or B close';
-const JOURNAL_PAGES_HINT =
+   bad. Every journal has both pages. Hiding the way back behind a Settings
+   switch read as stingy in practice: whoever missed a sentence has to find the
+   switch before they can learn there was a way back to it at all. */
+const JOURNAL_HINT =
   'Recipes arrive whole from the beacons \u00b7 \u2190 \u2192 turns the page \u00b7 J or B close';
 
 /** The pages, in the order they are bound: recipes, then the mission's words. */
@@ -688,12 +687,13 @@ const JOURNAL_PAGES = [
 /** The page the journal last showed. */
 let journalPage = 'recipes';
 
-/** The pages this journal has: one, until the transmission journal is on. */
+/** The pages this journal has: the recipes, and the words that carried them. */
 function journalPages() {
-  return transmissionJournalOn() ? JOURNAL_PAGES : JOURNAL_PAGES.slice(0, 1);
+  return JOURNAL_PAGES;
 }
 
-/** The page that is up, which falls back to recipes if the setting went off. */
+/** The page that is up, which falls back to recipes for a page this journal
+ *  does not have. */
 function currentJournalPage() {
   return journalPages().some(([id]) => id === journalPage) ? journalPage : 'recipes';
 }
@@ -795,24 +795,22 @@ function fillJournal(wrap, turned = null) {
   wrap.innerHTML = '';
 
   const pages = journalPages();
-  if (pages.length > 1) {
-    const tabs = document.createElement('div');
-    tabs.className = 'journal-tabs';
-    for (const [id, label] of pages) {
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.className = 'journal-tab';
-      tab.textContent = label;
-      tab.classList.toggle('selected', id === currentJournalPage());
-      tab.addEventListener('click', () => {
-        setJournalPage(id);
-        fillJournal(wrap, turned);
-        if (turned) turned();
-      });
-      tabs.append(tab);
-    }
-    wrap.append(tabs);
+  const tabs = document.createElement('div');
+  tabs.className = 'journal-tabs';
+  for (const [id, label] of pages) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'journal-tab';
+    tab.textContent = label;
+    tab.classList.toggle('selected', id === currentJournalPage());
+    tab.addEventListener('click', () => {
+      setJournalPage(id);
+      fillJournal(wrap, turned);
+      if (turned) turned();
+    });
+    tabs.append(tab);
   }
+  wrap.append(tabs);
 
   wrap.append(currentJournalPage() === 'transmissions'
     ? buildTransmissionColumn()
@@ -854,9 +852,7 @@ export function renderScreen() {
   // The journal shares the panel and also nothing else: no pack, no grid,
   // no cursor — recipes are learned whole and cannot be carried.
   if (activeScreen === 'journal') {
-    screenHint.textContent = journalPages().length > 1
-      ? JOURNAL_PAGES_HINT
-      : JOURNAL_SCREEN_HINT;
+    screenHint.textContent = JOURNAL_HINT;
     screenBody.innerHTML = '';
     screenBody.append(buildJournalBody(paintJournalTitle));
     paintJournalTitle();

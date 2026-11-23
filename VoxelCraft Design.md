@@ -725,8 +725,11 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   Controls, Settings, Journal, Start — where the first three open one panel at a
   time under the menu, and choosing an open one again closes it. Controls lists
   keyboard, mouse, and pad; Settings carries the gamepad status, look sensitivity,
-  the save line with New world, and the volume sliders; Journal repeats the recipes
-  the beacons have transmitted. Start — or a click on the dark around the panel —
+  the save line with New world, and the volume sliders; Journal turns two pages —
+  the recipes the beacons have transmitted, and the transmissions themselves,
+  whole and in the order they were heard, one block per beacon already lit. Both
+  pages are in every journal: the way back to a line that came through bad is
+  findable, not something to switch on first. Start — or a click on the dark around the panel —
   locks the pointer and lets the walker go; the pad walks the choices with the
   D-pad or left stick and picks with A, while Start on the pad means resume.
   Every choice answers with one neutral click at a fixed pitch — not the
