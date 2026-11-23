@@ -54,10 +54,11 @@ html, body {
 /* Sprint is latched, not held, so the HUD says so while the latch is set. */
 #sprint-state { color: #7ec8e8; }
 #sprint-state.hidden { display: none; }
-/* The threat of the ground underfoot: a name, and six pips that fill with it. */
-#threat { display: flex; align-items: center; gap: 6px; --threat: #7bd88f; }
+/* The threat zone underfoot: a pip per zone reached, coloured by where it
+   stands against the last lit beacon's zone. */
+#threat { display: flex; align-items: center; gap: 6px; --threat: #f1e06a; }
 #threat.hidden { display: none; }
-#threat .threat-label { color: var(--threat); }
+#threat .threat-label { color: #e8f1fa; }
 #threat .threat-pips { display: flex; gap: 2px; }
 #threat .threat-pips i {
   width: 7px; height: 7px;
@@ -65,12 +66,9 @@ html, body {
   box-shadow: 0 0 0 1px rgba(10,16,24,0.85);
 }
 #threat .threat-pips i.lit { background: var(--threat); }
-#threat.threat-1 { --threat: #b8e07a; }
-#threat.threat-2 { --threat: #f1e06a; }
-#threat.threat-3 { --threat: #f6b54e; }
-#threat.threat-4 { --threat: #f28a3c; }
-#threat.threat-5 { --threat: #ec5a3a; }
-#threat.threat-6 { --threat: #d8323c; }
+#threat.threat-behind { --threat: #7bd88f; }
+#threat.threat-level { --threat: #f1e06a; }
+#threat.threat-beyond { --threat: #ec5a3a; }
 
 /* The day dial: a disc, day on its top half and night on its bottom half,
    turned so the hour now sits under the notch. */

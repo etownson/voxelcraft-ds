@@ -12,7 +12,7 @@ You start with no items in your inventory. You can punch trees and gather logs l
   
 The initial point where you spawn into the world is spawn point 0 (SP0). The first beacon is near SP0 but is just far enough away to require a short bit of exploration.  
   
-Enemy difficulty scales based on their distance along the X and Z axes from where they initially spawn versus SP0. Enemies only start additionally scaling in difficulty along the Y axis once they are below sea level. Enemy scaling dimensions are spawn frequency, health, and attack damage. The HUD names the threat of the ground underfoot, by tier and six pips, so the walker can tell how far from safety they have come.  
+Enemy difficulty scales based on their distance along the X and Z axes from where they initially spawn versus SP0. Enemies only start additionally scaling in difficulty along the Y axis once they are below sea level. Enemy scaling dimensions are spawn frequency, health, and attack damage. The HUD shows the threat zone underfoot as pips, coloured green behind the most recently lit beacon’s zone, yellow in it, and red beyond it, so the walker can tell when they have outrun what their recipes were meant for.  
   
 You earn essence by killing enemies. The amount of essence received scales with the enemy difficulty. Enemies drop essence bubbles within a close random distance near the area where they die. You must pick them up by running over them (intersecting with them). Otherwise they fade out and are lost. They take a short time to appear so that the player has to be more conscious about navigating to pick them while in the heat of battle.  
   

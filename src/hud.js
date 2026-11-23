@@ -1855,28 +1855,44 @@ export function paintWaypoint(target, pos, yaw) {
 
 /* ---------- The threat line ---------- */
 
-/* One name per whole step of difficulty, SP0's calm out to the capped edge. */
-const THREAT_NAMES = ['Calm', 'Uneasy', 'Wary', 'Hostile', 'Perilous', 'Deadly', 'Lethal'];
+/*
+ * Every stretch of ground is under pressure at night, so the line does not
+ * pretend some of it is safe. It shows which threat zone the walker stands in
+ * (one zone per whole step of difficulty, a pip each) and colours the pips by
+ * where that zone sits against the last lit beacon's: behind it, level with
+ * it, or beyond it.
+ */
+const THREAT_ZONES = DIFFICULTY_MAX + 1;
+const THREAT_STANDING = {
+  behind: 'behind your last beacon',
+  level: 'level with your last beacon',
+  beyond: 'beyond your last beacon'
+};
 
 const threatEl = document.getElementById('threat');
 const threatLabelEl = threatEl.querySelector('.threat-label');
 const threatPipsEl = threatEl.querySelector('.threat-pips');
-for (let i = 0; i < DIFFICULTY_MAX; i++) {
+threatLabelEl.textContent = 'Zone';
+for (let i = 0; i < THREAT_ZONES; i++) {
   threatPipsEl.appendChild(document.createElement('i'));
 }
 
 let threatShown = false;
-let threatTier = -1;
+let threatZone = -1;
+let threatStanding = '';
 let threatTitle = '';
 
+function threatZoneOf(difficulty) {
+  return Math.floor(clamp(difficulty, 0, DIFFICULTY_MAX));
+}
+
 /**
- * Names how hard the ground underfoot makes its creatures: the same
- * difficulty the mobs are bred with, so depth below sea level counts too.
- * The name and the pips move in whole steps; hovering gives the tenth.
- * Like the arrow, it stands aside while a screen is open or the walker is down,
- * and it only writes the page when something it shows has changed.
+ * Paints the zone of `difficulty` (the ground underfoot, depth included) and
+ * how it stands against `frontier`, the difficulty at the most recently lit
+ * beacon. Like the arrow, it stands aside while a screen is open or the walker
+ * is down, and it only writes the page when something it shows has changed.
  */
-export function paintThreat(difficulty) {
+export function paintThreat(difficulty, frontier = 0) {
   const show = !activeScreen && !player.dead && Number.isFinite(difficulty);
   if (show !== threatShown) {
     threatShown = show;
@@ -1884,17 +1900,20 @@ export function paintThreat(difficulty) {
   }
   if (!show) return;
 
-  const level = clamp(difficulty, 0, DIFFICULTY_MAX);
-  const tier = Math.min(THREAT_NAMES.length - 1, Math.floor(level));
-  if (tier !== threatTier) {
-    threatEl.classList.remove('threat-' + threatTier);
-    threatTier = tier;
-    threatEl.classList.add('threat-' + tier);
-    threatLabelEl.textContent = 'Threat: ' + THREAT_NAMES[tier];
+  const zone = threatZoneOf(difficulty);
+  const home = threatZoneOf(Number.isFinite(frontier) ? frontier : 0);
+  const standing = zone < home ? 'behind' : zone > home ? 'beyond' : 'level';
+  if (zone !== threatZone) {
+    threatZone = zone;
     const pips = threatPipsEl.children;
-    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i < tier);
+    for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('lit', i <= zone);
   }
-  const title = 'Threat: ' + THREAT_NAMES[tier] + ' (' + level.toFixed(1) + ' of ' + DIFFICULTY_MAX + ')';
+  if (standing !== threatStanding) {
+    threatEl.classList.remove('threat-' + threatStanding);
+    threatStanding = standing;
+    threatEl.classList.add('threat-' + standing);
+  }
+  const title = 'Threat zone ' + (zone + 1) + ' of ' + THREAT_ZONES + ' · ' + THREAT_STANDING[standing];
   if (title !== threatTitle) {
     threatTitle = title;
     threatEl.title = title;

@@ -310,6 +310,17 @@ export function nextBeacon() {
 }
 
 /**
+ * The difficulty of the ground the mission has reached: where the most
+ * recently lit beacon stands, or SP0's calm before any is lit. The HUD
+ * measures the walker's threat zone against it.
+ */
+export function frontierDifficulty() {
+  if (beaconsActivated <= 0) return 0;
+  const site = beaconSites()[beaconsActivated - 1];
+  return site ? difficultyAt(site.x, site.y + 1, site.z) : 0;
+}
+
+/**
  * The starting purse, for a world that has not had a kill yet: the design
  * says the walker begins with just enough for one activation — beacon 1's.
  */

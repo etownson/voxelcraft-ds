@@ -735,11 +735,13 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   dawn and dusk the seam). Hovering it gives the clock. Beside it, the sprint latch
   while it is set, and a frame-rate counter only when Settings → Display turns it on
   (a per-browser preference, kept outside the world save)
-- Under those, the threat line: the enemy difficulty of the ground underfoot
-  (`difficultyAt`, so X/Z distance from SP0 and depth below sea level), named by whole
-  step — Calm, Uneasy, Wary, Hostile, Perilous, Deadly, Lethal — with six pips that
-  fill green to red. Hovering it gives the value to a tenth. It hides behind screens
-  and the death screen, like the waypoint arrow
+- Under those, the threat zone: `Zone` and seven pips, one lit per zone reached.
+  A zone is a whole step of enemy difficulty (`difficultyAt`, so X/Z distance from SP0
+  and depth below sea level). Every zone is dangerous at night, so the pips don't
+  grade danger; their colour says where the zone stands against the last lit
+  beacon's (SP0's before any is lit): green behind it, yellow level with it, red
+  beyond it. Hovering gives the zone and that standing. It hides behind screens and
+  the death screen, like the waypoint arrow
 - Top centre, the waypoint arrow: up is straight ahead, and it turns with the walker
   toward the target, with the target's name, the distance in metres and ▲/▼ when it
   stands more than four blocks above or below. Within a couple of blocks it becomes

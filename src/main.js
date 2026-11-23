@@ -36,7 +36,7 @@ import {
 } from './blocks.js';
 import {
   SPAWN_TRANSMISSION, beaconReport, beaconSites, beaconsActivatedCount, clearBeaconBeams,
-  difficultyAt,
+  difficultyAt, frontierDifficulty,
   nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconPainter, setSpawnPoint0,
   setTransmissionDeliverer, spawnPoint, startingEssence
 } from './beacons.js';
@@ -2103,7 +2103,7 @@ function animate(now) {
   // fog, and outside the pause branch so the sea keeps breathing behind a screen.
   updateWaterLook(dt, player.headInWater);
   paintWaypoint(activeWaypoint(), player.pos, view.yaw);
-  paintThreat(difficultyAt(player.pos.x, player.pos.y, player.pos.z));
+  paintThreat(difficultyAt(player.pos.x, player.pos.y, player.pos.z), frontierDifficulty());
 
   world.updateStreaming(player.pos.x, player.pos.z);
   updateAudio(dt, player);
