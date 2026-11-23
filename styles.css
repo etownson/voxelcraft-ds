@@ -513,6 +513,8 @@ kbd {
 }
 #overlay .menu-button:hover { background: rgba(255,255,255,0.16); }
 #overlay .menu-button.danger { color: #ffb4a8; border-color: rgba(224, 138, 126, 0.55); }
+#overlay .control-row.hidden { display: none; }
+
 #overlay .confirm-row {
   background: rgba(224, 138, 126, 0.08);
   border: 1px solid rgba(224, 138, 126, 0.3); border-radius: 3px;

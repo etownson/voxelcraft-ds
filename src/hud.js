@@ -58,9 +58,10 @@ import { mobs } from './mob.js';
 import { player } from './player.js';
 import { camera, renderer } from './render.js';
 import {
-  applyDayNight, formatClock, isNight, nudgeDayTime, timeScale, toggleTimeFrozen
+  applyDayNight, formatClock, isNight, nudgeDayTime, timeScale
 } from './sky.js';
 import { nextBeacon } from './beacons.js';
+import { debugEnabled } from './debug.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { createNav } from './menu-nav.js';
 
@@ -1457,14 +1458,16 @@ window.addEventListener('keydown', (event) => {
     (event.key && event.key.toLowerCase() === 'g');
   const isJournalKey = event.code === 'KeyJ' ||
     (event.key && event.key.toLowerCase() === 'j');
-  const isTourKey = event.code === 'KeyT' ||
-    (event.key && event.key.toLowerCase() === 't');
+  // The shelf and the tour are debug tools: without ?debug the keys are
+  // nobody's, and fall through like any other letter.
+  const isTourKey = debugEnabled && (event.code === 'KeyB' ||
+    (event.key && event.key.toLowerCase() === 'b'));
   const isEscape = event.code === 'Escape' || event.key === 'Escape';
 
   if (isInventoryKey) {
     event.preventDefault();
     toggleInventory();
-  } else if (isGiveKey) {
+  } else if (isGiveKey && debugEnabled) {
     event.preventDefault();
     // Shift+G is the shelf's own key shifted: it hands out essence, which has
     // no shelf tile because it never sits in a slot.
@@ -1475,8 +1478,8 @@ window.addEventListener('keydown', (event) => {
     toggleJournal();
   } else if (isTourKey) {
     event.preventDefault();
-    // T walks the debug tour one stop forward — SP0, then the five monuments,
-    // then home — and Shift+T walks it back. Only while the walker is standing
+    // B walks the debug tour one stop forward — SP0, then the five monuments,
+    // then home — and Shift+B walks it back. Only while the walker is standing
     // in the world with no screen up, so the key cannot fire through the start
     // overlay, the pause panel or the give shelf.
     if (beaconJumper && !activeScreen && !player.dead &&
@@ -1724,13 +1727,9 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (event.code === 'KeyT' && !event.repeat) {
-    const running = toggleTimeFrozen();
-    showToast(running ? 'Time resumed' : 'Time paused');
-    updateDebug();
-    return;
-  }
-  if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
+  // Time only stops behind a screen or the menu now; the brackets that push it
+  // about are a debug tool.
+  if (debugEnabled && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
     const delta = event.code === 'BracketLeft' ? -0.02 : 0.02;
     nudgeDayTime(delta);
     applyDayNight();

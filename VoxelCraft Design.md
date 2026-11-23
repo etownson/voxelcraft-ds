@@ -765,14 +765,17 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`
   is the gate every global listener checks
+- Debug keys answer only when the page is opened with `?debug`; without it they are
+  ordinary unbound letters. Time stops only behind a screen or the menu: there is no
+  key to freeze it any more. `[` and `]` nudge the time of day back and forward
 - A `G` debug shelf lists every item — blocks first, then materials, food, tools and
   armour — as a nine-wide grid of icons: left click adds a whole stack, right click
   one, on mouse and pad alike. It is a debug option, not a shop: the shelf never
   empties, and a full pack says *No room in your pack*
 - `Shift+G` hands out essence, a hundred at a press: the shelf's key shifted, because
   essence never sits in a slot to be clicked
-- `T` walks a debug tour — SP0, then the five monuments in mission order, then home —
-  and `Shift+T` walks it back. Each stop stands the walker three blocks out from the
+- `B` walks a debug tour — SP0, then the five monuments in mission order, then home —
+  and `Shift+B` walks it back. Each stop stands the walker three blocks out from the
   monument on the side they would have walked up from, facing the machine, and says
   which beacon it is and what it wants. Like the shelf, it answers only while the
   walker is in the world with no screen up
@@ -976,5 +979,5 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
-The `G` give shelf and the `T` monument tour are the human-facing halves of the same
-door.
+The API is always there, `?debug` or not; the `G` give shelf and the `B` monument tour
+are the human-facing halves of the same door, and only those need the flag.

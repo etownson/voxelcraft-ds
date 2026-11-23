@@ -262,7 +262,7 @@ setTransmissionDeliverer((lines) => {
   showTransmission(lines);
 });
 
-/* And the key that skips the walk: the HUD asks, the page moves the walker. */
+/* And the debug key that skips the walk: the HUD asks, the page moves the walker. */
 setBeaconJumper(tourDebugStops);
 
 /* The hearts are the same kind of picture, and so is the red wash: the body

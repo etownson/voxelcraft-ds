@@ -21,6 +21,7 @@
  */
 
 import { playMenuClickSound } from './audio.js';
+import { debugEnabled } from './debug.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
@@ -38,6 +39,10 @@ const confirmRow = document.getElementById('new-world-confirm');
 const keepButton = document.getElementById('new-world-keep');
 const eraseButton = document.getElementById('new-world-erase');
 const controlsPanel = document.getElementById('menu-controls-panel');
+
+for (const row of overlayEl.querySelectorAll('.debug-only')) {
+  row.classList.toggle('hidden', !debugEnabled);
+}
 
 const railButtons = Array.from(rail.querySelectorAll('[data-page]'));
 const pages = {};

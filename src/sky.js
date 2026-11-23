@@ -34,12 +34,6 @@ export function advanceDayTime(seconds) {
   dayTime = (dayTime + seconds / DAY_LENGTH_SECONDS) % 1;
 }
 
-/** Stops the sun, or starts it again. True when time is running. */
-export function toggleTimeFrozen() {
-  timeScale = timeScale === 0 ? 1 : 0;
-  return timeScale !== 0;
-}
-
 /** How fast the clock runs; 0 stands still, and nothing runs backwards. */
 export function setTimeScale(scale) { timeScale = Math.max(0, Number(scale) || 0); }
 
