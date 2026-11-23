@@ -173,6 +173,11 @@ export function setAudioListener(values) {
 
 export let audioCtx = null;
 let audioMaster = null;
+/** Everything but the ui bus passes here; the main menu closes it. */
+let audioWorldGate = null;
+/** The main menu is up: the world is faded out and its clock suspended. */
+let audioMenuPaused = false;
+let audioMenuSuspendTimer = null;
 let audioMuffle = null;
 let audioCompressor = null;
 let audioSfxBus = null;
@@ -284,12 +289,15 @@ function buildImpulseResponse(ctx) {
 }
 
 /**
- * voice → category bus → muffler → master → compressor → speakers
- *                                   ↘ reverb return ↗
+ * voice → sfx/ambient/music bus → world gate → muffler → master → compressor → speakers
+ *                       reverb return ↗
+ * voice → ui bus ───────────────────────────↗
  *
  * The compressor is what lets footsteps, mobs and an explosion share a frame
  * without the mix clipping. The muffler sits before the master so going
- * underwater can close the whole world down without touching a voice.
+ * underwater can close the whole world down without touching a voice. The
+ * world gate is the main menu's: it fades the world out while the ui bus,
+ * which the menu's own clicks ride, goes around it.
  */
 function buildAudioGraph() {
   audioSfxBus = audioCtx.createGain();
@@ -305,6 +313,9 @@ function buildAudioGraph() {
   audioMuffle.type = 'lowpass';
   audioMuffle.frequency.value = 20000;
   audioMuffle.Q.value = 0.7;
+
+  audioWorldGate = audioCtx.createGain();
+  audioWorldGate.gain.value = audioMenuPaused ? 0 : 1;
 
   audioMaster = audioCtx.createGain();
   audioMaster.gain.value = audioMuted ? 0 : audioVolume;
@@ -323,16 +334,17 @@ function buildAudioGraph() {
   audioReverbGain = audioCtx.createGain();
   audioReverbGain.gain.value = 0.9;
 
-  audioSfxBus.connect(audioMuffle);
-  audioAmbientBus.connect(audioMuffle);
+  audioSfxBus.connect(audioWorldGate);
+  audioAmbientBus.connect(audioWorldGate);
+  audioMusicBus.connect(audioWorldGate);
+  audioWorldGate.connect(audioMuffle);
   audioUiBus.connect(audioMuffle);
-  audioMusicBus.connect(audioMuffle);
   audioMuffle.connect(audioMaster);
   audioMaster.connect(audioCompressor);
   audioCompressor.connect(audioCtx.destination);
   audioReverbSend.connect(audioReverb);
   audioReverb.connect(audioReverbGain);
-  audioReverbGain.connect(audioMuffle);
+  audioReverbGain.connect(audioWorldGate);
   audioUnderwaterShown = false;
 }
 
@@ -488,7 +500,57 @@ export function ensureAudio() {
   if (audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
   }
+  // A gesture on the menu wakes the clock for the menu's own click; the gate
+  // keeps the world silent, and the clock goes back to sleep behind it.
+  if (audioMenuPaused) armMenuSuspend();
   return audioCtx;
+}
+
+const AUDIO_MENU_FADE_OUT = 0.12;
+const AUDIO_MENU_FADE_IN = 0.15;
+const AUDIO_MENU_SUSPEND_MS = 600;
+
+function armMenuSuspend() {
+  if (audioMenuSuspendTimer) clearTimeout(audioMenuSuspendTimer);
+  audioMenuSuspendTimer = setTimeout(() => {
+    audioMenuSuspendTimer = null;
+    if (audioMenuPaused && audioCtx && audioCtx.state === 'running') {
+      audioCtx.suspend().catch(() => {});
+    }
+  }, AUDIO_MENU_SUSPEND_MS);
+}
+
+/**
+ * The main menu's pause: fade the world out and then stop its clock, so songs
+ * and beds hold their place; on the way back, wake the clock and fade the world
+ * in from where it stopped. Called every frame; only a change does anything.
+ */
+export function setAudioMenuPause(on) {
+  const next = !!on;
+  if (next === audioMenuPaused) return;
+  audioMenuPaused = next;
+  if (!audioCtx || !audioWorldGate) return;
+  const now = audioCtx.currentTime;
+  audioWorldGate.gain.cancelScheduledValues(now);
+  audioWorldGate.gain.setValueAtTime(audioWorldGate.gain.value, now);
+  if (next) {
+    audioWorldGate.gain.setTargetAtTime(0, now, AUDIO_MENU_FADE_OUT);
+    armMenuSuspend();
+  } else {
+    if (audioMenuSuspendTimer) clearTimeout(audioMenuSuspendTimer);
+    audioMenuSuspendTimer = null;
+    audioWorldGate.gain.setTargetAtTime(1, now, AUDIO_MENU_FADE_IN);
+    if (audioCtx.state === 'suspended' && document.visibilityState !== 'hidden') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+}
+
+/** Wake the clock after the tab comes back, unless the menu is holding it. */
+export function resumeAudioIfUnpaused() {
+  if (audioCtx && audioCtx.state === 'suspended' && !audioMenuPaused) {
+    audioCtx.resume().catch(() => {});
+  }
 }
 
 export function setAudioMuted(value) {
@@ -500,7 +562,7 @@ export function setAudioMuted(value) {
       audioCtx.currentTime,
       0.025
     );
-    if (!audioMuted && audioCtx.state === 'suspended') {
+    if (!audioMuted && audioCtx.state === 'suspended' && !audioMenuPaused) {
       audioCtx.resume().catch(() => {});
     }
   }
@@ -1443,6 +1505,12 @@ export function playUiClickSound() {
  * Start, and nothing else layered on top of it.
  */
 export function playMenuClickSound() {
+  // Behind the menu the clock is asleep; the click wakes it for its own sake,
+  // and the closed world gate keeps everything else silent.
+  if (audioMenuPaused && audioCtx && !audioMuted) {
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    armMenuSuspend();
+  }
   if (audioSample('event_ui_click', {
     spatial: false, volume: 0.5, bus: 'ui', priority: 0, jitter: false
   })) return true;
@@ -2329,6 +2397,8 @@ export function audioStatus() {
     state: audioCtx ? audioCtx.state : 'none',
     unlocked: !!audioCtx && audioCtx.state === 'running',
     muted: audioMuted,
+    menuPaused: audioMenuPaused,
+    worldGate: audioWorldGate ? Number(audioWorldGate.gain.value.toFixed(3)) : null,
     volume: audioVolume,
     masterVolume: audioVolume,
     sfxVolume: audioSfxVolume,

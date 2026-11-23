@@ -25,8 +25,9 @@ import {
 } from './aim.js';
 import { atlasCanvas } from './atlas.js';
 import {
-  audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong, setArrivalHold,
-  setAudioMusicVolume, setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
+  audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong,
+  resumeAudioIfUnpaused, setArrivalHold, setAudioMenuPause, setAudioMusicVolume,
+  setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './audio.js';
 import {
   ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock,
@@ -85,10 +86,10 @@ import {
 import {
   PAD_BUTTON, cameraStepOffset, canvas, chooseSpawnColumn, clearSprintLatch,
   enableFallbackControls, ensurePlayerChunks, fallbackControls, gamepadState, handlePadTap,
-  isMiningHeld, isPlayable, overlayEl, padMiningDown, prepareSpawnChunks, readPlayerInput,
-  releaseMiningButton, requestLock, resetCameraStep, safeGroundY, setGamepadSensitivity,
-  setInputView, setSprintLatch, spawnPlayer, sprintLatched, syncCamera, toggleSprintLatch,
-  updateGamepad, updatePadStatus, updatePlayer, virtualPad
+  isMiningHeld, isPlayable, menuOpen, overlayEl, padMiningDown, prepareSpawnChunks,
+  readPlayerInput, releaseMiningButton, requestLock, resetCameraStep, safeGroundY,
+  setGamepadSensitivity, setInputView, setSprintLatch, spawnPlayer, sprintLatched, syncCamera,
+  toggleSprintLatch, updateGamepad, updatePadStatus, updatePlayer, virtualPad
 } from './input.js';
 import {
   MINING_SWING_INTERVAL, hideMiningFeedback, isMining, miningFacts, miningReport,
@@ -174,8 +175,9 @@ window.addEventListener('visibilitychange', () => {
     saveWorld();
     // A background tab should not keep wind and music running.
     if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
-  } else if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
+  } else {
+    // Coming back to a tab with the menu up leaves the world paused behind it.
+    resumeAudioIfUnpaused();
   }
 });
 onSaveWritten(() => refreshSaveStatus());
@@ -2003,6 +2005,9 @@ function animate(now) {
   const dt = Math.min(Math.max(rawDt, 0), 0.1);
 
   updateGamepad(dt);
+
+  // The main menu fades the world's sound out and holds it until it closes.
+  setAudioMenuPause(menuOpen());
 
   /* A world nobody has walked yet opens quiet: the world fades up out of the
      black the menu sat on. The scene starts on the frame the overlay lifts —

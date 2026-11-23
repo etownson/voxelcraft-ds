@@ -795,10 +795,17 @@ synthesizer, the ambient beds and the music.
 | Screen close | 640 → 420 Hz | 0.18 s | 0.065 | ui |
 | Crafting | 680 Hz held | 0.22 s | 0.06 | ui |
 
-The graph is `voice → sfx/ambient/ui/music bus → low-pass muffler → master gain →
-compressor → destination`, with a generated stereo impulse response feeding a convolver
-send on one-shots (ambient bypasses it). The muffler is the underwater switch: 20 kHz
-in air, 620 Hz with the head in water. `audioSpatial` gives distance-squared gain, a
+The graph is `voice → sfx/ambient/music bus → world gate → low-pass muffler → master
+gain → compressor → destination`, with a generated stereo impulse response feeding a
+convolver send on one-shots (ambient bypasses it) whose return also passes the gate. The
+ui bus goes around the gate, straight to the muffler. The muffler is the underwater
+switch: 20 kHz in air, 620 Hz with the head in water. The world gate is the main menu's:
+while the start form or pause panel is up, the gate fades the world out (about half a
+second) and the audio clock is then suspended, so songs and beds hold their place; the
+menu's own clicks still sound, waking the clock briefly behind the closed gate. Closing
+the menu wakes the clock and fades the world back in from where it stopped. A tab that
+comes back into view with the menu up stays paused. Other screens (inventory, crafting,
+chests) only duck the beds and music. `audioSpatial` gives distance-squared gain, a
 yaw pan and a duller cutoff with distance; `audioOcclusion` walks the voxel line —
 two solid cells occlude. The voice pool is priority-based (footsteps 0, blocks/UI 1,
 mobs 2, player hurt 3, explosions 4) and stops the weakest voice rather than dropping
