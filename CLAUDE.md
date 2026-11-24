@@ -13,9 +13,10 @@ the commit style. This file only adds what is specific to Claude Code.
 - `./tools/check-syntax.sh` fails inside the Claude Code sandbox ("Operation
   not permitted"); run it with the sandbox disabled.
 - `.claude/launch.json` defines the dev server for the preview pane
-  (`voxelcraft` on 8010, `voxelcraft-8000` on 8000). If the port is already
-  taken by this repo's own server, navigate the pane to it instead of starting
-  another.
+  (`voxelcraft` on 8010, `voxelcraft-8000` on 8000, `voxelcraft-scratch` on
+  8020). If the port is already taken by this repo's own server, navigate the
+  pane to it instead of starting another. Run the snapshot guard on the scratch
+  server: its save is throwaway, so `wipeSave()` there never touches a real one.
 - The preview pane keeps its own localStorage per port. Before running the
   snapshot guard there, check for a save under `SAVE_KEY` (from `src/save.js`) and back
   it up if it matters.
