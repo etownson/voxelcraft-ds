@@ -568,6 +568,40 @@ const MATERIAL_ICON_PAINTERS = {
     px(11, 11, '#7d7d86', 3, 3);
     px(12, 12, '#c9ccd4', 1, 1);
   },
+  string(px) {
+    // A loose loop of pale cord, wound once round and trailing off a corner.
+    paintIconLine(px, 4, 4, 11, 3, '#e6e3da');
+    paintIconLine(px, 11, 3, 12, 9, '#d4d0c4');
+    paintIconLine(px, 12, 9, 5, 11, '#e6e3da');
+    paintIconLine(px, 5, 11, 4, 4, '#c8c4b8');
+    paintIconLine(px, 6, 6, 10, 8, '#f4f2ec');
+    paintIconLine(px, 5, 11, 2, 14, '#c8c4b8');
+  },
+  bow(px) {
+    // A wooden limb curved from top right to bottom left with the string drawn
+    // straight across the chord, the way Minecraft holds it in the hand.
+    const wood = ['#5c3d18', '#7a5426', '#9a6c34'];
+    const arc = [[11, 1], [12, 2], [13, 3], [13, 4], [13, 5], [12, 6], [11, 7],
+      [10, 8], [9, 9], [8, 10], [7, 11], [6, 12], [5, 13], [4, 13], [3, 13], [2, 12], [1, 11]];
+    arc.forEach(([x, y], i) => px(x, y, wood[i % 3]));
+    px(12, 3, '#b48446');
+    px(6, 11, '#b48446');
+    paintIconLine(px, 10, 1, 1, 10, '#d8d4ca');
+    px(10, 1, '#4a3012');
+    px(1, 10, '#4a3012');
+  },
+  arrow(px) {
+    // Stone tip top right, a straight shaft, grey fletching at the nock.
+    paintIconLine(px, 3, 12, 11, 4, '#7a5426');
+    paintIconLine(px, 4, 12, 11, 5, '#9a6c34');
+    px(11, 2, '#6f6f77', 3, 2);
+    px(12, 4, '#8b8b93', 2, 1);
+    px(13, 2, '#b9b9c2');
+    px(1, 11, '#d7dde6', 2, 1);
+    px(2, 13, '#d7dde6', 1, 2);
+    px(1, 13, '#aab4c2', 1, 2);
+    px(3, 14, '#aab4c2', 1, 1);
+  },
   bucket(px) {
     // An iron pail: a wire handle arched over the rim, the body easing in
     // towards a narrower foot, shine down the left where the light lands.

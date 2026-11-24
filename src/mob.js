@@ -11,7 +11,8 @@
 
 import * as THREE from 'three';
 import {
-  playAnimalSound, playCreeperHiss, playExplosionSound, playMobHurtSound, playZombieGroan
+  playAnimalSound, playCreeperHiss, playExplosionSound, playMobHurtSound, playSkeletonRattle,
+  playSpiderHiss, playZombieGroan
 } from './audio.js';
 import { BLOCKS, isLava, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
@@ -22,7 +23,7 @@ import {
   BURN_DAMAGE, BURN_INTERVAL, BURN_SECONDS, LAVA_DAMAGE, LAVA_DAMAGE_INTERVAL,
   TERMINAL_VELOCITY, chunkKey, clamp
 } from './config.js';
-import { difficultyAt } from './beacons.js';
+import { beaconsActivatedCount, difficultyAt } from './beacons.js';
 import { spawnBurstParticles, triggerExplosionPunch } from './fx.js';
 import { createCanvas } from './icons.js';
 import { chunkRandom, hashString, mulberry32 } from './noise.js';
@@ -34,7 +35,7 @@ import { sampleColumn } from './worldgen.js';
  * The world the mob layer is allowed to know about: the walker it hunts,
  * frightens and knocks around, and the ways it leaves a mark on everything
  * else — hurt someone, drop something, spill what a broken container held,
- * and pay essence for a killed enemy. The page hands those over where the
+ * loose an arrow at the walker, and pay essence for a killed enemy. The page hands those over where the
  * walker exists, and nothing in the section reaches past these names.
  */
 let mobWalker = null;
@@ -42,7 +43,9 @@ let hurtWalker = null;
 let mobDrop = null;
 let dropEssence = null;
 let spillContents = null;
+let shootWalker = null;
 export function setMobWorld(host) {
+  shootWalker = host.shoot;
   mobWalker = host.walker;
   hurtWalker = host.hurt;
   mobDrop = host.drop;
@@ -191,6 +194,26 @@ const MOB_DEFS = {
     // 14 is full strength at point blank, and the falloff rides beside it.
     damage: 14, essence: { min: 3, max: 5 },
     drops: []
+  },
+  // Spiders join the night once beacon 2 is lit, and they are where string
+  // comes from. Wide and low, quick, and they climb any wall they run into.
+  // Sunlight does not burn them; by day they keep to themselves unless hit.
+  spider: {
+    hostile: true, health: 16, speed: 2.5, width: 1.28, height: 0.9,
+    detection: 18, damage: 2, reach: 1.45, attackInterval: 1.0,
+    climbs: true, sunproof: true, calmByDay: true,
+    essence: { min: 3, max: 5 },
+    drops: [{ id: 'string', min: 0, max: 2 }]
+  },
+  // Skeleton archers join after beacon 3. They hold a distance rather than
+  // closing it, circle, and shoot when they can see the walker; up close they
+  // back away. Each arrow is `damage` before the ground's difficulty scales it.
+  skeleton: {
+    hostile: true, health: 20, speed: 1.7, width: 0.6, height: 1.94,
+    detection: 24, damage: 3, attackInterval: 2.2,
+    ranged: { range: 18, near: 6, far: 13, speed: 26 },
+    essence: { min: 4, max: 6 },
+    drops: [{ id: 'arrow', min: 0, max: 2 }]
   }
 };
 
@@ -348,6 +371,41 @@ const MOB_TEXTURES = {
       if (rand() < 0.35) px(x, y + 1, vary(color, 8));
     }
   }),
+  spider_body: mobTexture('spider_body', ({ px, rand, vary, fill }) => {
+    fill([44, 38, 36], 8);
+    for (let i = 0; i < 20; i++) {
+      px((rand() * 16) | 0, (rand() * 16) | 0, vary([66, 56, 50], 8));
+    }
+  }),
+  spider_face: mobTexture('spider_face', ({ px, rand, vary, fill }) => {
+    fill([40, 34, 32], 6);
+    // Two big eyes and four small ones, all the same angry red.
+    px(4, 5, [196, 30, 28], 3, 2);
+    px(9, 5, [196, 30, 28], 3, 2);
+    px(3, 9, [168, 24, 24], 2, 1);
+    px(11, 9, [168, 24, 24], 2, 1);
+    px(6, 8, [168, 24, 24], 1, 1);
+    px(9, 8, [168, 24, 24], 1, 1);
+  }),
+  skeleton_bone: mobTexture('skeleton_bone', ({ px, rand, vary, fill }) => {
+    fill([206, 204, 196], 7);
+    for (let i = 0; i < 14; i++) {
+      px((rand() * 16) | 0, (rand() * 16) | 0, vary([170, 168, 160], 8));
+    }
+  }),
+  skeleton_ribs: mobTexture('skeleton_ribs', ({ px, rand, vary, fill }) => {
+    fill([60, 58, 56], 4);
+    px(7, 0, [196, 194, 186], 2, 16);
+    for (let y = 2; y < 14; y += 3) px(2, y, vary([196, 194, 186], 6), 12, 1);
+  }),
+  skeleton_face: mobTexture('skeleton_face', ({ px, rand, vary, fill }) => {
+    fill([204, 202, 194], 6);
+    px(3, 5, [36, 34, 32], 3, 3);
+    px(10, 5, [36, 34, 32], 3, 3);
+    px(7, 9, [70, 68, 64], 2, 1);
+    px(4, 12, [52, 50, 48], 8, 1);
+    for (let x = 5; x < 12; x += 2) px(x, 11, [52, 50, 48], 1, 1);
+  }),
   creeper_face: mobTexture('creeper_face', ({ px, rand, vary, fill }) => {
     fill([94, 152, 60], 9);
     px(3, 4, [18, 28, 16], 4, 4);
@@ -504,6 +562,42 @@ export function createMobModel(type, sheared = false) {
       mobLeg(0.18, 0.36, 0.18, skin, -0.14, 0.36, 0.16),
       mobLeg(0.18, 0.36, 0.18, skin, 0.14, 0.36, 0.16)
     ];
+  } else if (type === 'spider') {
+    const body = mobMaterial('spider_body');
+    group.add(mobBox(0.62, 0.5, 0.78, body, 0, 0.56, -0.44));
+    group.add(mobBox(0.4, 0.36, 0.4, body, 0, 0.5, 0.12));
+    head = mobBox(0.5, 0.46, 0.44, mobHeadMaterials('spider_body', 'spider_face'), 0, 0.52, 0.52);
+    group.add(head);
+    // Eight legs, four a side, splayed out and down from the middle segment.
+    // The walk swings them as it swings any leg; the splay is set once here.
+    for (let i = 0; i < 4; i++) {
+      const z = 0.3 - i * 0.18;
+      for (const side of [-1, 1]) {
+        const leg = mobLeg(0.08, 1.0, 0.08, body, side * 0.2, 0.62, z);
+        leg.rotation.z = side * 1.05;
+        legs.push(leg);
+      }
+    }
+  } else if (type === 'skeleton') {
+    const bone = mobMaterial('skeleton_bone');
+    group.add(mobBox(0.46, 0.7, 0.22, mobMaterial('skeleton_ribs'), 0, 1.1, 0));
+    head = mobBox(0.5, 0.5, 0.5, mobHeadMaterials('skeleton_bone', 'skeleton_face'), 0, 1.72, 0);
+    group.add(head);
+    // The bow arm is held out in front, the other drawn back to the string.
+    const armLeft = mobLeg(0.1, 0.68, 0.1, bone, -0.3, 1.42, 0.06);
+    const armRight = mobLeg(0.1, 0.68, 0.1, bone, 0.3, 1.42, 0.06);
+    armLeft.rotation.x = -1.45;
+    armRight.rotation.x = -1.3;
+    armRight.rotation.z = 0.28;
+    const wood = new THREE.MeshLambertMaterial({ color: 0x7a5426 });
+    const bow = mobBox(0.05, 0.62, 0.05, wood, 0, -0.66, 0.02);
+    bow.rotation.x = Math.PI / 2;
+    armLeft.add(bow);
+    group.add(armLeft, armRight);
+    legs = [
+      mobLeg(0.1, 0.72, 0.1, bone, -0.11, 0.72, 0),
+      mobLeg(0.1, 0.72, 0.1, bone, 0.11, 0.72, 0)
+    ];
   }
 
   for (const leg of legs) group.add(leg);
@@ -568,6 +662,9 @@ export function spawnMob(type, x, y, z, options = {}) {
     stateTimer: 0.6 + Math.random() * 2.4,
     target: new THREE.Vector3(x, y, z),
     fleeTimer: 0,
+    provoked: 0,
+    strafe: Math.random() < 0.5 ? -1 : 1,
+    strafeTimer: 1.5 + Math.random() * 2,
     fuse: -1,
     attackCooldown: 0,
     burnTimer: 0,
@@ -666,6 +763,8 @@ export function damageMob(mob, amount, knockX = 0, knockZ = 0, options = {}) {
 
   if (mob.def.hostile) {
     mob.fleeTimer = 0;
+    // A spider minding its own business by day turns on whoever hit it.
+    mob.provoked = 12;
   } else {
     mob.fleeTimer = 3.5;
   }
@@ -762,7 +861,9 @@ function mobLookToward(mob, dirX, dirZ, dt, speed = 8) {
   mob.yaw += delta * (1 - Math.exp(-speed * dt));
 }
 
-function steerMob(mob, dirX, dirZ, speed, dt) {
+/** `face`, when given, is where the mob looks instead of where it walks. */
+function steerMob(mob, dirX, dirZ, speed, dt, face = null) {
+  if (face) mobLookToward(mob, face.x, face.z, dt, 10);
   const length = Math.hypot(dirX, dirZ);
   if (length < 1e-5) {
     mob.vel.x *= Math.exp(-8 * dt);
@@ -771,7 +872,7 @@ function steerMob(mob, dirX, dirZ, speed, dt) {
   }
   dirX /= length;
   dirZ /= length;
-  mobLookToward(mob, dirX, dirZ, dt);
+  if (!face) mobLookToward(mob, dirX, dirZ, dt);
   const blend = 1 - Math.exp(-9 * dt);
   mob.vel.x += (dirX * speed - mob.vel.x) * blend;
   mob.vel.z += (dirZ * speed - mob.vel.z) * blend;
@@ -788,7 +889,9 @@ function pickWanderTarget(mob) {
 }
 
 /**
- * A short sight probe from the top of a creeper's head to the player's eyes.
+ * A sight probe from the top of a mob's head to the player's eyes: the
+ * creeper's, to decide whether to light, and the skeleton's, to decide whether
+ * it has a shot.
  * Ignition used to be a horizontal ring plus a feet-to-feet window, and both
  * halves read wrong: it fired through walls the creeper had never seen past,
  * and it never fired at all once the feet sat more than two blocks apart, so
@@ -797,7 +900,7 @@ function pickWanderTarget(mob) {
  * and the reach is what it measures. Leaves and water do not break the line;
  * a closed door or a wall does, so shelter now means what it looks like.
  */
-function creeperSeesPlayer(mob) {
+function mobSeesWalker(mob) {
   const fromX = mob.pos.x;
   const fromY = mob.pos.y + mob.def.height * 0.8;
   const fromZ = mob.pos.z;
@@ -920,7 +1023,7 @@ function explodeCreeper(mob) {
 }
 
 function updateMobBurning(mob, dt) {
-  if (!mob.def.hostile || mob.dead) return;
+  if (!mob.def.hostile || mob.def.sunproof || mob.dead) return;
   if (daylight <= 0.5) {
     mob.burnTimer = 0;
     return;
@@ -999,6 +1102,37 @@ function lavaAhead(mob, dirX, dirZ) {
   return isLava(world.getBlock(x, y, z)) || isLava(world.getBlock(x, y - 1, z));
 }
 
+/**
+ * Where a skeleton walks while it has the walker in range: in from far off,
+ * back from too close, and in between round them on a side it changes every
+ * few seconds, so it is never standing still to be shot at.
+ */
+function archerMove(mob, dx, dz, distance, dt) {
+  const { near, far } = mob.def.ranged;
+  mob.strafeTimer -= dt;
+  if (mob.strafeTimer <= 0) {
+    mob.strafe = -mob.strafe;
+    mob.strafeTimer = 1.8 + Math.random() * 2.4;
+  }
+  if (distance > far) {
+    return { moveX: dx, moveZ: dz, moveSpeed: mob.def.speed };
+  }
+  if (distance < near) {
+    return { moveX: -dx + -dz * mob.strafe * 0.4, moveZ: -dz + dx * mob.strafe * 0.4, moveSpeed: mob.def.speed };
+  }
+  return { moveX: -dz * mob.strafe, moveZ: dx * mob.strafe, moveSpeed: mob.def.speed * 0.6 };
+}
+
+/** A skeleton with a clear line and a ready string looses at the walker. */
+function archerShoot(mob, distance, dy) {
+  const def = mob.def;
+  if (mob.attackCooldown > 0 || !shootWalker) return;
+  if (distance > def.ranged.range || Math.abs(dy) > 10) return;
+  if (!mobSeesWalker(mob)) return;
+  mob.attackCooldown = def.attackInterval * (0.85 + Math.random() * 0.3);
+  shootWalker(mob, def.ranged.speed, mob.attack ?? def.damage);
+}
+
 function updateMobAI(mob, dt) {
   const def = mob.def;
   const dx = mobWalker().pos.x - mob.pos.x;
@@ -1009,6 +1143,7 @@ function updateMobAI(mob, dt) {
 
   mob.stateTimer -= dt;
   if (mob.fleeTimer > 0) mob.fleeTimer -= dt;
+  if (mob.provoked > 0) mob.provoked -= dt;
   if (mob.attackCooldown > 0) mob.attackCooldown -= dt;
   if (mob.audioCooldown > 0) mob.audioCooldown -= dt;
   mob.soundTimer -= dt;
@@ -1023,6 +1158,13 @@ function updateMobAI(mob, dt) {
           hostileSoundCooldown = HOSTILE_SOUND_GAP_MIN +
             Math.random() * (HOSTILE_SOUND_GAP_MAX - HOSTILE_SOUND_GAP_MIN);
           playZombieGroan(mob.pos.x, mob.pos.y + def.height * 0.7, mob.pos.z);
+        }
+      } else if (mob.type === 'spider' || mob.type === 'skeleton') {
+        if (hostileSoundCooldown <= 0) {
+          hostileSoundCooldown = HOSTILE_SOUND_GAP_MIN +
+            Math.random() * (HOSTILE_SOUND_GAP_MAX - HOSTILE_SOUND_GAP_MIN);
+          const voice = mob.type === 'spider' ? playSpiderHiss : playSkeletonRattle;
+          voice(mob.pos.x, mob.pos.y + def.height * 0.7, mob.pos.z);
         }
       } else if (mob.type === 'creeper') {
         if (mob.fuse < 0 && Math.random() < 0.4 && hostileSoundCooldown <= 0) {
@@ -1041,6 +1183,13 @@ function updateMobAI(mob, dt) {
   let moveSpeed = def.speed;
   let moveX = 0;
   let moveZ = 0;
+  let face = null;
+  // A spider out in the daylight hunts nobody unless somebody started it. In a
+  // cave, noon is as dark as midnight, and it hunts as it would at night.
+  const calm = def.calmByDay && daylight > 0.5 && mob.provoked <= 0 &&
+    world.getSkyLight(
+      Math.floor(mob.pos.x), Math.floor(mob.pos.y + def.height * 0.5), Math.floor(mob.pos.z)
+    ) >= 10;
 
   if (def.hostile) {
     if (mob.fuse >= 0) {
@@ -1052,10 +1201,14 @@ function updateMobAI(mob, dt) {
         explodeCreeper(mob);
         return;
       }
-    } else if (playerAlive && distance < def.detection && Math.abs(dy) < 12) {
-      if (mob.type === 'creeper') {
+    } else if (playerAlive && !calm && distance < def.detection && Math.abs(dy) < 12) {
+      if (def.ranged) {
+        ({ moveX, moveZ, moveSpeed } = archerMove(mob, dx, dz, distance, dt));
+        face = { x: dx, z: dz };
+        archerShoot(mob, distance, dy);
+      } else if (mob.type === 'creeper') {
         const reach = Math.hypot(dx, dy, dz);
-        if (reach < 2.5 && creeperSeesPlayer(mob)) {
+        if (reach < 2.5 && mobSeesWalker(mob)) {
           mob.fuse = 1.55;
           mob.state = 'fuse';
           playCreeperHiss(mob.pos.x, mob.pos.y + 0.9, mob.pos.z);
@@ -1069,7 +1222,7 @@ function updateMobAI(mob, dt) {
         moveZ = dz;
         if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0) {
           mob.attackCooldown = def.attackInterval;
-          hurtWalker(mob.attack ?? def.damage, 'zombie');
+          hurtWalker(mob.attack ?? def.damage, mob.type);
         }
       }
     } else {
@@ -1111,7 +1264,7 @@ function updateMobAI(mob, dt) {
     mob.stateTimer = Math.min(mob.stateTimer, 0);
   }
 
-  steerMob(mob, moveX, moveZ, moveSpeed, dt);
+  steerMob(mob, moveX, moveZ, moveSpeed, dt, face);
 
   // Gravity and vertical collision.
   const wasDescending = mob.vel.y < 0;
@@ -1130,6 +1283,11 @@ function updateMobAI(mob, dt) {
   if (hitHorizontal) {
     mob.vel.x = 0;
     mob.vel.z = 0;
+    // A climber that walks into a wall goes up it instead of stopping.
+    if (def.climbs && (moveX || moveZ) && !mob.inLava) {
+      mob.vel.y = Math.max(mob.vel.y, 2.6);
+      mob.onGround = false;
+    }
   }
 
   // Settle feet on top of the block when standing.
@@ -1298,6 +1456,20 @@ export function trySpawnHostile() {
 }
 
 /**
+ * Which hostile a spawn puts down. The night grows with the mission: creepers
+ * and zombies from the start, spiders once beacon 2 is lit, skeleton archers
+ * once beacon 3 is. Each newcomer takes its share out of the zombies'.
+ */
+function pickHostileType() {
+  const lit = beaconsActivatedCount();
+  const roll = Math.random();
+  if (roll < 0.16) return 'creeper';
+  if (lit >= 2 && roll < 0.36) return 'spider';
+  if (lit >= 3 && roll < 0.56) return 'skeleton';
+  return 'zombie';
+}
+
+/**
  * Probes one random column in the spawn band for a dark spot to stand on and
  * puts a hostile there. Returns null when the column is no good; how many
  * columns a pass is worth trying is the caller's business.
@@ -1343,7 +1515,10 @@ function spawnHostileAtRandomColumn() {
       continue;
     }
 
-    const type = Math.random() < 0.16 ? 'creeper' : 'zombie';
+    let type = pickHostileType();
+    // A spider is wider than a block: where it would wedge into the walls
+    // around a one-wide spot, a zombie takes the spot instead.
+    if (mobCollidesAt({ def: MOB_DEFS[type] }, x + 0.5, y + 1, z + 0.5)) type = 'zombie';
     return spawnMob(type, x + 0.5, y + 1, z + 0.5);
   }
 

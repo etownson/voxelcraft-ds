@@ -720,7 +720,9 @@ Population is a budget:
   areas are safe — in a band 20 to 48 blocks around the player. Night arrives in
   batches: up to three hostiles per 1.4 s after dark (one per 3.6 s by day), with the
   night's candidates weighted 85% to the surface. Creepers spawn rarely under the same
-  conditions
+  conditions. Spiders (after beacon 2) and skeleton archers (after beacon 3) join the
+  same spawns as the mission goes on; the MultiVoxelVerse Adventures design describes
+  them, the bow and its arrows
 - Zombies walk directly at the player within detection range (step-up steering, no full
   pathfinding) and deal contact damage on a cooldown. Creepers approach, then hiss,
   flash, and explode on a 1.55 s fuse lit at about 2.5 blocks in three dimensions with
@@ -733,7 +735,8 @@ Population is a budget:
   budget. Everything despawns at 96 blocks in three dimensions
 
 Drops: cows, pigs and sheep drop Raw Beef (and Leather from cows); a woolly sheep
-drops one wool on top of its meat, a shorn one meat only; chickens drop feathers.
+drops one wool on top of its meat, a shorn one meat only; chickens drop feathers;
+spiders drop string and skeletons arrows.
 Raw beef must be cooked. Shearing is the other way to take wool — see Shearing.
 
 ## Shearing
@@ -1114,7 +1117,9 @@ the player (`stats()`, `teleport`, `look`, `hunger`, `eat`, `armour`, `equip`,
 (`openFurnace`, `furnace`, `chest`, `chestList`, `setChestSlots`), farming (`tillDirt`,
 `plantSeed`, `crops`, `soilWet`), water (`waterFlowCheck` — six rigs replayed in a
 shadow map, which fails if the settlement rule is broken), mobs (`mobs`, `mobInfo`,
-`spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), time and
+`spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), archery
+(`loose(seconds)` draws the bow in hand that long and lets go, `arrows()` lists what is
+in the air or stuck), time and
 simulation (`setTime`, `setTimeScale`, `tick`, `simulate(seconds, input)`), screens and
 the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(stop)`,
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,

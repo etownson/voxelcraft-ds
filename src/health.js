@@ -19,6 +19,7 @@
  * inventory's verbs and never asks which block is under the crosshair.
  */
 
+import { beginBowDraw } from './archery.js';
 import { playDeathSound, playEatSound, playPlayerHurtSound } from './audio.js';
 import { ITEMS } from './blocks.js';
 import { markWorldDirty } from './chunks.js';
@@ -242,6 +243,7 @@ export function tryEatSelectedItem() {
 
 /** Right-click with something held: eat first, then use it on the world. */
 export function tryUseSelectedItem() {
+  if (beginBowDraw()) return true;
   if (tryEatSelectedItem()) return true;
   if (tryShearMob('use')) return true;
   return tryPlaceSelectedBlock();

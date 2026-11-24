@@ -510,6 +510,13 @@ defineItem({ id: 'wool', name: 'Wool', kind: 'material', stack: 64 });
 // Shears are the one tool with no tier: they mine nothing, swing for next to
 // nothing, and exist to take wool off a sheep without hurting it.
 defineItem({ id: 'shears', name: 'Shears', kind: 'tool', tool: 'shears', stack: 1, durability: 64, damage: 1 });
+// Archery arrives with beacon 2. String is what a spider leaves behind and the
+// bow's only use for it. The bow is a tool with no tier, like the shears: it
+// mines nothing and swings for next to nothing, and its 384 uses are
+// Minecraft's, one spent on every arrow loosed.
+defineItem({ id: 'string', name: 'String', kind: 'material', stack: 64 });
+defineItem({ id: 'bow', name: 'Bow', kind: 'tool', tool: 'bow', stack: 1, durability: 384, damage: 1 });
+defineItem({ id: 'arrow', name: 'Arrow', kind: 'material', stack: 64 });
 
 // A bucket is the one item that carries something with it. Minecraft stacks
 // empty buckets sixteen and never stacks a full one, so the two states are two

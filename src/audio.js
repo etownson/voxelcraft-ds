@@ -2012,7 +2012,66 @@ export function playAnimalSound(type, x, y, z, options = {}) {
   return true;
 }
 
+/**
+ * The bank has no spider or skeleton, so both are built from noise: the spider
+ * a dry, falling hiss with a chitter on its tail, the skeleton three quick
+ * clacks of bone on bone.
+ */
+export function playSpiderHiss(x, y, z, hurt = false) {
+  const pitch = (hurt ? 1.3 : 1) * (0.92 + Math.random() * 0.16);
+  const first = audioNoiseHit({
+    type: 'bandpass', freq: 3600, freqEnd: 1700, q: 1.4,
+    duration: hurt ? 0.2 : 0.42, volume: 0.16
+  }, x, y, z, { pitch, range: 20, priority: 2 });
+  audioNoiseHit({
+    type: 'bandpass', freq: 5200, freqEnd: 4400, q: 3,
+    duration: 0.07, volume: 0.1
+  }, x, y, z, { pitch: pitch * 1.1, range: 16, priority: 1 });
+  return first;
+}
+
+export function playSkeletonRattle(x, y, z, hurt = false) {
+  const base = (hurt ? 1.25 : 1) * (0.9 + Math.random() * 0.2);
+  const clack = (i) => audioNoiseHit({
+    type: 'bandpass', freq: 1900 - i * 260, freqEnd: 1100, q: 4,
+    duration: 0.05, volume: 0.2
+  }, x, y, z, { pitch: base, range: 20, priority: 2 });
+  const played = clack(0);
+  if (played) {
+    setTimeout(() => clack(1), 75);
+    setTimeout(() => clack(2), 150);
+  }
+  return played;
+}
+
+/**
+ * A bowstring let go: a short whip of air, and for the walker's own bow a low
+ * thrum in the hand as well.
+ */
+export function playBowShot(x, y, z, power = 1, own = false) {
+  audioNoiseHit({
+    type: 'bandpass', freq: 1500, freqEnd: 420, q: 1.1,
+    duration: 0.16, volume: 0.2 * (0.5 + power * 0.5)
+  }, x, y, z, { pitch: 0.9 + power * 0.25, range: 18, priority: 2 });
+  if (!audioCtx || !own) return true;
+  audioTone({
+    type: 'triangle', from: 150, to: 92, duration: 0.14,
+    volume: 0.06 * (0.5 + power * 0.5), priority: 1
+  });
+  return true;
+}
+
+/** An arrow biting into wood, stone or flesh: a short, dull tock. */
+export function playArrowHit(x, y, z) {
+  return audioNoiseHit({
+    type: 'lowpass', freq: 1300, freqEnd: 360, q: 0.9,
+    duration: 0.09, volume: 0.22
+  }, x, y, z, { pitch: 0.9 + Math.random() * 0.2, range: 16, priority: 1 });
+}
+
 export function playMobHurtSound(type, x, y, z) {
+  if (type === 'spider') return playSpiderHiss(x, y, z, true);
+  if (type === 'skeleton') return playSkeletonRattle(x, y, z, true);
   // A creeper's hiss is its fuse, not its pain; use the generic hurt for it.
   const base = type === 'creeper' ? 'event_hurt_mob' : 'mob_' + type;
   if (audioSample(base, {

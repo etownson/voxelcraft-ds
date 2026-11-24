@@ -127,6 +127,23 @@ export const RECIPES = [
     // the seven. Three cells wide, so it wants the table like the chest does.
     id: 'ladder', pattern: ['S.S', 'SSS', 'S.S'], key: { S: 'stick' }, unlockedBy: 2,
     result: { id: 'ladder', count: 3 }
+  },
+  {
+    // Minecraft's bow: three sticks bent into the arc and three strings down
+    // the open side. The matcher is exact, so the mirror is written out too.
+    id: 'bow', pattern: ['.SX', 'S.X', '.SX'], key: { S: 'stick', X: 'string' },
+    unlockedBy: 2, result: { id: 'bow', count: 1 }
+  },
+  {
+    id: 'bow_alt', pattern: ['XS.', 'X.S', 'XS.'], key: { S: 'stick', X: 'string' },
+    unlockedBy: 2, result: { id: 'bow', count: 1 }
+  },
+  {
+    // Minecraft tips an arrow with flint, and this world has no gravel to
+    // knap it from, so a chip of cobblestone stands in: tip, shaft, feather.
+    id: 'arrows', pattern: ['C', 'S', 'F'],
+    key: { C: 'cobblestone', S: 'stick', F: 'feather' },
+    unlockedBy: 2, result: { id: 'arrow', count: 4 }
   }
 ];
 

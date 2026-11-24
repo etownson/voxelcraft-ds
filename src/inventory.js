@@ -180,6 +180,24 @@ export function emptyHand() {
   inventory[currentSlot()] = null;
 }
 
+/**
+ * Takes `count` of an item from wherever it sits in the pack, the last slots
+ * first so the hotbar keeps its stack longest. Returns how many were taken.
+ */
+export function removeInventoryItem(itemId, count = 1) {
+  let taken = 0;
+  for (let i = inventory.length - 1; i >= 0 && taken < count; i--) {
+    const slot = inventory[i];
+    if (!slot || slot.id !== itemId) continue;
+    const take = Math.min(slot.count, count - taken);
+    slot.count -= take;
+    taken += take;
+    if (slot.count <= 0) inventory[i] = null;
+  }
+  if (taken) paintPack();
+  return taken;
+}
+
 export function countInventoryItem(itemId) {
   let total = 0;
   for (const slot of inventory) {

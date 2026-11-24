@@ -23,6 +23,7 @@
  */
 
 import { hideTargetOutline, updateTarget } from './aim.js';
+import { cancelBowDraw, releaseBowDraw } from './archery.js';
 import { ensureAudio, playJumpSound } from './audio.js';
 import { meshChunk, world } from './chunks.js';
 import { inLavaAt, isSolid, ladderHolding, playerCollidesAt, submergedAt } from './collision.js';
@@ -775,7 +776,11 @@ document.addEventListener('mouseup', (event) => {
   } else if (event.button === 2 && fallbackControls && fallbackRightDrag) {
     fallbackRightDrag = false;
     fallbackLooking = false;
-    if (!fallbackDragMoved) tryUseSelectedItem();
+    // Without the pointer the right button is already the look drag, so a bow
+    // cannot be held drawn: a click looses a full draw at once.
+    if (!fallbackDragMoved && tryUseSelectedItem()) releaseBowDraw({ full: true });
+  } else if (event.button === 2) {
+    releaseBowDraw();
   }
 });
 
@@ -796,6 +801,7 @@ document.addEventListener('pointerlockchange', () => {
     leftMouseDown = false;
     fallbackLooking = false;
     fallbackRightDrag = false;
+    cancelBowDraw();
     hideMiningFeedback();
     hideTargetOutline();
     clearSprintLatch();
@@ -850,6 +856,7 @@ window.addEventListener('keyup', (event) => {
 window.addEventListener('blur', () => {
   pressedKeys.clear();
   leftMouseDown = false;
+  cancelBowDraw();
   fallbackLooking = false;
   fallbackRightDrag = false;
   releasePadMining();
@@ -1194,8 +1201,10 @@ export function updateGamepad(dt) {
     return;
   }
 
-  // Trigger release, or losing focus, stops the mining hold.
+  // Trigger release, or losing focus, stops the mining hold; the left trigger
+  // coming up looses whatever the bow has drawn.
   if (!gpButton('rt')) releasePadMining();
+  if (!gpButton('lt')) releaseBowDraw();
 
   // The overlay is the main menu now: while it is up, the pad is walking its
   // choices. D-pad left/right still tunes look sensitivity, but that row is

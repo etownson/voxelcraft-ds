@@ -23,6 +23,10 @@ import {
   crackMesh, currentTarget, hideTargetOutline, setAimBlocked, shownCrackStage, targetOutline,
   updateTarget
 } from './aim.js';
+import {
+  arrows, beginBowDraw, bowDraw, cancelBowDraw, clearArrows, mobShootsWalker, releaseBowDraw,
+  setArcheryWorld, updateArchery
+} from './archery.js';
 import { atlasCanvas } from './atlas.js';
 import {
   audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong,
@@ -218,7 +222,13 @@ setMobWorld({
   drop: (itemId, count, x, y, z, scatter, dur) =>
     spawnItemDrop(itemId, count, x, y, z, scatter, dur),
   dropEssence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
-  spill: (x, y, z) => spillBlockEntityContents(x, y, z)
+  spill: (x, y, z) => spillBlockEntityContents(x, y, z),
+  shoot: (mob, speed, damage) => mobShootsWalker(mob, speed, damage)
+});
+
+/* An arrow that finds the walker hurts them the way a bite does. */
+setArcheryWorld({
+  hurt: (amount, cause) => damagePlayer(amount, cause)
 });
 
 /* And for the block entities, whose whole idea of a screen is the one furnace
@@ -330,6 +340,7 @@ setDeathView({
   depart() {
     clearSprintLatch();
     releaseMiningButton();
+    cancelBowDraw();
     hideMiningFeedback();
     hideTargetOutline();
     clearMobTarget();
@@ -340,6 +351,8 @@ setDeathView({
       fall: 'You fell too far.',
       zombie: 'A zombie got you.',
       creeper: 'A creeper found you.',
+      spider: 'A spider got you.',
+      skeleton: 'A skeleton shot you.',
       starving: 'You starved with nothing to eat.',
       lava: 'You tried to swim in lava.',
       fire: 'You burned to death.'
@@ -427,7 +440,8 @@ function heldFrame() {
     onGround: player.onGround,
     hidden: !!activeScreen || player.dead,
     mining: isMiningHeld() && isMining() && !player.dead,
-    swingInterval: MINING_SWING_INTERVAL
+    swingInterval: MINING_SWING_INTERVAL,
+    draw: bowDraw()
   };
 }
 
@@ -835,6 +849,23 @@ window.__voxelcraft = {
     const target = mobTarget();
     return target ? attackMob(target) : false;
   },
+  /** Draw the bow in hand for `seconds`, let go, and say what is in the air. */
+  loose(seconds = 1) {
+    if (!beginBowDraw()) return { loosed: false, reason: 'no bow in hand' };
+    updateArchery(Math.max(0.001, Number(seconds) || 0));
+    const loosed = releaseBowDraw();
+    return { loosed, arrows: this.arrows() };
+  },
+  /** Every arrow in flight or stuck, and whose it is. */
+  arrows() {
+    return arrows.map((arrow) => ({
+      pos: [arrow.pos.x, arrow.pos.y, arrow.pos.z],
+      vel: [arrow.vel.x, arrow.vel.y, arrow.vel.z],
+      from: arrow.from === 'walker' ? 'walker' : arrow.from.type,
+      damage: arrow.damage,
+      stuck: arrow.stuck
+    }));
+  },
   mob() {
     const target = mobTarget();
     return target ? this.mobInfo(target) : null;
@@ -907,6 +938,7 @@ window.__voxelcraft = {
       for (const material of mob.materials) material.dispose();
     }
     mobs.length = 0;
+    clearArrows();
     return removed;
   },
   hurtMob(serial, amount = 5) {
@@ -1864,6 +1896,7 @@ window.__voxelcraft = {
       updateMobTarget();
       updateMining(dt, false);
       updateMobs(dt);
+      updateArchery(dt);
       updateHealth(dt);
       updateBurning(dt);
       updateHunger(dt);
@@ -1900,6 +1933,7 @@ window.__voxelcraft = {
       // there is no way to assert what the left button does while it is held.
       updateCombat(dt, isMiningHeld());
       updateMobs(dt);
+      updateArchery(dt);
       updateHealth(dt);
       updateBurning(dt);
       updateHunger(dt);
@@ -2162,6 +2196,7 @@ function animate(now) {
     updateMining(dt, canMine && !mobTarget());
     updateCombat(dt, isMiningHeld());
     updateMobs(dt);
+    updateArchery(dt);
     updateHeldItem(dt, heldFrame());
     updateHealth(dt);
     updateBurning(dt);

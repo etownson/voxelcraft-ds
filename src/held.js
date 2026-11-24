@@ -274,14 +274,19 @@ export function updateHeldItem(dt, frame) {
   const swing = Math.sin(swingT * Math.PI);
   const idle = Math.sin(performance.now() * 0.0016) * 0.004;
 
+  // A drawn bow comes in towards the middle of the view and back towards the
+  // eye, trembling a little once the string is all the way back.
+  const draw = frame.draw || 0;
+  const strain = draw >= 1 ? Math.sin(performance.now() * 0.06) * 0.0035 : 0;
+
   heldRoot.position.set(
-    HELD_REST_POSITION.x + bobX + heldSwayX,
-    HELD_REST_POSITION.y + bobY + heldSwayY + idle - swing * 0.055,
-    HELD_REST_POSITION.z - swing * 0.16
+    HELD_REST_POSITION.x + bobX + heldSwayX - draw * 0.12 + strain,
+    HELD_REST_POSITION.y + bobY + heldSwayY + idle - swing * 0.055 + draw * 0.04,
+    HELD_REST_POSITION.z - swing * 0.16 + draw * 0.1
   );
   heldRoot.rotation.set(
     HELD_REST_ROTATION.x - swing * 1.02,
-    HELD_REST_ROTATION.y + heldSwayX * 0.7,
+    HELD_REST_ROTATION.y + heldSwayX * 0.7 + draw * 0.3,
     HELD_REST_ROTATION.z - swing * 0.48
   );
 }

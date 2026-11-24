@@ -97,6 +97,12 @@ You understand the following from the transmission:
 | Leather chestplate    |
 | Leather leggings      |
 | Leather boots         |
+| Bow                   |
+| Arrow ×4              |
+  
+The bow is three sticks bent into the arc with three strings down the open side, mirrored either way. An arrow is a chip of cobblestone over a stick over a feather; Minecraft tips it with flint, and this world has no gravel to knap it from.  
+  
+Lighting beacon 2 also wakes spiders. They join the night's hostiles and are the only source of string, so the bow has to be hunted for before it can be made. See Archery and the night's newcomers.  
   
 —  
 ## Beacon Number 3 Transmission  
@@ -120,6 +126,8 @@ You understand the following from the transmission:
 | Iron chestplate |
 | Iron leggings   |
 | Iron boots      |
+  
+Lighting beacon 3 also arms the night: skeleton archers join the hostiles. See Archery and the night's newcomers.  
   
 —  
 ## Beacon Number 4 Transmission  
@@ -147,6 +155,16 @@ You understand the following from the transmission:
 —  
 ## Beacon Number 5 Transmission  
 A celebratory transmission telling you that you have fully unlocked teleportation to this world and you can now return a hero. However, it lets you know you can choose to remain and further prepare a base to better assist the colonizers when they arrive.  
+  
+—  
+## Archery and the night's newcomers  
+The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 16% of the time and a zombie otherwise. Once beacon 2 is lit, a fifth of spawns roll a spider. A spider that would not fit the spot arrives as a zombie instead, so about one spawn in ten is a spider. Once beacon 3 is lit, another fifth of spawns are skeletons. The newcomers take their share out of the zombies'. All of them scale with the ground they were spawned on, as every enemy does, and pay essence when killed.  
+  
+**Spiders** (beacon 2). 16 health, quick, wide and low: 1.28 blocks across, wider than one block. A spider climbs any wall it runs into while it walks. It bites for 2 on a one-second cooldown. Sunlight does not burn it. Out under the daytime sky it hunts nobody unless it is hit, and then it stays angry for twelve seconds. In a dark cave it hunts as it would at night. It drops 0–2 string.  
+  
+**Skeleton archers** (beacon 3). 20 health. Within 24 blocks a skeleton holds its distance instead of closing it: it walks in from beyond 13 blocks, backs away inside 6, and in between circles the walker, changing side every few seconds. With a clear line of sight within 18 blocks it looses an arrow about every 2.2 seconds. The arrow aims high by the drop its flight will take and wobbles a little, and hits for 3 before difficulty scaling. Skeletons burn in sunlight like zombies. A skeleton drops 0–2 arrows, and its arrows that miss stick where they land and are gone after four seconds.  
+  
+**The bow.** Hold the use button (right click, or the left trigger) to draw, and let go to shoot. A full draw takes a second. A full draw shoots an arrow at 42 blocks a second for 7 damage, and a partial draw shoots slower and weaker in proportion. A draw under a tenth of the way lets go without shooting. Each shot spends one arrow from anywhere in the pack and one of the bow's 384 uses. Without arrows the bow says so. Arrows fall under gravity. The walker's arrows that miss land as an arrow item to pick up again, and one that hits is spent. The bow mines nothing and swings in melee like any tierless tool. Without pointer lock the right button is the look drag, so a right click there shoots a full draw at once.  
   
 —  
 ## The Recipe Book  
