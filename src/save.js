@@ -65,6 +65,10 @@ import { dayTime } from './sky.js';
  * Wall torches ride schema 7 without a bump: a torch on a wall is a facings
  * row like a ladder's, and a torch with no row stands upright, which is how
  * every torch in a save written before them reads.
+ *
+ * Lava and obsidian ride schema 7 too: they are new block ids (55 to 62) and
+ * nothing else, so a save written before them holds none and reads exactly as
+ * it did.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [

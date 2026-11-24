@@ -12,7 +12,7 @@
  */
 
 import * as THREE from 'three';
-import { BLOCKS, createBlockEntity, isWater } from './blocks.js';
+import { BLOCKS, createBlockEntity, isFluid, isWater } from './blocks.js';
 import {
   B, CHUNK_AREA, CHUNK_BUDGET_MS, CHUNK_SIZE, CHUNK_VOLUME, DATA_RADIUS, LIGHT_MAX,
   RENDER_DISTANCE, SEA_LEVEL, UNLOAD_RADIUS, WATER_NEIGHBORS, WATER_REMESH_BUDGET,
@@ -174,12 +174,12 @@ export class World {
     }
   }
 
-  /** Whether any of the six cells beside this one holds water. */
+  /** Whether any of the six cells beside this one holds water or lava. */
   hasWaterNeighbour(gx, gy, gz) {
     for (const [dx, dy, dz] of WATER_NEIGHBORS) {
       const ny = gy + dy;
       if (ny < 0 || ny >= WORLD_HEIGHT) continue;
-      if (isWater(this.getBlock(gx + dx, ny, gz + dz))) return true;
+      if (isFluid(this.getBlock(gx + dx, ny, gz + dz))) return true;
     }
     return false;
   }
@@ -204,7 +204,7 @@ export class World {
       if (y >= WORLD_HEIGHT) continue;
       const gx = cx * CHUNK_SIZE + lx;
       const gz = cz * CHUNK_SIZE + lz;
-      if (!isWater(id) && !this.hasWaterNeighbour(gx, y, gz)) continue;
+      if (!isFluid(id) && !this.hasWaterNeighbour(gx, y, gz)) continue;
       this.queueWaterAround(gx, y, gz);
       woken++;
     }
@@ -516,10 +516,11 @@ export class World {
   /**
    * Writes the outcome of one water tick. Shaped like setBlocksBatch, minus
    * everything flowing water cannot touch: it only ever replaces air, so there
-   * are no drops, torches, crops, doors or block entities to unwind. It also
+   * are no drops, torches, crops, doors or block entities to unwind. Water
    * skips the light engine on purpose, because air and water are both
    * non-opaque and neither glows, so updateLightForEdit would return
-   * immediately for every single cell.
+   * immediately for every single cell. Lava glows, and a meeting of the two
+   * leaves solid rock behind, so those cells — and only those — are relit.
    */
   applyFlowEdits(edits) {
     if (edits.length === 0) return 0;
@@ -539,9 +540,15 @@ export class World {
       const lx = gx - cx * CHUNK_SIZE;
       const lz = gz - cz * CHUNK_SIZE;
       const index = blockIndex(lx, gy, lz);
-      if (chunk.blocks[index] === id) continue;
+      const oldId = chunk.blocks[index];
+      if (oldId === id) continue;
       chunk.blocks[index] = id;
       this.recordOverride(gx, gy, gz, id);
+      const was = BLOCKS[oldId];
+      const now = BLOCKS[id];
+      if ((was.light ?? 0) !== (now.light ?? 0) || was.opaque !== now.opaque) {
+        updateLightForEdit(this, gx, gy, gz, oldId, id);
+      }
 
       dirty.add(key);
       if (lx === 0) dirty.add(chunkKey(cx - 1, cz));

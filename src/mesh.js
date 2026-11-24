@@ -9,7 +9,7 @@
 
 import * as THREE from 'three';
 import { TILES, tileRect } from './atlas.js';
-import { BLOCKS, isWater, waterLevel, waterSurfaceHeight } from './blocks.js';
+import { BLOCKS, fluidSurfaceHeight, isFluid, isLava, isWater } from './blocks.js';
 import {
   B, CHUNK_SIZE, LADDER_PLANK, TORCH_HEIGHT, WALL_TORCH_FOOT, WALL_TORCH_LEAN, WALL_TORCH_RISE,
   WATER_CORNER_CELLS, WORLD_HEIGHT, blockIndex
@@ -100,8 +100,10 @@ export function buildChunkMesh(world, chunk) {
           appendTorch(cutout, world, x, y, z, wx, wz);
           continue;
         }
-        if (isWater(id)) {
-          appendWaterFaces(water, world, x, y, z, wx, wz, id);
+        if (isFluid(id)) {
+          // Lava is drawn with the opaque terrain: nothing is ever seen through
+          // it, so it has no business in the water's blended pass.
+          appendWaterFaces(isLava(id) ? opaque : water, world, x, y, z, wx, wz, id);
           continue;
         }
 
@@ -202,18 +204,28 @@ export function buildChunkMesh(world, chunk) {
  * exception the cell at the foot of every waterfall swells to a full block.
  */
 function waterBuriedAbove(id, aboveId) {
-  return isWater(aboveId) && (BLOCKS[id].falling || !BLOCKS[aboveId].falling);
+  return sameFluid(id, aboveId) && (BLOCKS[id].falling || !BLOCKS[aboveId].falling);
+}
+
+/**
+ * Whether two cells hold the same fluid. A surface only ever blends with its
+ * own kind: where water meets lava each draws its own face, briefly, until the
+ * lava hardens.
+ */
+function sameFluid(a, b) {
+  const fluid = BLOCKS[a].fluid;
+  return fluid !== null && BLOCKS[b].fluid === fluid;
 }
 
 /**
  * How full a cell's share of the water surface is, or null if it holds none.
  * A buried cell is the whole cell: only the top of a body of water is a surface.
  */
-function waterTopAt(world, wx, wy, wz) {
+function waterTopAt(world, wx, wy, wz, fluidId) {
   const id = world.getBlock(wx, wy, wz);
-  if (!isWater(id)) return null;
+  if (!sameFluid(fluidId, id)) return null;
   if (waterBuriedAbove(id, world.getBlock(wx, wy + 1, wz))) return 1;
-  return waterSurfaceHeight(waterLevel(id));
+  return fluidSurfaceHeight(id);
 }
 
 /**
@@ -223,11 +235,11 @@ function waterTopAt(world, wx, wy, wz) {
  * instead of leaving a step, which is what keeps a spreading sheet from looking
  * like a staircase. A corner no water touches stands at nothing.
  */
-function waterCornerHeight(world, wx, wy, wz) {
+function waterCornerHeight(world, wx, wy, wz, fluidId) {
   let sum = 0;
   let count = 0;
   for (const [dx, dz] of WATER_CORNER_CELLS) {
-    const height = waterTopAt(world, wx + dx, wy, wz + dz);
+    const height = waterTopAt(world, wx + dx, wy, wz + dz, fluidId);
     if (height === null) continue;
     sum += height;
     count++;
@@ -249,10 +261,10 @@ function appendWaterFaces(builder, world, x, y, z, wx, wz, id) {
   const buried = waterBuriedAbove(id, world.getBlock(wx, y + 1, wz));
 
   // Corners of the cell, in the order the top face and the light sampling use.
-  const h00 = buried ? 1 : waterCornerHeight(world, wx, y, wz);
-  const h10 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz);
-  const h01 = buried ? 1 : waterCornerHeight(world, wx, y, wz + 1);
-  const h11 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz + 1);
+  const h00 = buried ? 1 : waterCornerHeight(world, wx, y, wz, id);
+  const h10 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz, id);
+  const h01 = buried ? 1 : waterCornerHeight(world, wx, y, wz + 1, id);
+  const h11 = buried ? 1 : waterCornerHeight(world, wx + 1, y, wz + 1, id);
   const cornerHeight = (cx, cz) => (cx === 0
     ? (cz === 0 ? h00 : h01)
     : (cz === 0 ? h10 : h11));
@@ -265,11 +277,11 @@ function appendWaterFaces(builder, world, x, y, z, wx, wz, id) {
   let f10 = 0;
   let f01 = 0;
   let f11 = 0;
-  if (BLOCKS[id].falling && isWater(world.getBlock(wx, y - 1, wz))) {
-    f00 = waterCornerHeight(world, wx, y - 1, wz) - 1;
-    f10 = waterCornerHeight(world, wx + 1, y - 1, wz) - 1;
-    f01 = waterCornerHeight(world, wx, y - 1, wz + 1) - 1;
-    f11 = waterCornerHeight(world, wx + 1, y - 1, wz + 1) - 1;
+  if (BLOCKS[id].falling && sameFluid(id, world.getBlock(wx, y - 1, wz))) {
+    f00 = waterCornerHeight(world, wx, y - 1, wz, id) - 1;
+    f10 = waterCornerHeight(world, wx + 1, y - 1, wz, id) - 1;
+    f01 = waterCornerHeight(world, wx, y - 1, wz + 1, id) - 1;
+    f11 = waterCornerHeight(world, wx + 1, y - 1, wz + 1, id) - 1;
   }
   const floorHeight = (cx, cz) => (cx === 0
     ? (cz === 0 ? f00 : f01)
@@ -281,7 +293,7 @@ function appendWaterFaces(builder, world, x, y, z, wx, wz, id) {
     // cell under a stream is not buried in the body, so it still has a surface
     // of its own to draw, and without it the pool a waterfall lands in reads as
     // a hole the seabed shows through.
-    if (isWater(neighborId) && face.kind !== 'top') continue;
+    if (sameFluid(id, neighborId) && face.kind !== 'top') continue;
     if (BLOCKS[neighborId].opaque) continue;
 
     const sky = skyBrightness(world.getSkyLight(wx + face.n[0], y + face.n[1], wz + face.n[2]));

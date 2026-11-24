@@ -85,7 +85,7 @@ and a runtime assertion enforces that each block sits at its own id.
 | 5 | Coal Ore | Drops 1–2 Coal |
 | 6 | Iron Ore | Drops Raw Iron |
 | 7 | Sand | Deserts, beaches, river beds |
-| 8 | Water | A source; see Water flow |
+| 8 | Water | A source; see Fluids: water and lava |
 | 9 | Oak Log | Bark sides, ring top/bottom |
 | 10 | Oak Planks | Horizontal boards |
 | 11 | Oak Leaves | Slightly transparent cutout; drops apples, never itself |
@@ -100,10 +100,14 @@ and a runtime assertion enforces that each block sits at its own id.
 | 21–28 | Wheat, stages 0–7 | Crop growth lives in the block id, so fields survive chunk unloads |
 | 29–32 | Wooden Door (lower/upper, closed/open pair) | One item across two cells; the open ids are non-solid |
 | 33 / 34 | Red Bed (foot/head) | One item across two cells |
-| 35–48 | Water flow/fall levels 1–7 each | Resting sheets and falling water; see Water flow |
+| 35–48 | Water flow/fall levels 1–7 each | Resting sheets and falling water; see Fluids: water and lava |
 | 49 | Chest | Contents live in a block entity |
 | 50 / 51 | Oak Stairs / Cobblestone Stairs | The only sub-block collider in the game |
 | 52 | Ladder | Solid: false; the first block a player stands inside of |
+| 53 / 54 | Beacon (unlit/lit) | Mission monuments; see the MultiVoxelVerse design |
+| 55 | Lava | A source; see Fluids: water and lava. Light 15, no collision |
+| 56–61 | Lava flow/fall levels 1–3 each | Every rank glows at 15 like the source |
+| 62 | Obsidian | What a lava source hardens into; hardness 50, needs a diamond pickaxe |
 
 Grass grows on surface terrain in grassy biomes; dirt underlies the surface layers;
 stone fills the deep rock and mountains. Water and bedrock are never placed or mined by
@@ -424,7 +428,48 @@ cooking while open.
   crater included. Apples cannot be farmed (there are no saplings), and have no other
   use: food or nothing
 
-## Water flow
+## Fluids: water and lava
+
+Water and lava share one flow model (`desiredFluid` in `src/water.js`). Every block
+carries `fluid` (`'water'`, `'lava'` or null) and `fluidLevel` (0 for a source, the rank
+above that); the rules below are written for water and apply to lava unchanged, with
+lava's own numbers:
+
+| | Water | Lava |
+| --- | --- | --- |
+| Ranks past the source | 7 | 3 (Minecraft's overworld reach of four blocks) |
+| Beat | every water tick (0.15 s) | every 6th water tick (0.9 s), Minecraft's 30-vs-5 ratio |
+| Surface step per rank | ⅛ block | ¼ block |
+| Light | none | 15 at every rank |
+| Drawn with | the blended water pass | the opaque terrain (nothing is seen through it) |
+
+Only lava *moving* waits for lava's beat: lava spreading, drying up, or arriving beside
+water. Lava hardening happens on the tick water reaches it, so a bucket poured on a
+spill quenches it at once. Waiting changes when lava moves, never what it settles into.
+
+Where the two meet, Minecraft's three rules decide, and they are the only way a fluid
+ever becomes solid:
+
+- Lava with water beside it or on top of it hardens in place: a source into **obsidian**,
+  any flowing rank into **cobblestone**. Water does not wash lava away
+- Water with lava pouring onto it from above turns to **stone**, so a lavafall into a
+  lake plugs itself
+- Water *below* lava does nothing to the lava: the lava pours down into it, and that is
+  the water cell's meeting
+- A cell both fluids reach holds water, and the lava beside it is what hardens
+
+A solid never turns back into a fluid, so every meeting is final and the flood still
+reaches a fixed point. Flow edits that change light or opacity (lava arriving or
+leaving, a meeting leaving rock) go through the light engine; plain water edits still
+skip it. A placed block replaces lava the same way it replaces water, rays pass through
+both, and only water wets farmland. The player, mobs and drops do not yet react to lava
+(it is non-solid and harmless for now), there is no lava bucket, and worldgen places
+none: the fluid exists ahead of the lava phases that give it consequences and caves.
+
+`waterFlowCheck()` replays the rules on small rigs. Its `cases` are the water rigs the
+snapshot guard compares; `lava` holds the lava and meeting rigs (`lavaOk`).
+
+### Water
 
 Water is fifteen block states: a source (`WATER`, id 8), seven resting levels
 (`WATER_FLOW_1..7`, rank 1 deepest, 7 a film), and the same seven carrying their own
@@ -502,7 +547,7 @@ merge rule all read the id.
   after the hoe and the seeds, so an interactive block keeps first refusal: a crafting
   table behind a puddle opens rather than flooding. The bucket finds water with its own
   walk of the ray (`raycastWater`), stopping at the first solid
-- No lava bucket (no lava), no water bottle (nothing to fill), and nothing in the world
+- No lava bucket (lava exists, but nothing to scoop it with yet), no water bottle (nothing to fill), and nothing in the world
   hands out a free bucket
 
 ## Containers

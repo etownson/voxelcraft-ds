@@ -31,7 +31,7 @@ import {
 } from './audio.js';
 import {
   ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock,
-  isFallingWater, isFlowWater, isFurnaceBlock, makeStack, slotInfo, stackDurability,
+  isFallingWater, isFlowWater, isFurnaceBlock, isLava, makeStack, slotInfo, stackDurability,
   waterLevel
 } from './blocks.js';
 import {
@@ -126,7 +126,7 @@ import {
   advanceDayTime, applyDayNight, clockHours, dayTime, daylight, formatClock, isNight,
   setDayTime, setTimeScale, timeScale, updateDayNight, updateWaterLook
 } from './sky.js';
-import { desiredWaterLevel, updateWater, waterTick } from './water.js';
+import { desiredFluid, updateWater, waterTick } from './water.js';
 import {
   activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, waypointTargets
 } from './waypoints.js';
@@ -1570,7 +1570,7 @@ window.__voxelcraft = {
    *
    * The rigs are the shapes the rules once lost their nerve on. A breach two
    * blocks deeper than the water standing over it left a neck of air with a sheet
-   * below it and nothing beside it, and no rule in desiredWaterLevel claimed the
+   * below it and nothing beside it, and no rule in desiredFluid claimed the
    * neck: it dried, the orphaned sheet thinned itself a rank a tick, the fall
    * returned and the whole thing pulsed for as long as the chunk stayed loaded.
    * So every case is a convergence test first — a dig has to reach a state it no
@@ -1596,6 +1596,16 @@ window.__voxelcraft = {
       if (id === B.WATER) return 'S';
       if (isFallingWater(id)) return 'v';
       if (isFlowWater(id)) return String(waterLevel(id));
+      // Lava reads as letters so a mixed rig stays one row of characters: L for
+      // a source, A to C for its resting ranks, ! for lava pouring down, and
+      // the two things a meeting leaves behind, c for cobblestone and O for
+      // obsidian. No water-only rig produces any of them.
+      if (id === B.LAVA) return 'L';
+      if (isLava(id)) {
+        return BLOCKS[id].falling ? '!' : 'ABC'[BLOCKS[id].fluidLevel - 1];
+      }
+      if (id === B.COBBLESTONE) return 'c';
+      if (id === B.OBSIDIAN) return 'O';
       return id === B.AIR ? '.' : '#';
     };
     const rig = () => {
@@ -1638,7 +1648,7 @@ window.__voxelcraft = {
           const edits = [];
           for (const cell of batch) {
             const [x, y, z] = cell.split(',').map(Number);
-            const next = desiredWaterLevel(x, y, z);
+            const next = desiredFluid(x, y, z);
             if (next !== read(x, y, z)) edits.push([x, y, z, next]);
           }
           for (const [x, y, z, id] of edits) {
@@ -1759,7 +1769,76 @@ window.__voxelcraft = {
     })();
     test('a sheet over a ledge', ledge, 'S123v..../####v..../####v..../####4567.');
 
-    return { ok: cases.every((c) => c.pass), cases };
+    // Lava runs the same rules on a three-rank leash, and where it meets water
+    // one of them hardens. These rigs are reported apart from the water ones,
+    // so the water cases above keep answering for exactly what they always did.
+    const waterCases = cases.splice(0);
+    /** A one-wide channel on a stone floor, open along x from 0 to `length - 1`. */
+    const channel = (length, fill) => {
+      const built = rig();
+      built.box(-1, 0, -1, length, 3, 1, B.STONE);
+      built.box(0, 1, 0, length - 1, 1, 0, B.AIR);
+      fill(built);
+      const read = at(built.cells);
+      return {
+        rig: built,
+        read: () => {
+          let line = '';
+          for (let x = 0; x < length; x++) line += show(read(x, 1, 0));
+          return line;
+        }
+      };
+    };
+    const spill = channel(8, (r) => r.cells.set(key(0, 1, 0), B.LAVA));
+    test('lava reaches three blocks', spill, 'LABC....');
+    spill.rig.cells.set(key(0, 1, 0), B.AIR);
+    test('lava drains when its source goes', spill, '........');
+
+    const lavaShaft = shaft(2);
+    lavaShaft.rig.cells.set(key(0, 3, 0), B.LAVA);
+    test('lava pours down a shaft', lavaShaft, 'L!A');
+
+    // Water and lava sent toward each other along the same channel. The water
+    // takes the cell they both reach, and the lava beside it hardens to
+    // cobblestone; the source behind is never touched, so it stays lava.
+    test('flowing lava meets water', channel(7, (r) => {
+      r.cells.set(key(0, 1, 0), B.LAVA);
+      r.cells.set(key(6, 1, 0), B.WATER);
+    }), 'LAc321S');
+
+    /** A sealed column, read from `top` down to y=1. */
+    const column = (top, fill) => {
+      const built = rig();
+      built.box(-1, 0, -1, 1, top + 1, 1, B.STONE);
+      fill(built);
+      const read = at(built.cells);
+      return {
+        rig: built,
+        read: () => {
+          let line = '';
+          for (let y = top; y >= 1; y--) line += show(read(0, y, 0));
+          return line;
+        }
+      };
+    };
+    test('water on a lava source makes obsidian', column(2, (r) => {
+      r.cells.set(key(0, 1, 0), B.LAVA);
+      r.cells.set(key(0, 2, 0), B.WATER);
+    }), 'SO');
+    test('lava poured onto water makes stone', column(3, (r) => {
+      r.cells.set(key(0, 1, 0), B.WATER);
+      r.cells.set(key(0, 2, 0), B.AIR);
+      r.cells.set(key(0, 3, 0), B.LAVA);
+    }), 'LA#');
+
+    const lavaCases = cases.splice(0);
+    cases.push(...waterCases);
+    return {
+      ok: cases.every((c) => c.pass),
+      cases,
+      lavaOk: lavaCases.every((c) => c.pass),
+      lava: lavaCases
+    };
   },
   setBlock(x, y, z, id) {
     let numericId = id;

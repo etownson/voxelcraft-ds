@@ -89,6 +89,14 @@ export const WATER_TICK_BUDGET = 512;
 /** How far sideways a source can push water before the sheet goes too thin. */
 export const WATER_MAX_FLOW = 7;
 /**
+ * Lava runs the same rules as water on a shorter, slower leash: three ranks
+ * out from a source rather than seven, which is the four-block reach it has in
+ * Minecraft's overworld, and one step for every six water ticks, the 30-tick
+ * against 5-tick ratio Minecraft gives the two.
+ */
+export const LAVA_MAX_FLOW = 3;
+export const LAVA_TICK_EVERY = 6;
+/**
  * Chunk meshes a single water tick will rebuild. Meshing is far more expensive
  * than flowing, so a flood that dirties a dozen chunks at once spreads that
  * work over the ticks that follow it.
@@ -163,7 +171,7 @@ export function waterFlowBlockDefs() {
       id: B['WATER_FLOW_' + level], key: 'water_flow_' + level,
       name: 'Water', tiles: { top: 'water', bottom: 'water', side: 'water' },
       solid: false, opaque: false, liquid: true, waterLevel: level,
-      breakable: false, placeable: false
+      fluid: 'water', fluidLevel: level, breakable: false, placeable: false
     });
   }
   for (let level = 1; level <= WATER_MAX_FLOW; level++) {
@@ -171,8 +179,29 @@ export function waterFlowBlockDefs() {
       id: B['WATER_FALL_' + level], key: 'water_fall_' + level, name: 'Water',
       tiles: { top: 'water', bottom: 'water', side: 'water' },
       solid: false, opaque: false, liquid: true, waterLevel: level, falling: true,
-      breakable: false, placeable: false
+      fluid: 'water', fluidLevel: level, breakable: false, placeable: false
     });
+  }
+  return defs;
+}
+
+/**
+ * Lava's resting and falling ranks, built the way water's are. Every rank glows
+ * as brightly as the source does, the way Minecraft's flowing lava does, so a
+ * spill lights the cave it runs into the moment it gets there.
+ */
+export function lavaFlowBlockDefs() {
+  const defs = [];
+  for (const falling of [false, true]) {
+    for (let level = 1; level <= LAVA_MAX_FLOW; level++) {
+      const kind = falling ? 'FALL' : 'FLOW';
+      defs.push({
+        id: B['LAVA_' + kind + '_' + level], key: 'lava_' + kind.toLowerCase() + '_' + level,
+        name: 'Lava', tiles: { top: 'lava', bottom: 'lava', side: 'lava' },
+        solid: false, opaque: false, liquid: true, fluid: 'lava', fluidLevel: level,
+        falling, light: 15, breakable: false, placeable: false
+      });
+    }
   }
   return defs;
 }
@@ -221,7 +250,14 @@ export const B = Object.freeze({
   // same way the furnace does: activation swaps the id, and lighting follows
   // the block table on its own. It is transmitter equipment, so there is no
   // third state and no item that carries it.
-  BEACON: 53, BEACON_ACTIVE: 54
+  BEACON: 53, BEACON_ACTIVE: 54,
+  // Lava keeps its depth in the id exactly the way water does: a source, three
+  // resting ranks and the same three pouring downward. Obsidian is what a lava
+  // source turns into when water reaches it.
+  LAVA: 55,
+  LAVA_FLOW_1: 56, LAVA_FLOW_2: 57, LAVA_FLOW_3: 58,
+  LAVA_FALL_1: 59, LAVA_FALL_2: 60, LAVA_FALL_3: 61,
+  OBSIDIAN: 62
 });
 
 /* ---------- Beacons and the walk out from SP0 ---------- */

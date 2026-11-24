@@ -22,7 +22,7 @@ import {
   playPlaceSound, playPourBucketSound, playToolBreakSound
 } from './audio.js';
 import {
-  BLOCKS, ITEMS, consumeDurability, freshStack, isChestBlock, isFurnaceBlock, isWater
+  BLOCKS, ITEMS, consumeDurability, freshStack, isChestBlock, isFluid, isFurnaceBlock, isWater
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import {
@@ -407,10 +407,11 @@ export function tryPlaceSelectedBlock() {
   const pz = currentTarget.z + currentTarget.normal.z;
 
   if (py < 0 || py >= WORLD_HEIGHT) return false;
-  // Water is the one thing a block can be set straight into, source or flow.
-  // It is also what lets a plank dam a flood instead of bouncing off it.
+  // A fluid is the one thing a block can be set straight into, source or flow.
+  // It is also what lets a plank dam a flood, or cap a lava spill, instead of
+  // bouncing off it.
   const roomId = world.getBlock(px, py, pz);
-  if (roomId !== B.AIR && !isWater(roomId)) return false;
+  if (roomId !== B.AIR && !isFluid(roomId)) return false;
 
   // A torch clicked onto the side of a block leans off that face; anything
   // else that sits on top still has to be clicked onto a top face.

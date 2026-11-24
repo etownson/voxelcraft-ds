@@ -12,7 +12,7 @@
  * business, and this layer only reads it and writes the next stage back.
  */
 
-import { BLOCKS } from './blocks.js';
+import { BLOCKS, isWater } from './blocks.js';
 import { world } from './chunks.js';
 import { B, CHUNK_SIZE, chunkKey } from './config.js';
 
@@ -39,7 +39,7 @@ const CROP_LIGHT_MIN = 9;
 export const FARMLAND_WET_REACH = 4;
 
 /**
- * True when water is close enough to soak a farmland cell. Any liquid counts —
+ * True when water is close enough to soak a farmland cell. Any water counts —
  * the sea, a bucket poured along the headland, even a sheet of flow crossing
  * the field. The answer is read from the world every time, so a furrow wets
  * and dries the moment the water moves and there is no moisture value to keep
@@ -51,7 +51,7 @@ export function isFarmlandWet(x, y, z) {
   for (let dy = 0; dy <= 1; dy++) {
     for (let dx = -FARMLAND_WET_REACH; dx <= FARMLAND_WET_REACH; dx++) {
       for (let dz = -FARMLAND_WET_REACH; dz <= FARMLAND_WET_REACH; dz++) {
-        if (BLOCKS[world.getBlock(x + dx, y + dy, z + dz)].liquid) return true;
+        if (isWater(world.getBlock(x + dx, y + dy, z + dz))) return true;
       }
     }
   }

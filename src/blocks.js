@@ -7,8 +7,8 @@
  */
 
 import {
-  APPLE_DROP_CHANCE, B, WATER_MAX_FLOW, WATER_SURFACE_OFFSET, capital, clamp,
-  waterFlowBlockDefs
+  APPLE_DROP_CHANCE, B, LAVA_MAX_FLOW, WATER_MAX_FLOW, WATER_SURFACE_OFFSET, capital, clamp,
+  lavaFlowBlockDefs, waterFlowBlockDefs
 } from './config.js';
 
 export const BLOCKS = [
@@ -72,7 +72,7 @@ export const BLOCKS = [
     id: B.WATER, key: 'water', name: 'Water',
     tiles: { top: 'water', bottom: 'water', side: 'water' },
     solid: false, opaque: false, liquid: true, waterLevel: 0,
-    breakable: false, placeable: false
+    fluid: 'water', fluidLevel: 0, breakable: false, placeable: false
   },
   {
     id: B.LOG, key: 'log', name: 'Oak Log',
@@ -344,6 +344,27 @@ BLOCKS.push(
   }
 );
 
+// Lava and obsidian come after the beacons for the same reason. Lava is water's
+// twin in the table: a source and its ranks, no collision, no tool that takes
+// it, and the brightest light a block can give. Obsidian is what a source
+// hardens into when water reaches it, and like Minecraft's it waits for a
+// diamond pickaxe.
+BLOCKS.push(
+  {
+    id: B.LAVA, key: 'lava', name: 'Lava',
+    tiles: { top: 'lava', bottom: 'lava', side: 'lava' },
+    solid: false, opaque: false, liquid: true, fluid: 'lava', fluidLevel: 0,
+    light: 15, breakable: false, placeable: false
+  },
+  ...lavaFlowBlockDefs(),
+  {
+    id: B.OBSIDIAN, key: 'obsidian', name: 'Obsidian',
+    tiles: { top: 'obsidian', bottom: 'obsidian', side: 'obsidian' },
+    solid: true, opaque: true, hardness: 50, tool: 'pickaxe', tier: 4,
+    drops: [{ item: 'obsidian', min: 1, max: 1 }], placeable: true
+  }
+);
+
 export const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -365,6 +386,11 @@ for (const block of BLOCKS) {
   // Only water carries a depth; everything else sits at -1 so isWater(id) can
   // be a single comparison against the block table.
   block.waterLevel ??= -1;
+  // Which fluid a block is, if any, and its rank within that fluid: water and
+  // lava both count 0 for a source and up from there, so the one flow model in
+  // water.js can run either of them.
+  block.fluid ??= null;
+  block.fluidLevel ??= -1;
   block.falling ??= false;
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
@@ -381,7 +407,15 @@ for (const block of BLOCKS) {
 export const isWater = (id) => BLOCKS[id].waterLevel >= 0;
 export const waterLevel = (id) => BLOCKS[id].waterLevel;
 /** Water pouring downward, as opposed to a sheet resting somewhere. */
-export const isFallingWater = (id) => BLOCKS[id].falling;
+export const isFallingWater = (id) => BLOCKS[id].falling && BLOCKS[id].waterLevel >= 0;
+/** Lava in any of its ranks, source, sheet or fall. */
+export const isLava = (id) => BLOCKS[id].fluid === 'lava';
+/**
+ * Water or lava. The places that ask this are the ones where a fluid is simply
+ * not a block: a ray passes through it, a placed block replaces it, and the
+ * flow code has to wake up beside it.
+ */
+export const isFluid = (id) => BLOCKS[id].fluid !== null;
 /** A sheet of water that has come to rest, at any of its seven depths. */
 export const isFlowWater = (id) => {
   const level = BLOCKS[id].waterLevel;
@@ -403,9 +437,19 @@ export const waterCanOccupy = (id) => id === B.AIR;
  * A falling column wears the same face as the sheet it came from, which is what
  * makes a thin curtain over a ledge look thin.
  */
-export function waterSurfaceHeight(level) {
+export function waterSurfaceHeight(level, maxFlow = WATER_MAX_FLOW) {
   if (level <= 0) return 1 - WATER_SURFACE_OFFSET;
-  return (WATER_MAX_FLOW + 1 - level) / (WATER_MAX_FLOW + 1);
+  return (maxFlow + 1 - level) / (maxFlow + 1);
+}
+
+/**
+ * The same surface for any fluid cell, by id. Lava has three ranks rather than
+ * seven, so each of its steps down is a quarter of a block instead of an eighth.
+ */
+export function fluidSurfaceHeight(id) {
+  const block = BLOCKS[id];
+  return waterSurfaceHeight(block.fluidLevel,
+    block.fluid === 'lava' ? LAVA_MAX_FLOW : WATER_MAX_FLOW);
 }
 
 export const ITEMS = new Map();

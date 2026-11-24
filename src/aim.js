@@ -16,7 +16,7 @@
 
 import * as THREE from 'three';
 import { TILES, atlasTexture, tileRect } from './atlas.js';
-import { isWater, isWaterSource } from './blocks.js';
+import { isFluid, isWaterSource } from './blocks.js';
 import { world } from './chunks.js';
 import { B, FOCUS_REACH, clamp } from './config.js';
 import { aimOrigin } from './player.js';
@@ -85,10 +85,10 @@ export function hideCrack() {
   crackStage = -1;
 }
 
-/** The cells an ordinary right click can land on. Water is transparent to it. */
-const isRayTargetable = (id) => id !== B.AIR && !isWater(id);
+/** The cells an ordinary right click can land on. Water and lava are transparent to it. */
+const isRayTargetable = (id) => id !== B.AIR && !isFluid(id);
 /** What a ray may keep walking through on its way to what it is looking for. */
-const isRaySeeThrough = (id) => id === B.AIR || isWater(id);
+const isRaySeeThrough = (id) => id === B.AIR || isFluid(id);
 
 /**
  * Amanatides & Woo voxel traversal. `accept` names the cell to stop on and

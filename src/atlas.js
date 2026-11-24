@@ -26,6 +26,8 @@ for (let stage = 0; stage < 8; stage++) TILE_ORDER.push('wheat_' + stage);
 // The beacon monument's faces: a cased metal shell with a crystal socket in
 // the middle, dim when the transmitter's machine waits and teal when it runs.
 TILE_ORDER.push('beacon_side', 'beacon_top', 'beacon_side_lit', 'beacon_top_lit');
+// Lava and the obsidian it hardens into join at the end, so no tile moves.
+TILE_ORDER.push('lava', 'obsidian');
 
 export const TILES = Object.create(null);
 TILE_ORDER.forEach((name, index) => { TILES[name] = index; });
@@ -883,6 +885,36 @@ function generateAtlas() {
         paint(x, row, vary(rand, LADDER_RUNG, 8));
         paint(x, row + 1, vary(rand, LADDER_RUNG_EDGE, 8));
       }
+    }
+  };
+
+  // Lava is a molten orange churned with brighter yellow seams and a few dark
+  // crusts, painted at full alpha: it is drawn with the opaque terrain, not the
+  // water's glass, because nothing is ever seen through it.
+  painters.lava = (paint, rand) => {
+    pixelNoise(paint, rand, [214, 92, 20], 10);
+    for (let i = 0; i < 5; i++) {
+      let x = (rand() * 16) | 0;
+      let y = (rand() * 16) | 0;
+      for (let step = 0; step < 9; step++) {
+        paint(x, y, vary(rand, [252, 180, 48], 10));
+        x = (x + ((rand() * 3) | 0) - 1 + 16) % 16;
+        y = (y + ((rand() * 3) | 0) - 1 + 16) % 16;
+      }
+    }
+    for (let i = 0; i < 9; i++) {
+      paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [150, 46, 12], 8));
+    }
+  };
+
+  // Obsidian is near-black glass with violet glints, Minecraft's own read of it.
+  painters.obsidian = (paint, rand) => {
+    pixelNoise(paint, rand, [22, 16, 34], 5);
+    for (let i = 0; i < 14; i++) {
+      paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [58, 40, 88], 8));
+    }
+    for (let i = 0; i < 6; i++) {
+      paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [104, 82, 150], 8));
     }
   };
 
