@@ -52,6 +52,7 @@
       "oak_stairs|oak_stairs|2|axe||true|false|false|0",
       "cobblestone_stairs|cobblestone_stairs|2|pickaxe|1|true|false|false|0",
       "ladder|ladder|0.4|axe||false|false|true|0",
+      "obsidian|obsidian|50|pickaxe|4|true|true|false|0",
       "packed_chest||||||||",
       "coal||||||||",
       "charcoal||||||||",
