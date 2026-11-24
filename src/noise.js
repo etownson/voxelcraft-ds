@@ -179,3 +179,4 @@ export const riverNoise = new Noise((WORLD_SEED ^ 0x1B873593) >>> 0);
 export const caveNoiseA = new Noise((WORLD_SEED ^ 0xA5A5A5) >>> 0);
 export const caveNoiseB = new Noise((WORLD_SEED ^ 0x5A5A5A) >>> 0);
 export const cavernNoise = new Noise((WORLD_SEED ^ 0xCAFE) >>> 0);
+export const aquiferNoise = new Noise((WORLD_SEED ^ 0xA0F1E5) >>> 0);

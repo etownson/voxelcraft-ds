@@ -9,11 +9,12 @@
 
 import { isWater } from './blocks.js';
 import {
+  AQUIFER_BAND, AQUIFER_DRY_BELOW, AQUIFER_SCALE, AQUIFER_TABLES,
   B, CHUNK_SIZE, LAVA_LEVEL, ORE_SALT_COAL, ORE_SALT_DIAMOND, ORE_SALT_IRON, SEA_LEVEL, TREE_MARGIN,
   TREE_SALT, WATER_SIDES, WORLD_HEIGHT, WORLD_SEED, blockIndex, clamp, lerp, smoothstep
 } from './config.js';
 import {
-  caveNoiseA, caveNoiseB, cavernNoise, chunkRandom, detailNoise, hash3i, humidNoise,
+  aquiferNoise, caveNoiseA, caveNoiseB, cavernNoise, chunkRandom, detailNoise, hash3i, humidNoise,
   mountainNoise, mulberry32, riverNoise, tempNoise, terrainNoise
 } from './noise.js';
 
@@ -122,20 +123,68 @@ function cutOpensSea(chunk, x, z, y, h) {
 }
 
 /**
- * Carve connected spaghetti tunnels and occasional larger caverns. A cut at or
- * below LAVA_LEVEL fills with a lava source instead of air. The sea test still
- * applies down there, so no lava is ever generated against water.
+ * The water table under a column, or -1 where the region is dry. Every column
+ * in one band of the aquifer field shares a table, so a region floods to a
+ * single level.
+ */
+export function waterTableAt(wx, wz) {
+  const n = aquiferNoise.noise2(wx * AQUIFER_SCALE + 31.7, wz * AQUIFER_SCALE - 12.3);
+  if (n < AQUIFER_DRY_BELOW) return -1;
+  const band = Math.floor((n - AQUIFER_DRY_BELOW) / AQUIFER_BAND);
+  return AQUIFER_TABLES[Math.min(band, AQUIFER_TABLES.length - 1)];
+}
+
+/** What a cave cut at height y holds under a column with this table. */
+function caveFill(table, y) {
+  if (y <= table) return B.WATER;
+  if (y <= LAVA_LEVEL) return B.LAVA;
+  return B.AIR;
+}
+
+/**
+ * Would this cut put a cave beside another region's cave holding something
+ * else at the same height? Inside one region the pools are settled for the
+ * same reason the lava level is: every cut under the table is filled. Across a
+ * border they would not be — water beside air pours, water beside lava
+ * hardens — so both sides refuse the cut and the border keeps a wall of stone.
+ * The four sides are enough: a column shares its table top to bottom, and
+ * fluid only moves sideways and down.
+ */
+function cutCrossesAquifer(tables, x, z, y, fill, wx, wz) {
+  for (const [dx, dz] of WATER_SIDES) {
+    const table = tables[(x + 1 + dx) + (z + 1 + dz) * (CHUNK_SIZE + 2)];
+    if (caveFill(table, y) === fill) continue;
+    if (caveCarvesAt(wx + dx, y, wz + dz)) return true;
+  }
+  return false;
+}
+
+/**
+ * Carve connected spaghetti tunnels and occasional larger caverns. A cut fills
+ * with what its region holds at that height: water up to the region's table,
+ * lava at or below LAVA_LEVEL in a dry region, air everywhere else. The sea
+ * test still applies, so no cave fluid is ever generated against the sea.
  */
 function carveCaves(chunk) {
   const baseX = chunk.cx * CHUNK_SIZE;
   const baseZ = chunk.cz * CHUNK_SIZE;
   const blocks = chunk.blocks;
 
+  // Tables for this chunk's columns and the ring around it, so the border test
+  // never asks the noise twice for one column.
+  const tables = new Int8Array((CHUNK_SIZE + 2) * (CHUNK_SIZE + 2));
+  for (let z = -1; z <= CHUNK_SIZE; z++) {
+    for (let x = -1; x <= CHUNK_SIZE; x++) {
+      tables[(x + 1) + (z + 1) * (CHUNK_SIZE + 2)] = waterTableAt(baseX + x, baseZ + z);
+    }
+  }
+
   for (let z = 0; z < CHUNK_SIZE; z++) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
       const h = chunk.heightMap[x + z * CHUNK_SIZE];
       const wx = baseX + x;
       const wz = baseZ + z;
+      const table = tables[(x + 1) + (z + 1) * (CHUNK_SIZE + 2)];
 
       for (let y = 4; y <= h; y++) {
         const index = blockIndex(x, y, z);
@@ -145,7 +194,9 @@ function carveCaves(chunk) {
         // A cave that starts out touching the sea is a cave the simulation then
         // has to flood, so no cut here may reach the water.
         if (cutOpensSea(chunk, x, z, y, h)) continue;
-        blocks[index] = y <= LAVA_LEVEL ? B.LAVA : B.AIR;
+        const fill = caveFill(table, y);
+        if (cutCrossesAquifer(tables, x, z, y, fill, wx, wz)) continue;
+        blocks[index] = fill;
       }
     }
   }
