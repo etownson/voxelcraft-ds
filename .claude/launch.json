@@ -12,6 +12,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/dev-server.mjs", "8000"],
       "port": 8000
+    },
+    {
+      "name": "voxelcraft-scratch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "8020"],
+      "port": 8020
     }
   ]
 }
