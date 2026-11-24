@@ -156,13 +156,17 @@ function raycastBlock(origin, direction, maxDistance) {
   return raycastCell(origin, direction, maxDistance, isRayTargetable, () => true);
 }
 
+/** A full source of either fluid: the only cells a bucket will drink from. */
+const isBucketSource = (id) => isWaterSource(id) || id === B.LAVA;
+
 /**
- * The water the crosshair is on, with line of sight held to air and water.
- * Flow is walked through rather than refused, so a source sitting under the
- * thin sheet of a wave still reads as the source underneath it.
+ * The source the crosshair is on, water or lava, with line of sight held to
+ * air and fluid. Flow is walked through rather than refused, so a source
+ * sitting under the thin sheet of a wave still reads as the source underneath
+ * it, and the first source along the ray is the one a bucket gets.
  */
-export function raycastWater(origin, direction, maxDistance) {
-  return raycastCell(origin, direction, maxDistance, isWaterSource, isRaySeeThrough);
+export function raycastFluidSource(origin, direction, maxDistance) {
+  return raycastCell(origin, direction, maxDistance, isBucketSource, isRaySeeThrough);
 }
 
 /** Nothing is being pointed at: nothing to break, nothing to place against. */

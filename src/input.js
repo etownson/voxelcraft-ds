@@ -25,11 +25,11 @@
 import { hideTargetOutline, updateTarget } from './aim.js';
 import { ensureAudio, playJumpSound } from './audio.js';
 import { meshChunk, world } from './chunks.js';
-import { isSolid, ladderHolding, playerCollidesAt, submergedAt } from './collision.js';
+import { inLavaAt, isSolid, ladderHolding, playerCollidesAt, submergedAt } from './collision.js';
 import { swingAtMob, updateMobTarget } from './combat.js';
 import {
   AIR_ACCEL, CHUNK_SIZE, EYE_HEIGHT, GRAVITY, GROUND_ACCEL, JUMP_SPEED, LADDER_CLIMB_SPEED,
-  MAX_MOVE_STEP, PLAYER_HALF_WIDTH, PLAYER_STEP_HEIGHT, SEA_LEVEL, SPRINT_SPEED,
+  LAVA_SPEED_SCALE, LAVA_SWIM_SCALE, MAX_MOVE_STEP, PLAYER_HALF_WIDTH, PLAYER_STEP_HEIGHT, SEA_LEVEL, SPRINT_SPEED,
   TERMINAL_VELOCITY, WALK_SPEED, WATER_ACCEL, WATER_GRAVITY_SCALE, WATER_MANTLE_HEIGHT,
   WATER_MANTLE_STEP, WATER_MAX_SWIM_SPEED, WATER_SPEED_SCALE, WATER_SWIM_ACCEL,
   WATER_TERMINAL_VELOCITY, clamp
@@ -307,6 +307,13 @@ function updatePlayerEnvironment() {
     submergedAt(player.pos.x, player.pos.y + 0.9, player.pos.z);
   player.headInWater =
     submergedAt(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
+  // Lava is asked about lower than water: a foot in it is enough to burn, where
+  // a foot in water is not enough to swim.
+  player.inLava =
+    inLavaAt(player.pos.x, player.pos.y + 0.05, player.pos.z) ||
+    inLavaAt(player.pos.x, player.pos.y + 0.9, player.pos.z);
+  player.headInLava =
+    inLavaAt(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
 }
 
 /** Generate the chunks the player's box can touch so collision never sees air. */
@@ -343,10 +350,14 @@ export function updatePlayer(dt, input) {
     wishZ /= wishLength;
   }
 
-  player.sprinting = !!input.sprint && wishLength > 0.01 && !player.inWater;
+  // Lava is swum the way water is, only thicker: the same stroke and the same
+  // slow sink, at a fraction of the speed. Swimming means either.
+  const swimming = player.inWater || player.inLava;
+  const stroke = player.inLava ? LAVA_SWIM_SCALE : 1;
+  player.sprinting = !!input.sprint && wishLength > 0.01 && !swimming;
   const moveSpeed = (player.sprinting ? SPRINT_SPEED : WALK_SPEED) *
-    (player.inWater ? WATER_SPEED_SCALE : 1);
-  const accel = player.inWater ? WATER_ACCEL : (player.onGround ? GROUND_ACCEL : AIR_ACCEL);
+    (player.inLava ? LAVA_SPEED_SCALE : player.inWater ? WATER_SPEED_SCALE : 1);
+  const accel = swimming ? WATER_ACCEL : (player.onGround ? GROUND_ACCEL : AIR_ACCEL);
   const blend = 1 - Math.exp(-accel * dt);
 
   player.vel.x += (wishX * moveSpeed - player.vel.x) * blend;
@@ -379,14 +390,14 @@ export function updatePlayer(dt, input) {
       }
     }
     player.fallPeakY = player.pos.y;
-  } else if (player.inWater) {
+  } else if (swimming) {
     player.vel.y -= GRAVITY * WATER_GRAVITY_SCALE * dt;
     if (input.jump) {
-      player.vel.y += WATER_SWIM_ACCEL * dt;
-      if (player.onGround) player.vel.y = JUMP_SPEED * 0.65;
+      player.vel.y += WATER_SWIM_ACCEL * stroke * dt;
+      if (player.onGround) player.vel.y = JUMP_SPEED * 0.65 * (player.inLava ? 0.75 : 1);
       jumped = player.onGround;
     }
-    player.vel.y = clamp(player.vel.y, -WATER_TERMINAL_VELOCITY, WATER_MAX_SWIM_SPEED);
+    player.vel.y = clamp(player.vel.y, -WATER_TERMINAL_VELOCITY, WATER_MAX_SWIM_SPEED * stroke);
   } else {
     player.vel.y = Math.max(player.vel.y - GRAVITY * dt, -TERMINAL_VELOCITY);
     if (input.jump && player.onGround) {
@@ -402,7 +413,7 @@ export function updatePlayer(dt, input) {
     if (wasDescending) {
       player.onGround = true;
       const fallDistance = player.fallPeakY - player.pos.y;
-      if (fallDistance > 3.05 && !player.inWater) {
+      if (fallDistance > 3.05 && !swimming) {
         damagePlayer(Math.floor(fallDistance - 3), 'fall');
       }
     }
@@ -411,7 +422,7 @@ export function updatePlayer(dt, input) {
   } else {
     player.onGround = player.vel.y <= 0 &&
       playerCollidesAt(player.pos.x, player.pos.y - 0.02, player.pos.z);
-    if (!player.onGround && !player.inWater) {
+    if (!player.onGround && !swimming) {
       player.fallPeakY = Math.max(player.fallPeakY, player.pos.y);
     } else {
       player.fallPeakY = player.pos.y;
@@ -428,13 +439,13 @@ export function updatePlayer(dt, input) {
   // A step half a block tall is walked, not jumped: the foot rises onto the
   // tread and the walk carries on. Water has its own, taller version of this
   // trick below, and only ever runs when in water, so the two never compete.
-  if ((hitX || hitZ) && player.onGround && !player.inWater) {
+  if ((hitX || hitZ) && player.onGround && !swimming) {
     const step = tryStepUp(startX, player.pos.y, startZ, moveX, moveZ, hitX, hitZ);
     if (step.pastX) hitX = false;
     if (step.pastZ) hitZ = false;
   }
 
-  if ((hitX || hitZ) && player.inWater && input.jump) {
+  if ((hitX || hitZ) && swimming && input.jump) {
     if (tryWaterMantle(startX, startZ, moveX, moveZ)) {
       hitX = false;
       hitZ = false;
@@ -447,7 +458,7 @@ export function updatePlayer(dt, input) {
   // Sprinting, swimming and jumping are what eat through food while exploring;
   // walking on two legs costs nothing at all.
   exhaustForMovement(Math.hypot(player.pos.x - startX, player.pos.z - startZ), jumped);
-  if (jumped && !player.inWater) playJumpSound();
+  if (jumped && !swimming) playJumpSound();
 
   // Keep the player out of the void if a chunk somehow fails to generate.
   if (player.pos.y < -4) {

@@ -594,6 +594,19 @@ const MATERIAL_ICON_PAINTERS = {
     px(3, 8, '#5b9cf5', 10, 1);
     px(4, 9, '#4285e8', 2, 4);
     px(11, 9, '#1a4290', 2, 2);
+  },
+  lava_bucket(px) {
+    // The same pail full of lava: orange in the body, a yellow skin where the
+    // surface is hottest, and a dark crust in the shaded corner.
+    paintIconLine(px, 4, 7, 8, 2, '#a7a7af');
+    paintIconLine(px, 12, 7, 8, 2, '#a7a7af');
+    px(3, 7, '#c9c9d1', 10, 1);
+    px(3, 9, '#e0581a', 10, 2);
+    px(4, 11, '#cf4a14', 8, 2);
+    px(5, 13, '#b23d10', 6, 2);
+    px(3, 8, '#ffd04a', 10, 1);
+    px(4, 9, '#ff9a2e', 2, 4);
+    px(11, 9, '#7a2a0c', 2, 2);
   }
 };
 

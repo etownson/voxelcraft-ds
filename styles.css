@@ -816,6 +816,25 @@ body.screen-open #crosshair, body.screen-open #bottom-hud { opacity: 0; }
   opacity: 0;
 }
 
+/* ---------- In lava, and on fire ---------- */
+#lava-tint {
+  position: fixed; inset: 0; z-index: 4; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(255, 120, 20, 0.55) 20%, rgba(150, 30, 0, 0.92) 100%);
+  opacity: 0;
+}
+/* Flames licking up from the bottom of the view while the body burns. */
+#burn-glow {
+  position: fixed; inset: 0; z-index: 5; pointer-events: none;
+  background: linear-gradient(to top, rgba(255, 110, 20, 0.55) 0%, rgba(255, 160, 40, 0.18) 22%, rgba(255, 160, 40, 0) 42%);
+  opacity: 0; transition: opacity 0.3s ease-out;
+  animation: burn-flicker 0.35s ease-in-out infinite alternate;
+}
+#burn-glow.active { opacity: 1; }
+@keyframes burn-flicker {
+  from { filter: brightness(0.85); }
+  to { filter: brightness(1.15); }
+}
+
 #sleep-fade {
   position: fixed; inset: 0; z-index: 34; pointer-events: none;
   background: #04050a;

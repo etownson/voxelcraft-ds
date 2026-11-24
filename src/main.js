@@ -68,7 +68,7 @@ import {
 } from './fx.js';
 import {
   damagePlayer, healPlayer, respawnPlayer, setDeathView, setRespawnArrival, tryEatSelectedItem,
-  tryUseSelectedItem, updateHealth, updateHunger
+  tryUseSelectedItem, updateBurning, updateHealth, updateHunger
 } from './health.js';
 import {
   heldCamera, heldModelKey, heldRoot, heldScene, syncHeldAngles, triggerHeldSwing,
@@ -77,7 +77,7 @@ import {
 import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
-  openScreen, padCursor, padSensitivityEl, padStatusEl, renderArmorBar, renderEssence,
+  openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence,
   paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
@@ -340,7 +340,9 @@ setDeathView({
       fall: 'You fell too far.',
       zombie: 'A zombie got you.',
       creeper: 'A creeper found you.',
-      starving: 'You starved with nothing to eat.'
+      starving: 'You starved with nothing to eat.',
+      lava: 'You tried to swim in lava.',
+      fire: 'You burned to death.'
     };
     deathCauseEl.textContent = messages[cause] || 'The world got the better of you.';
     deathScreenEl.classList.remove('hidden');
@@ -1863,6 +1865,7 @@ window.__voxelcraft = {
       updateMining(dt, false);
       updateMobs(dt);
       updateHealth(dt);
+      updateBurning(dt);
       updateHunger(dt);
       updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
@@ -1898,6 +1901,7 @@ window.__voxelcraft = {
       updateCombat(dt, isMiningHeld());
       updateMobs(dt);
       updateHealth(dt);
+      updateBurning(dt);
       updateHunger(dt);
       updateHeldItem(dt, heldFrame());
       updateItemEntities(dt);
@@ -1979,6 +1983,9 @@ window.__voxelcraft = {
       onGround: player.onGround,
       inWater: player.inWater,
       headInWater: player.headInWater,
+      inLava: player.inLava,
+      headInLava: player.headInLava,
+      fireTime: Number(player.fireTime.toFixed(2)),
       sprinting: player.sprinting,
       sprintLatched: sprintLatched,
       playable: isPlayable(),
@@ -2157,6 +2164,7 @@ function animate(now) {
     updateMobs(dt);
     updateHeldItem(dt, heldFrame());
     updateHealth(dt);
+    updateBurning(dt);
     updateHunger(dt);
     updateItemEntities(dt);
     updateEssenceBubbles(dt);
@@ -2180,7 +2188,8 @@ function animate(now) {
 
   // Runs after the day/night pass so the water's murk sits on top of the sky's
   // fog, and outside the pause branch so the sea keeps breathing behind a screen.
-  updateWaterLook(dt, player.headInWater);
+  updateWaterLook(dt, player.headInWater, player.headInLava);
+  paintBurning(!player.dead && (player.inLava || player.fireTime > 0));
   paintWaypoint(activeWaypoint(), player.pos, view.yaw);
   paintThreat(threatZoneAt(player.pos.x, player.pos.y, player.pos.z), frontierZone(), threatZoneCount());
 

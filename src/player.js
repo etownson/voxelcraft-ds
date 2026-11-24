@@ -27,6 +27,14 @@ export const player = {
   onGround: false,
   inWater: false,
   headInWater: false,
+  /** Any of the body in lava, and the eyes in it: the two lava asks about. */
+  inLava: false,
+  headInLava: false,
+  /**
+   * Seconds the body has left to burn after leaving lava. It is topped up to
+   * the full burn while anything of the body is in lava and put out by water.
+   */
+  fireTime: 0,
   sprinting: false,
   health: 20,
   maxHealth: 20,

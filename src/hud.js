@@ -109,6 +109,16 @@ let damageFlashTimer = 0;
 /* The red wash that follows a hit is not a wound, it is the screen's way of
    saying one landed. The body only says when to put one up, how much of it has
    drained away, and when to take it away — at a death, or at a new life. */
+const burnGlowEl = document.getElementById('burn-glow');
+let burnGlowShown = false;
+
+/** Flames at the bottom of the view while the body is burning. */
+export function paintBurning(burning) {
+  if (burning === burnGlowShown || !burnGlowEl) return;
+  burnGlowShown = burning;
+  burnGlowEl.classList.toggle('active', burning);
+}
+
 export function showDamageFlash() {
   damageFlashTimer = 0.5;
   damageFlashEl.style.opacity = '1';
@@ -444,9 +454,9 @@ function furnaceStatusText(state) {
     return 'Result slot is full \u2014 take what is in it';
   }
   if (state.burnTime <= 0) {
-    return state.slots[FURNACE_FUEL]
-      ? 'Out of fuel'
-      : 'Needs fuel: coal, charcoal or planks';
+    const fuel = state.slots[FURNACE_FUEL];
+    if (!fuel) return 'Needs fuel: coal, charcoal, planks or lava';
+    return FURNACE_FUELS.has(fuel.id) ? 'Out of fuel' : 'That will not burn';
   }
   const item = ITEMS.get(recipe.out);
   return 'Cooking ' + (item ? item.name : recipe.out);

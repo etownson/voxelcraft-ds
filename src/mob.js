@@ -13,12 +13,13 @@ import * as THREE from 'three';
 import {
   playAnimalSound, playCreeperHiss, playExplosionSound, playMobHurtSound, playZombieGroan
 } from './audio.js';
-import { BLOCKS, isWater } from './blocks.js';
+import { BLOCKS, isLava, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
-import { cellCollidesAt, isSolid, submergedAt } from './collision.js';
+import { cellCollidesAt, inLavaAt, isSolid, submergedAt } from './collision.js';
 import {
   B, CHUNK_SIZE, COLLISION_EPSILON, DIFFICULTY_DAMAGE_SCALE, DIFFICULTY_ESSENCE_SCALE,
   DIFFICULTY_HEALTH_SCALE, DIFFICULTY_SPAWN_SCALE, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP,
+  BURN_DAMAGE, BURN_INTERVAL, BURN_SECONDS, LAVA_DAMAGE, LAVA_DAMAGE_INTERVAL,
   TERMINAL_VELOCITY, chunkKey, clamp
 } from './config.js';
 import { difficultyAt } from './beacons.js';
@@ -555,6 +556,10 @@ export function spawnMob(type, x, y, z, options = {}) {
     yaw: options.yaw ?? Math.random() * Math.PI * 2,
     onGround: false,
     inWater: false,
+    inLava: false,
+    lavaTimer: 0,
+    fireTime: 0,
+    fireTimer: 0,
     health,
     maxHealth: health,
     hurtFlash: 0,
@@ -939,6 +944,61 @@ function updateMobBurning(mob, dt) {
   }
 }
 
+/**
+ * Lava burns a mob the way it burns the player: four points every half second
+ * while it is in it, and a point a second for eight seconds after it climbs
+ * out, unless water puts it out. Passive animals bolt from the hurt, which
+ * is what usually carries them back out of the pool.
+ */
+function updateMobLava(mob, dt) {
+  if (mob.dead) return;
+  const half = mob.def.height * 0.5;
+  mob.inLava = inLavaAt(mob.pos.x, mob.pos.y + 0.05, mob.pos.z) ||
+    inLavaAt(mob.pos.x, mob.pos.y + half, mob.pos.z);
+
+  if (mob.inLava) {
+    mob.fireTime = BURN_SECONDS;
+    mob.lavaTimer -= dt;
+    if (mob.lavaTimer <= 0) {
+      mob.lavaTimer = LAVA_DAMAGE_INTERVAL;
+      spawnBurstParticles(mob.pos.x, mob.pos.y + half, mob.pos.z, 0xff7a1c, 6, 2.2);
+      damageMob(mob, LAVA_DAMAGE, 0, 0, { soundGap: 1.2 });
+    }
+    return;
+  }
+  mob.lavaTimer = 0;
+
+  if (mob.fireTime <= 0) return;
+  if (mob.inWater) {
+    mob.fireTime = 0;
+    return;
+  }
+  mob.fireTime -= dt;
+  mob.fireTimer += dt;
+  if (mob.fireTimer >= BURN_INTERVAL) {
+    mob.fireTimer -= BURN_INTERVAL;
+    spawnBurstParticles(mob.pos.x, mob.pos.y + half, mob.pos.z, 0xff9b36, 4, 1.6);
+    damageMob(mob, BURN_DAMAGE, 0, 0, { soundGap: 2.6 });
+  }
+  if (mob.fireTime <= 0) mob.fireTimer = 0;
+}
+
+/**
+ * True when a step towards (dirX, dirZ) would put the mob's feet into lava,
+ * or onto lava a block down. A mob already in lava is never held back, or it
+ * could not walk out.
+ */
+function lavaAhead(mob, dirX, dirZ) {
+  if (mob.inLava) return false;
+  const length = Math.hypot(dirX, dirZ);
+  if (length < 1e-5) return false;
+  const reach = mob.def.width * 0.5 + 0.45;
+  const x = Math.floor(mob.pos.x + (dirX / length) * reach);
+  const z = Math.floor(mob.pos.z + (dirZ / length) * reach);
+  const y = Math.floor(mob.pos.y + 0.05);
+  return isLava(world.getBlock(x, y, z)) || isLava(world.getBlock(x, y - 1, z));
+}
+
 function updateMobAI(mob, dt) {
   const def = mob.def;
   const dx = mobWalker().pos.x - mob.pos.x;
@@ -1043,6 +1103,14 @@ function updateMobAI(mob, dt) {
     }
   }
 
+  // Nothing walks into lava of its own accord. A wanderer turns to somewhere
+  // else, and a hunter stops at the edge rather than following the player in.
+  if (lavaAhead(mob, moveX, moveZ)) {
+    moveX = 0;
+    moveZ = 0;
+    mob.stateTimer = Math.min(mob.stateTimer, 0);
+  }
+
   steerMob(mob, moveX, moveZ, moveSpeed, dt);
 
   // Gravity and vertical collision.
@@ -1072,9 +1140,12 @@ function updateMobAI(mob, dt) {
     }
   }
 
-  // Water slows mobs down.
+  // Water slows mobs down, and lava far more.
   mob.inWater = submergedAt(mob.pos.x, mob.pos.y + 0.25, mob.pos.z);
-  if (mob.inWater) {
+  if (mob.inLava) {
+    mob.vel.x *= Math.exp(-7 * dt);
+    mob.vel.z *= Math.exp(-7 * dt);
+  } else if (mob.inWater) {
     mob.vel.x *= Math.exp(-3 * dt);
     mob.vel.z *= Math.exp(-3 * dt);
   }
@@ -1158,6 +1229,7 @@ export function updateMobs(dt) {
     }
 
     updateMobBurning(mob, dt);
+    updateMobLava(mob, dt);
     if (mob.dead) {
       removeMob(mob, i);
       continue;

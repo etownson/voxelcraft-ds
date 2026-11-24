@@ -197,6 +197,10 @@ export function updateDayNight(dt) {
  * screen, so the sea seen through the instructions never hangs mid-swell.
  * Whether the head is under is told to it rather than read off the player: the
  * sky knows about water, not about whoever happens to be standing in it.
+ *
+ * Lava has a murk of its own on top of the water's: a glowing orange that
+ * closes the view in to a couple of blocks and ignores the time of day,
+ * because lava is its own light.
  */
 let waterTime = 0;
 let underwaterBlend = 0;
@@ -206,8 +210,14 @@ const underwaterScratch = new THREE.Color();
 const waterTintEl = document.getElementById('water-tint');
 const UNDERWATER_FOG_NEAR = 0.5;
 const UNDERWATER_FOG_FAR = 24;
+let lavaBlend = 0;
+let lavaTintShown = -1;
+const LAVA_FOG_COLOR = new THREE.Color(0xc8410c);
+const lavaTintEl = document.getElementById('lava-tint');
+const LAVA_FOG_NEAR = 0.1;
+const LAVA_FOG_FAR = 2.5;
 
-export function updateWaterLook(dt, headUnderwater) {
+export function updateWaterLook(dt, headUnderwater, headInLava = false) {
   waterTime += dt;
 
   const target = headUnderwater ? 1 : 0;
@@ -215,19 +225,24 @@ export function updateWaterLook(dt, headUnderwater) {
   if (Math.abs(target - underwaterBlend) < 0.003) underwaterBlend = target;
   const b = underwaterBlend;
 
+  const lavaTarget = headInLava ? 1 : 0;
+  lavaBlend += (lavaTarget - lavaBlend) * Math.min(1, dt * 8);
+  if (Math.abs(lavaTarget - lavaBlend) < 0.003) lavaBlend = lavaTarget;
+  const l = lavaBlend;
+
   // The day/night pass hands over the sky's own fog, and this sits the water's
   // murk on top of it, pulling the view in to a few blocks. The colour is
   // recomputed whole from the sky each frame rather than nudged from the last,
   // so a paused frame — where the sky pass stays away — can never compound the blend.
-  const fogNear = lerp(FOG_NEAR, UNDERWATER_FOG_NEAR, b);
-  const fogFar = lerp(FOG_FAR, UNDERWATER_FOG_FAR, b);
+  const fogNear = lerp(lerp(FOG_NEAR, UNDERWATER_FOG_NEAR, b), LAVA_FOG_NEAR, l);
+  const fogFar = lerp(lerp(FOG_FAR, UNDERWATER_FOG_FAR, b), LAVA_FOG_FAR, l);
   for (const material of terrainMaterials) {
     material.uniforms.uTime.value = waterTime;
     material.uniforms.uFogNear.value = fogNear;
     material.uniforms.uFogFar.value = fogFar;
   }
   underwaterScratch.copy(UNDERWATER_FOG_COLOR).multiplyScalar(0.15 + 0.85 * daylight);
-  fogColor.copy(skyHorizonColor).lerp(underwaterScratch, b);
+  fogColor.copy(skyHorizonColor).lerp(underwaterScratch, b).lerp(LAVA_FOG_COLOR, l);
   scene.fog.color.copy(fogColor);
   scene.fog.near = fogNear;
   scene.fog.far = fogFar;
@@ -239,5 +254,10 @@ export function updateWaterLook(dt, headUnderwater) {
   if (tint !== waterTintShown) {
     waterTintEl.style.opacity = tint * 0.6;
     waterTintShown = tint;
+  }
+  const lavaTint = Math.round(l * 30) / 30;
+  if (lavaTint !== lavaTintShown && lavaTintEl) {
+    lavaTintEl.style.opacity = lavaTint;
+    lavaTintShown = lavaTint;
   }
 }

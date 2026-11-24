@@ -24,7 +24,8 @@ import { ITEMS } from './blocks.js';
 import { markWorldDirty } from './chunks.js';
 import { tryShearMob } from './combat.js';
 import {
-  EXHAUSTION, HUNGER_MAX, HUNGER_REGEN_MIN, REGEN_INTERVAL, SATURATION_BOOST_COST,
+  BURN_DAMAGE, BURN_INTERVAL, BURN_SECONDS, EXHAUSTION, HUNGER_MAX, LAVA_DAMAGE,
+  LAVA_DAMAGE_INTERVAL, HUNGER_REGEN_MIN, REGEN_INTERVAL, SATURATION_BOOST_COST,
   SATURATION_BOOST_INTERVAL, SATURATION_ON_RESPAWN, STARVE_INTERVAL, clamp
 } from './config.js';
 import { triggerHeldSwing } from './held.js';
@@ -123,6 +124,9 @@ export function respawnPlayer() {
   player.hurtCooldown = 0;
   player.regenDelay = 0;
   player.fallPeakY = 0;
+  player.fireTime = 0;
+  lavaTimer = LAVA_DAMAGE_INTERVAL;
+  fireTimer = 0;
   starveTimer = 0;
   regenTimer = 0;
   saturationBoostTimer = 0;
@@ -145,6 +149,48 @@ export function respawnPlayer() {
 
   respawnArrival.place();
   respawnArrival.resume();
+}
+
+/* ---------- Lava and fire ---------- */
+
+/* Counts towards the next lava bite. It starts full, so the first touch of lava
+   burns at once rather than half a second later. */
+let lavaTimer = LAVA_DAMAGE_INTERVAL;
+let fireTimer = 0;
+
+/**
+ * Lava burns whatever of the body is in it, and the body keeps burning for a
+ * while after it climbs out. Being in lava holds the fire at its full length,
+ * so the clock only starts running down once the player is clear of it; water
+ * puts it out at once, which is why a pool is the place to run to.
+ */
+export function updateBurning(dt) {
+  if (dt <= 0 || player.dead) return;
+
+  if (player.inLava) {
+    player.fireTime = BURN_SECONDS;
+    fireTimer = 0;
+    lavaTimer += dt;
+    // A bite the hurt cooldown turned away is tried again next frame rather
+    // than lost, so a zombie's swing cannot buy a free half second in lava.
+    if (lavaTimer >= LAVA_DAMAGE_INTERVAL && damagePlayer(LAVA_DAMAGE, 'lava')) lavaTimer = 0;
+    return;
+  }
+  lavaTimer = LAVA_DAMAGE_INTERVAL;
+
+  if (player.fireTime <= 0) return;
+  if (player.inWater) {
+    player.fireTime = 0;
+    fireTimer = 0;
+    markWorldDirty();
+    return;
+  }
+  player.fireTime = Math.max(0, player.fireTime - dt);
+  fireTimer += dt;
+  if (fireTimer >= BURN_INTERVAL && damagePlayer(BURN_DAMAGE, 'fire')) {
+    fireTimer -= BURN_INTERVAL;
+  }
+  if (player.fireTime <= 0) fireTimer = 0;
 }
 
 let starveTimer = 0;

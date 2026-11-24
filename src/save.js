@@ -27,7 +27,7 @@ import {
 import { clearWorldDirty, world } from './chunks.js';
 import { playerCollidesAt } from './collision.js';
 import {
-  CHUNK_SIZE, EXHAUSTION_THRESHOLD, HUNGER_MAX, SATURATION_ON_RESPAWN, WORLD_HEIGHT,
+  BURN_SECONDS, CHUNK_SIZE, EXHAUSTION_THRESHOLD, HUNGER_MAX, SATURATION_ON_RESPAWN, WORLD_HEIGHT,
   WORLD_SEED, clamp
 } from './config.js';
 import { beaconsActivatedCount, restoreBeaconProgress, setSpawnPoint0, spawnPoint } from './beacons.js';
@@ -68,7 +68,9 @@ import { dayTime } from './sky.js';
  *
  * Lava and obsidian ride schema 7 too: they are new block ids (55 to 62) and
  * nothing else, so a save written before them holds none and reads exactly as
- * it did.
+ * it did. The lava bucket is a new item id on the same terms, and the player's
+ * `fire`, the seconds left to burn, is written only while it is above zero, so
+ * a save without it is a player who is not on fire.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
@@ -145,7 +147,10 @@ function serializeWorldSave() {
       health: player.health,
       hunger: player.hunger,
       saturation: Number(player.saturation.toFixed(3)),
-      exhaustion: Number(player.exhaustion.toFixed(3))
+      exhaustion: Number(player.exhaustion.toFixed(3)),
+      // Seconds left to burn, written only while the player is on fire, so a
+      // save from someone not burning reads exactly as it did before fire.
+      ...(player.fireTime > 0 ? { fire: Number(player.fireTime.toFixed(2)) } : {})
     },
     slot: currentSlot(),
     time: dayTime,
@@ -498,6 +503,9 @@ export function restoreSavedPlayer(save) {
   // A counter that has already reached a whole bite cannot be trusted: it would
   // spend a point the instant the world opened, so it starts over instead.
   if (player.exhaustion >= EXHAUSTION_THRESHOLD) player.exhaustion = 0;
+  // A missing fire is no fire: every save before lava, and every save written
+  // while nobody was burning.
+  player.fireTime = clamp(Number(p.fire) || 0, 0, BURN_SECONDS);
   // Both bars are repainted here rather than left to the world's first frame:
   // the pictures were drawn when the page was still holding a whole, fed player,
   // and a save is allowed to hold a wounded one.

@@ -15,7 +15,7 @@
  */
 
 import {
-  currentTarget, hideCrack, rayDirection, raycastWater, showCrack, updateTarget
+  currentTarget, hideCrack, rayDirection, raycastFluidSource, showCrack, updateTarget
 } from './aim.js';
 import {
   playBreakSound, playDoorSound, playFillBucketSound, playHoeTillSound, playMiningHitSound,
@@ -601,33 +601,40 @@ function waterBeside(x, y, z) {
  */
 function fillBucket() {
   camera.getWorldDirection(rayDirection);
-  const hit = raycastWater(aimOrigin(), rayDirection, FOCUS_REACH);
+  const hit = raycastFluidSource(aimOrigin(), rayDirection, FOCUS_REACH);
   if (!hit) {
     interactionView.toast('No source to fill from');
     return false;
   }
 
+  // Lava is scooped on the same terms, with one difference: a lava source is
+  // always lifted out of the world. Minecraft's lava does not make more of
+  // itself the way a lake does, so the pool shrinks by the bucket every time.
+  const lava = hit.id === B.LAVA;
+  const full = lava ? 'lava_bucket' : 'water_bucket';
   const stack = getSelectedStack();
-  if (stack.count > 1 && !inventoryHasRoom('water_bucket', 1)) {
-    interactionView.toast('Nowhere to put the water');
+  if (stack.count > 1 && !inventoryHasRoom(full, 1)) {
+    interactionView.toast(lava ? 'Nowhere to put the lava' : 'Nowhere to put the water');
     return false;
   }
-  if (!swapHeldFor('water_bucket')) return false;
+  if (!swapHeldFor(full)) return false;
 
-  if (!waterBeside(hit.x, hit.y, hit.z)) world.setBlock(hit.x, hit.y, hit.z, B.AIR);
+  if (lava || !waterBeside(hit.x, hit.y, hit.z)) world.setBlock(hit.x, hit.y, hit.z, B.AIR);
   triggerHeldSwing();
   playFillBucketSound(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
-  interactionView.toast('Bucket filled');
+  interactionView.toast(lava ? 'Bucket filled with lava' : 'Bucket filled');
   return true;
 }
 
 /**
  * Emptying a bucket onto the face under the crosshair. It keeps to the same room
- * rule as any other placement — the cell has to be air or water already — and a
+ * rule as any other placement — the cell has to be air or fluid already — and a
  * full source is what lands there, so a poured bucket refills the very hole it
  * was scooped from instead of starting a fresh wave somewhere down the slope.
+ * Pouring one fluid into the other is allowed, and the flow code settles what
+ * meets: water poured onto lava hardens the lava around it.
  */
-function pourBucket() {
+function pourBucket(sourceId, noun) {
   if (!currentTarget) return false;
 
   const x = currentTarget.x + currentTarget.normal.x;
@@ -636,11 +643,11 @@ function pourBucket() {
   if (y < 0 || y >= WORLD_HEIGHT) return false;
 
   const roomId = world.getBlock(x, y, z);
-  if (roomId !== B.AIR && !isWater(roomId)) {
-    interactionView.toast('Nowhere for the water to go');
+  if (roomId !== B.AIR && !isFluid(roomId)) {
+    interactionView.toast('Nowhere for the ' + noun + ' to go');
     return false;
   }
-  if (!world.setBlock(x, y, z, B.WATER)) return false;
+  if (!world.setBlock(x, y, z, sourceId)) return false;
 
   // The swap's return is ignored on purpose: a bucket emptied over your own head
   // still empties, even when there is no room left to keep the empty one.
@@ -652,13 +659,14 @@ function pourBucket() {
 
 /**
  * A right click with a bucket in hand, which means one of two opposite things
- * depending on which of the two states happens to be held.
+ * depending on which of the states happens to be held.
  */
 function tryUseBucket() {
   const stack = getSelectedStack();
   if (!stack) return false;
   if (stack.id === 'bucket') return fillBucket();
-  if (stack.id === 'water_bucket') return pourBucket();
+  if (stack.id === 'water_bucket') return pourBucket(B.WATER, 'water');
+  if (stack.id === 'lava_bucket') return pourBucket(B.LAVA, 'lava');
   return false;
 }
 

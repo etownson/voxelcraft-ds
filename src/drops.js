@@ -4,7 +4,8 @@
  * velocity, a short delay before it can be claimed, and a bob to remind anyone
  * passing that it is there. It falls, it lands on whatever is solid, it stops
  * being a problem once it is far enough behind the player to have been missed,
- * and within reach it comes to them.
+ * it burns up in a puff the moment it is in lava, and within reach it comes to
+ * them.
  *
  * Two things it cannot know, so they are handed in: whose pack it is filling
  * arrives through `setItemPickup`, and the number that comes back is how much
@@ -15,8 +16,9 @@
 import * as THREE from 'three';
 import { playPickupSound } from './audio.js';
 import { atlasTexture } from './atlas.js';
-import { BLOCKS, ITEMS } from './blocks.js';
+import { BLOCKS, ITEMS, isLava } from './blocks.js';
 import { world } from './chunks.js';
+import { spawnBurstParticles } from './fx.js';
 import { buildItemCubeGeometry } from './held.js';
 import { ITEM_ICONS } from './icons.js';
 import { player } from './player.js';
@@ -121,6 +123,16 @@ export function updateItemEntities(dt) {
     const distance = Math.hypot(dx, dy, dz);
 
     if (distance > 80 && entity.age > 8) {
+      removeItemEntity(i);
+      continue;
+    }
+
+    // Lava takes whatever falls into it, the way Minecraft's does: the whole
+    // stack goes at once, before the player's pull can save it.
+    if (isLava(world.getBlock(
+      Math.floor(entity.pos.x), Math.floor(entity.pos.y), Math.floor(entity.pos.z)
+    ))) {
+      spawnBurstParticles(entity.pos.x, entity.pos.y + 0.2, entity.pos.z, 0xffa040, 6, 1.6);
       removeItemEntity(i);
       continue;
     }

@@ -166,7 +166,8 @@ A first-person controller:
 Health:
 
 - 10 hearts (20 health points), drawn as a heart bar above the hotbar
-- Damage from hostile mobs, creepers, starvation, and falls greater than 3 blocks
+- Damage from hostile mobs, creepers, starvation, falls greater than 3 blocks, lava and
+  fire (see In lava)
 - Health regenerates only through the hunger system (see Hunger): a nearly full stomach
   heals, an empty one kills
 - On death, a respawn screen offers a respawn (its button, the `A` key, or gamepad A)
@@ -397,6 +398,10 @@ Fuel buys heat, and heat carries over between items:
 | Coal / Charcoal | 80 | 8 |
 | Oak Planks / Oak Log / Crafting Table | 15 | 1.5 |
 | Stick | 5 | 0.5 |
+| Lava Bucket | 1000 | 100 |
+
+A lava bucket burns whole and leaves the empty bucket in the fuel slot. The screen
+says "That will not burn" while the fuel slot holds something that is not fuel.
 
 The furnace screen has input, fuel, and output slots with a burn indicator, and keeps
 cooking while open.
@@ -462,9 +467,8 @@ A solid never turns back into a fluid, so every meeting is final and the flood s
 reaches a fixed point. Flow edits that change light or opacity (lava arriving or
 leaving, a meeting leaving rock) go through the light engine; plain water edits still
 skip it. A placed block replaces lava the same way it replaces water, rays pass through
-both, and only water wets farmland. The player, mobs and drops do not yet react to lava
-(it is non-solid and harmless for now), there is no lava bucket, and worldgen places
-none: the fluid exists ahead of the lava phases that give it consequences and caves.
+both, and only water wets farmland. Worldgen places no lava yet: so far it only comes
+from a bucket or the debug surface.
 
 `waterFlowCheck()` replays the rules on small rigs. Its `cases` are the water rigs the
 snapshot guard compares; `lava` holds the lava and meeting rigs (`lavaOk`).
@@ -526,12 +530,41 @@ both transparent, so neither can be what changed the light.
 Cosmetics — fresnel, foam, animated UVs, caustics, an underwater tint beyond the audio
 muffle — are deliberately unmade until the surfaces stop moving.
 
+### In lava
+
+Lava is swum the way water is, only thicker. Lava hurts whatever touches it, and
+nothing walks into it on purpose.
+
+- **Moving.** A body is in lava when its feet or its middle are (the same depth rule as
+  water, asked lower: a foot in lava burns where a foot in water does not swim). It wades
+  at 0.3 of walking speed (water: 0.55), strokes up at 0.45 of water's rate, sinks at
+  water's slow rate, cannot sprint, takes no fall damage landing in it, and can climb out
+  over a ledge the way a swimmer can
+- **Burning.** In lava: 4 damage every half second, the first on contact, with armour
+  taking its share as it does of a hit. A bite the hurt cooldown turns away is retried
+  the next frame, not lost. Leaving lava leaves the body on fire for 8 seconds at 1
+  damage a second. Being in lava keeps the fire at its full 8; water puts it out at
+  once. The saturation boost still heals through it, so a well-fed player outlasts the
+  afterburn. Death messages: "You tried to swim in lava." and "You burned to death."
+  The fire's seconds left are saved as the player's `fire`, written only while above
+  zero, and respawning puts it out
+- **Mobs** burn by the same numbers and are slowed harder than in water. A step that
+  would put a mob's feet in lava, or onto lava a block down, is cancelled: a wanderer
+  picks somewhere else and a hunter stops at the edge. A mob already in lava is never
+  held back, so it can walk out, and a hurt animal's panic usually carries it out
+- **Drops.** An item entity in a lava cell burns at once, the whole stack, before the
+  player's pull can save it. A mob killed in lava loses its loot the same way
+- **The view.** With the eyes in lava the fog closes to 0.1–2.5 blocks in a glowing
+  orange that ignores the time of day, and an orange wash covers the screen
+  (`#lava-tint`). While the body is in lava or on fire, flames flicker up from the
+  bottom of the view (`#burn-glow`)
+
 ### Buckets
 
 Smelt the iron, fold three ingots into a V (`I.I` / `.I.`), dip the empty bucket in a
-source, carry it, pour it elsewhere. Two item ids — `bucket` (stacks to 16) and
-`water_bucket` (never stacks) — rather than a flag, because the save, drops, and the
-merge rule all read the id.
+source, carry it, pour it elsewhere. Three item ids — `bucket` (stacks to 16),
+`water_bucket` and `lava_bucket` (neither stacks) — rather than a flag, because the
+save, drops, and the merge rule all read the id.
 
 - A bucket drinks only from a full source. A ripple that has run out from its shore
   stays where it is
@@ -539,16 +572,20 @@ merge rule all read the id.
   and refills the next bucket, leaving the body's ranks untouched. Only a source with
   no water in its six neighbours at all is a whole body — a lone puddle or sealed well —
   and that one cell lifts whole
-- Pouring puts a source in the aimed cell if it is air or already water; the flow code
-  wakes on its own. There is no test for whether that cell is the one you stand in —
+- A lava source always lifts out whole, beside other lava or not: lava does not make more
+  of itself the way a lake does, so a pool shrinks by a bucket each time and its flow
+  closes the gap from the sources left
+- Pouring puts a source in the aimed cell if it is air or already fluid; the flow code
+  wakes on its own and settles any meeting, so lava poured into water is obsidian at once. There is no test for whether that cell is the one you stand in —
   pour under your feet and the water arrives around your ankles
 - Water is still `breakable: false`: the bucket is the only way to move water, and
   right click is the only way to fill one. The bucket is dispatched inside placement,
   after the hoe and the seeds, so an interactive block keeps first refusal: a crafting
-  table behind a puddle opens rather than flooding. The bucket finds water with its own
-  walk of the ray (`raycastWater`), stopping at the first solid
-- No lava bucket (lava exists, but nothing to scoop it with yet), no water bottle (nothing to fill), and nothing in the world
-  hands out a free bucket
+  table behind a puddle opens rather than flooding. The bucket finds a source with its
+  own walk of the ray (`raycastFluidSource`), stopping at the first solid and taking the
+  first source of either fluid along the way
+- A lava bucket is furnace fuel (see Furnace and smelting)
+- No water bottle (nothing to fill), and nothing in the world hands out a free bucket
 
 ## Containers
 

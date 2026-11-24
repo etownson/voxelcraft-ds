@@ -17,7 +17,7 @@
 import { playFurnaceFinishSound, playFurnaceIgniteSound } from './audio.js';
 import { ITEMS, isChestBlock, isFurnaceBlock, makeStack } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
-import { BLOCK_ENTITY_TICK_RANGE, B, CHUNK_SIZE } from './config.js';
+import { BLOCK_ENTITY_TICK_RANGE, B, CHUNK_SIZE, LAVA_BUCKET_BURN } from './config.js';
 import { player } from './player.js';
 
 /* ---------- Smelting and furnaces ---------- */
@@ -31,12 +31,19 @@ export const SMELTING_RECIPES = new Map([
   ['log', { out: 'charcoal', seconds: 10 }]
 ]);
 
-/** Seconds of heat one unit of each fuel buys. Coal is the workhorse. */
+/**
+ * Seconds of heat one unit of each fuel buys. Coal is the workhorse; a lava
+ * bucket runs a furnace for a hundred smelts and leaves its pail behind.
+ */
 export const FURNACE_FUELS = new Map([
   ['coal', 80], ['charcoal', 80],
   ['planks', 15], ['log', 15], ['crafting_table', 15],
-  ['stick', 5]
+  ['stick', 5],
+  ['lava_bucket', LAVA_BUCKET_BURN]
 ]);
+
+/** Fuels that burn out of a container, and what the container is once empty. */
+const FUEL_LEAVES = new Map([['lava_bucket', 'bucket']]);
 
 /** Furnace slot layout, matching the order the screen draws them in. */
 export const FURNACE_INPUT = 0;
@@ -76,8 +83,11 @@ function tickFurnace(state, dt) {
   if (state.burnTime <= 0 && burn) {
     state.burnTime = burn;
     state.burnTotal = burn;
+    const left = FUEL_LEAVES.get(fuel.id);
     fuel.count -= 1;
-    if (fuel.count <= 0) state.slots[FURNACE_FUEL] = null;
+    // A full bucket never stacks, so the one that burned is the whole slot, and
+    // the empty pail it leaves takes the slot over.
+    if (fuel.count <= 0) state.slots[FURNACE_FUEL] = left ? makeStack(left, 1) : null;
     markWorldDirty();
   }
   if (state.burnTime <= 0) {

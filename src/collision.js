@@ -2,14 +2,14 @@
  * The collision kernel: what a box hits. Which cells are solid, how a stair
  * cell leaves half of itself walkable, the one cell a body can stand inside
  * and still be held by, where the player's own box would overlap something,
- * and whether a point sits under a sheet of water.
+ * and whether a point sits under a sheet of water or of lava.
  *
  * It reads the world through the chunk manager and nothing else, so it sits
  * beside the floor of the game rather than inside the player: mobs path by
  * the same rules, and a save has to know where the ground it wrote is solid.
  */
 
-import { BLOCKS, isWater, waterLevel, waterSurfaceHeight } from './blocks.js';
+import { BLOCKS, fluidSurfaceHeight, isLava, isWater } from './blocks.js';
 import { COLLISION_EPSILON, PLAYER_HALF_WIDTH, PLAYER_HEIGHT } from './config.js';
 import { world } from './chunks.js';
 
@@ -96,17 +96,28 @@ export function playerCollidesAt(x, y, z) {
 }
 
 /**
- * Whether a point sits under water, respecting how deep the sheet actually is.
- * Wading through a finger of runoff wetting the boots is not the same as being
- * under, which is what keeps the screen clear while the head is in the air.
+ * Whether a point sits inside a fluid that passes `test`, respecting how deep
+ * the sheet actually is. Wading through a finger of runoff wetting the boots is
+ * not the same as being under, which is what keeps the screen clear while the
+ * head is in the air.
  */
-export function submergedAt(x, y, z) {
+function insideFluidAt(x, y, z, test) {
   const bx = Math.floor(x);
   const by = Math.floor(y);
   const bz = Math.floor(z);
   const id = world.getBlock(bx, by, bz);
-  if (!isWater(id)) return false;
-  // Water above means this cell is buried in the body, so it is full.
-  if (isWater(world.getBlock(bx, by + 1, bz))) return true;
-  return y < by + waterSurfaceHeight(waterLevel(id));
+  if (!test(id)) return false;
+  // The same fluid above means this cell is buried in the body, so it is full.
+  if (test(world.getBlock(bx, by + 1, bz))) return true;
+  return y < by + fluidSurfaceHeight(id);
+}
+
+/** Whether a point sits under water. */
+export function submergedAt(x, y, z) {
+  return insideFluidAt(x, y, z, isWater);
+}
+
+/** Whether a point sits in lava, by the same depth rule as water. */
+export function inLavaAt(x, y, z) {
+  return insideFluidAt(x, y, z, isLava);
 }

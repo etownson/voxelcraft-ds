@@ -97,6 +97,23 @@ export const WATER_MAX_FLOW = 7;
 export const LAVA_MAX_FLOW = 3;
 export const LAVA_TICK_EVERY = 6;
 /**
+ * What lava does to a body in it. It is water's swim made thick: a slower
+ * stroke and a slower wade, so wandering in is a mistake that takes a moment
+ * to walk back out of. While anything of the body is in it, it burns four
+ * points every half second, Minecraft's rate, and armour takes its share as it
+ * does of a hit. Stepping out leaves the body on fire: a point a second for
+ * eight seconds, put out the moment water touches it.
+ */
+export const LAVA_SPEED_SCALE = 0.3;
+export const LAVA_SWIM_SCALE = 0.45;
+export const LAVA_DAMAGE = 4;
+export const LAVA_DAMAGE_INTERVAL = 0.5;
+export const BURN_SECONDS = 8;
+export const BURN_DAMAGE = 1;
+export const BURN_INTERVAL = 1;
+/** Seconds a furnace runs on one lava bucket: a hundred smelts, as in Minecraft. */
+export const LAVA_BUCKET_BURN = 1000;
+/**
  * Chunk meshes a single water tick will rebuild. Meshing is far more expensive
  * than flowing, so a flood that dirties a dozen chunks at once spreads that
  * work over the ticks that follow it.

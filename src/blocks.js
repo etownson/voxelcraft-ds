@@ -519,6 +519,9 @@ defineItem({ id: 'shears', name: 'Shears', kind: 'tool', tool: 'shears', stack: 
 // bucket from an empty one.
 defineItem({ id: 'bucket', name: 'Bucket', kind: 'material', stack: 16 });
 defineItem({ id: 'water_bucket', name: 'Water Bucket', kind: 'material', stack: 1 });
+// Lava goes in the same pail on the same terms. It is the hottest fuel a
+// furnace can burn, and the furnace hands the empty bucket back.
+defineItem({ id: 'lava_bucket', name: 'Lava Bucket', kind: 'material', stack: 1 });
 
 /* ---------- Item stacks ---------- */
 
