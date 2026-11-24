@@ -1,6 +1,11 @@
-# VoxelCraft
+# VoxelVerse
 
-A browser voxel game that ships as plain files: `index.html` + native ES modules
+VoxelVerse is a browser voxel survival game inspired by Minecraft, built around a
+mission to relight five beacons. The repository, the storage keys and
+`window.__voxelcraft` keep the older `voxelcraft` name; leave them as they are,
+because saves and the snapshot baseline depend on them.
+
+It ships as plain files: `index.html` + native ES modules
 under `src/`, served statically to GitHub Pages. There is no `package.json`, no
 build step, and no dependencies to install — `three` comes from a CDN via the
 importmap in `index.html`. Do not add a bundler, transpiler, or npm dependency
@@ -19,8 +24,7 @@ without asking; the zero-build layout is deliberate.
   (`src/menu.js`). While it is open its input must never reach the world: any
   global key, mouse, or wheel listener gates on `menuOpen()` from `src/input.js`.
 - `tools/` — the project's own checks and generators, in bash and node.
-- The two design docs (`VoxelCraft Design.md`, `MultiVoxelVerse Adventures
-  Design.md`) are the source of truth for gameplay decisions.
+- `VoxelVerse Design.md` is the source of truth for gameplay decisions.
 
 ## Architecture
 
@@ -66,13 +70,13 @@ game through it. Module state it does not expose can be reached from the page
 with `await import('/src/…js')`, which returns the same live module. The design doc's "Debug surface" section
 describes it.
 
-**The mission layer** (MultiVoxelVerse Adventures). `src/beacons.js` holds the
+**The mission layer.** `src/beacons.js` holds the
 beacon sites, the `TRANSMISSIONS` text and the mission progress, all measured
 from SP0, the first spawn column. `src/transmissions.js` only reads which of
-those lines the player has already heard, for the journal. The story text and
-the recipe unlocks come from `MultiVoxelVerse Adventures Design.md`; the base
-game's mechanics come from `VoxelCraft Design.md`. Update the matching doc in
-the same change as the gameplay it describes.
+those lines the player has already heard, for the journal. The story text, the
+recipe unlocks and the base game's mechanics all come from `VoxelVerse
+Design.md` (the mission is its section "The mission"). Update the doc in the same
+change as the gameplay it describes.
 
 ## Checking changes
 

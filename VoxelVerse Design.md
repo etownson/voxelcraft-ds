@@ -1,10 +1,14 @@
-# VoxelCraft — Design Document
+# VoxelVerse — Design Document
 
-A fully playable 3D Minecraft-style voxel game in the browser, built with Three.js and
-vanilla JavaScript as native ES modules served straight from the repository, with a CC0
-audio bank and a procedural synthesizer behind it. The world is an endless, deterministic,
-chunk-based voxel map with no edges or borders: terrain streams in around the player and
-unloads behind them, in every horizontal direction, forever.
+VoxelVerse is a first-person voxel survival game in the browser, inspired by Minecraft.
+The world is an endless, deterministic, chunk-based voxel map with no edges or borders:
+terrain streams in around the player and unloads behind them, in every horizontal
+direction, forever. Into that world the player is teleported with a mission: relight
+five beacons, each of which unlocks the next set of recipes and points the way to the
+next (see The mission). Up to four players can share a world in co-op.
+
+It is built with Three.js and vanilla JavaScript as native ES modules served straight
+from the repository, with a CC0 audio bank and a procedural synthesizer behind it.
 
 ## Core shape
 
@@ -20,6 +24,263 @@ unloads behind them, in every horizontal direction, forever.
   colors, geometry, and the fallback sounds are all procedural
 - The document is also the game's tuning record: every gameplay number the game runs on
   lives in `src/config.js`, and this document describes those numbers as they are
+
+## The mission
+
+VoxelVerse is not an open sandbox from the first minute. The walker has been teleported
+into this world to relight the five beacons placed in it long ago, and the world's
+crafting stays locked until they do. Each beacon lit sends a transmission with more of
+the story, a new set of recipes and the way to the next beacon.
+
+### Arrival
+
+You spawn into a new world. The first spawn is a scene told with graphics and sound to
+mark the importance of the event (see Audio for the fade and the teleport heard).
+
+A chat bubble appears that is a transmission from a distant place. All transmissions are
+understandable but a bit spotty in places. The following comes through:
+
+- The transmitter tells you that you have been teleported here to fully reactivate the
+  beacons previously placed in the world
+- The transmitter knows you are disoriented from the teleportation process
+- The transmitter tells you that you need to find and activate a beacon that should be
+  nearby
+- The transmitter tells you that your mission is urgent, but not enough of the
+  transmission comes through to understand why
+
+You start with no items in your inventory. You can punch trees and gather logs, but no
+crafting has been unlocked: it is gated by the requirement to find recipes. You receive
+new recipes by finding and activating beacons. Activating a beacon requires essence, and
+you start with just enough essence for one activation. The recipes you have received are
+listed in the journal, and once received they are ready to use with nothing more to do.
+
+### SP0 and the beacons
+
+The point where you first spawn into the world is spawn point 0 (SP0), and everything the
+mission measures is measured from it: where the monuments stand, what essence each one
+wants, and how mean the enemies out that way have gotten. The first beacon is near SP0
+but just far enough away to need a short bit of exploration.
+
+The five monuments stand between SP0 and the far reaches of the world. Their positions
+are a pure function of the seed and SP0, and they are laid down as stored edits, the same
+ones the save keeps, so every chunk that regenerates puts them back where they were
+planted. The search for a site refuses water, cliffs, trees and cave mouths. A dark
+monument (block 53) lights (block 54) when right-clicked with its price in hand, and a
+beam rises off it into the sky. The order is the mission: beacon 2 will not answer until
+beacon 1 runs.
+
+### Threat zones
+
+Enemy difficulty scales with an enemy's distance along the X and Z axes from SP0, taken
+where it spawned. Enemies only start scaling along the Y axis as well once they are below
+sea level. Difficulty scales spawn frequency, health and attack damage.
+
+The world divides into threat zones, SP0's and one around each beacon, each reaching
+halfway to its neighbours. The HUD shows the zone underfoot as pips, coloured green behind
+the most recently lit beacon's zone, yellow in it, and red beyond it, so the walker can
+tell when they have outrun what their recipes were meant for (see HUD and UI).
+
+### Essence
+
+You earn essence by killing enemies. The amount scales with the enemy's difficulty.
+Enemies drop essence bubbles a short random distance from where they die. You must pick
+them up by running over them, or they fade out and are lost. They take a short time to
+appear, so the player has to think about where they move to collect them in the heat of
+battle.
+
+The first beacon costs what the walker starts with: one essence per 1.5 blocks from SP0.
+Every later beacon costs about thirty kills' worth of essence, at the yield an enemy pays
+on the ground of the beacon lit before it, so each new beacon asks for the same hunt in
+the zone the last one opened.
+
+### Transmissions
+
+Each time you activate a new beacon you receive a unique transmission carrying:
+
+- A little more of the story
+- New recipes that help you survive in the outer areas you must cross to reach the next
+  beacon
+- The way to the next beacon. The HUD's waypoint arrow points at it from the moment the
+  last one is lit, and the main menu's mission page says what it wants and what you
+  carry. No coordinates are shown: the arrow is the way. The walker can also save places
+  of their own under a name and have the arrow follow those, or any beacon already lit
+
+### Beacon 1
+
+You understand the following from the transmission:
+
+- You are being given recipes to help you survive
+- You are now incarnated as a biological creature, and the transmitter apologizes for
+  subjecting you to the horrors of health and hunger
+- The transmitter warns about awful creatures at night but urges you to be brave and
+  extract essence from them
+- The transmitter urges you to find the second beacon, but warns you to establish a base
+  before attempting to activate it
+- The transmission closes by urging you to prepare for nightfall: torches lit, a door
+  hung and food cooked before the sun goes down
+
+The first transmission provides enough recipes for a player to survive around SP0,
+establish a base, and make it to the second beacon.
+
+Handheld (inventory 2×2) recipes:
+
+| Item           |
+| -------------- |
+| Planks ×4      |
+| Sticks ×4      |
+| Crafting Table |
+| Torch ×4       |
+
+Crafting table (3×3) recipes:
+
+| Item           |
+| -------------- |
+| Furnace        |
+| Wooden Door ×3 |
+| Chest          |
+| Wood Pickaxe   |
+| Wood Sword     |
+| Wood Axe       |
+| Wood Shovel    |
+| Wood Hoe       |
+
+The furnace also arrives with this beacon: it makes iron ingots, steak, glass, stone and
+charcoal from raw iron, raw beef, sand, cobblestone and logs. Its fuels and timings are
+under Furnace and smelting.
+
+### Beacon 2
+
+You understand the following from the transmission:
+
+- More of what happened in the world that caused it to fall into its current chaos, with
+  monsters roaming at night
+- Farming instructions
+- More recipes
+- The way to the next beacon
+
+Crafting table (3×3) recipes:
+
+| Item                  |
+| --------------------- |
+| Bread                 |
+| Shears                |
+| Bed                   |
+| Bucket                |
+| Oak Stairs ×4         |
+| Cobblestone Stairs ×4 |
+| Ladder ×3             |
+| Stone pickaxe         |
+| Stone sword           |
+| Stone axe             |
+| Stone shovel          |
+| Stone hoe             |
+| Leather helmet        |
+| Leather chestplate    |
+| Leather leggings      |
+| Leather boots         |
+| Bow                   |
+| Arrow ×4              |
+
+The bow is three sticks bent into the arc with three strings down the open side, mirrored
+either way. An arrow is a chip of cobblestone over a stick over a feather; Minecraft tips
+it with flint, and this world has no gravel to knap it from.
+
+Lighting beacon 2 also wakes spiders. They join the night's hostiles and are the only
+source of string, so the bow has to be hunted for before it can be made. See Archery and
+the night's newcomers.
+
+### Beacon 3
+
+You understand the following from the transmission:
+
+- More of what happened in the world you came from that makes it urgent for you to
+  prepare this world for colonization
+- More recipes
+- The way to the next beacon
+
+Crafting table (3×3) recipes:
+
+| Item            |
+| --------------- |
+| Iron pickaxe    |
+| Iron sword      |
+| Iron axe        |
+| Iron shovel     |
+| Iron hoe        |
+| Iron helmet     |
+| Iron chestplate |
+| Iron leggings   |
+| Iron boots      |
+
+Lighting beacon 3 also arms the night: skeleton archers join the hostiles. See Archery
+and the night's newcomers.
+
+### Beacon 4
+
+You understand the following from the transmission:
+
+- More urgency about your mission, and a promise that this time will be different for
+  this world
+- More recipes
+- The way to the next beacon
+
+Crafting table (3×3) recipes:
+
+| Item               |
+| ------------------ |
+| Diamond pickaxe    |
+| Diamond sword      |
+| Diamond axe        |
+| Diamond shovel     |
+| Diamond hoe        |
+| Diamond helmet     |
+| Diamond chestplate |
+| Diamond leggings   |
+| Diamond boots      |
+
+### Beacon 5
+
+A celebratory transmission tells you that you have fully unlocked teleportation to this
+world and can now return home a hero. It also lets you know you can choose to stay and
+keep preparing a base to help the colonizers when they arrive.
+
+### The journal
+
+The journal (`src/journal.js`) opens with `J` in the world, View/Back on the pad, or the
+menu's Journal page. It reads the same in the main menu and in the world, and the
+keyboard, the mouse and a controller can all reach every card. Every journal has two
+pages, Recipes and Transmissions. (This was once a setting that was off by default;
+hiding the way back to a missed line behind a switch read as stingy.)
+
+**Recipes** draws each received recipe instead of listing it:
+
+- A card for each thing that can be made, shelved under the beacon that sent it
+  (Beacon 1, survival kit; Beacon 2, farming, building and stone; Beacon 3, iron;
+  Beacon 4, diamond). Recipes that make the same thing (coal and charcoal torches,
+  either-handed shears) share one card and step through their ways with R, X or a click
+- The highlighted card is drawn on the right on its real grid: its pattern in the 2×2
+  pocket grid or the table's 3×3, centred where the matcher accepts it, an arrow, the
+  result with its count, whether it needs the crafting table (anything three cells wide
+  or tall), and what it uses
+- Once the furnace recipe has arrived, a Furnace shelf shows each smelt, input over
+  flame to output, and what burns
+- A beacon that has not been lit gets one dim line saying how many recipes are waiting
+  there. It does not show what they are, so the book never spoils a beacon
+
+**Transmissions** keeps every message, because they are spotty on purpose and a line is
+easy to miss the first time it comes through:
+
+- The page holds every transmission received so far, whole. Each entry is headed by the
+  beacon that carried it: Arrival at SP0, then Beacon 1, Beacon 2, and so on. Entries run
+  oldest first, so the story reads in the order it was heard
+- Reading the journal is quiet. It carries the words only, with no sound and no line by
+  line timing, and it never replays the transmission. The panel that talks over the
+  hotbar still fires once, at the moment the beacon is lit
+- Nothing arrives early. An entry joins the journal only when its transmission is
+  received, so the journal cannot spoil a beacon that has not been lit
+- The journal asks for no saving of its own. The text is the same in every world, so
+  the count of lit beacons the save already keeps is enough to know which entries the
+  player has heard, the arrival transmission included
 
 ## World generation
 
@@ -118,7 +379,7 @@ and a runtime assertion enforces that each block sits at its own id.
 | 49 | Chest | Contents live in a block entity |
 | 50 / 51 | Oak Stairs / Cobblestone Stairs | The only sub-block collider in the game |
 | 52 | Ladder | Solid: false; the first block a player stands inside of |
-| 53 / 54 | Beacon (unlit/lit) | Mission monuments; see the MultiVoxelVerse design |
+| 53 / 54 | Beacon (unlit/lit) | Mission monuments; see The mission |
 | 55 | Lava | A source; see Fluids: water and lava. Light 15, no collision |
 | 56–61 | Lava flow/fall levels 1–3 each | Every rank glows at 15 like the source |
 | 62 | Obsidian | What a lava source hardens into; hardness 50, needs a diamond pickaxe |
@@ -721,7 +982,7 @@ Population is a budget:
   batches: up to three hostiles per 1.4 s after dark (one per 3.6 s by day), with the
   night's candidates weighted 85% to the surface. Creepers spawn rarely under the same
   conditions. Spiders (after beacon 2) and skeleton archers (after beacon 3) join the
-  same spawns as the mission goes on; the MultiVoxelVerse Adventures design describes
+  same spawns as the mission goes on; Archery and the night's newcomers describes
   them, the bow and its arrows
 - Zombies walk directly at the player within detection range (step-up steering, no full
   pathfinding) and deal contact damage on a cooldown. Creepers approach, then hiss,
@@ -758,6 +1019,15 @@ behind it opens. Holding the left button down answers once, then swings in silen
 
 Fleece never grows back: a fleecy hillside is worth fencing. The shorn model drops the
 fleece layer and shows bare skin. Wool's only use is the bed.
+
+## Archery and the night's newcomers
+The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 16% of the time and a zombie otherwise. Once beacon 2 is lit, a fifth of spawns roll a spider. A spider that would not fit the spot arrives as a zombie instead, so about one spawn in ten is a spider. Once beacon 3 is lit, another fifth of spawns are skeletons. The newcomers take their share out of the zombies'. All of them scale with the ground they were spawned on, as every enemy does, and pay essence when killed.
+
+**Spiders** (beacon 2). 16 health, quick, wide and low: 1.28 blocks across, wider than one block. A spider climbs any wall it runs into while it walks. It bites for 2 on a one-second cooldown. Sunlight does not burn it. Out under the daytime sky it hunts nobody unless it is hit, and then it stays angry for twelve seconds. In a dark cave it hunts as it would at night. It drops 0–2 string.
+
+**Skeleton archers** (beacon 3). 20 health. Within 24 blocks a skeleton holds its distance instead of closing it: it walks in from beyond 13 blocks, backs away inside 6, and in between circles the walker, changing side every few seconds. With a clear line of sight within 18 blocks it looses an arrow about every 2.2 seconds. The arrow aims high by the drop its flight will take and wobbles a little, and hits for 3 before difficulty scaling. Skeletons burn in sunlight like zombies. A skeleton drops 0–2 arrows, and its arrows that miss stick where they land and are gone after four seconds.
+
+**The bow.** Hold the use button (right click, or the left trigger) to draw, and let go to shoot. A full draw takes a second. A full draw shoots an arrow at 42 blocks a second for 7 damage, and a partial draw shoots slower and weaker in proportion. A draw under a tenth of the way lets go without shooting. Each shot spends one arrow from anywhere in the pack and one of the bow's 384 uses. Without arrows the bow says so. Arrows fall under gravity. The walker's arrows that miss land as an arrow item to pick up again, and one that hits is spent. The bow mines nothing and swings in melee like any tierless tool. Without pointer lock the right button is the look drag, so a right click there shoots a full draw at once.
 
 ## Block changes and persistence
 
@@ -948,16 +1218,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   game is spent, not a jump — held or tapped again at once — until the thumb has been
   off A for a quiet moment
 - The journal (`src/journal.js`, `J` in the world, View/Back on the pad, or the
-  menu's Journal page) is a book of two pages. Recipes shelves a card per thing that
-  can be made under the beacon that sent it; recipes that make the same thing (coal
-  and charcoal torches, either-handed shears) share a card and step through their
-  ways with R, X or a click. The highlighted card is drawn on the right: its pattern
-  in a 2×2 or 3×3 grid, centred where the matcher accepts it, an arrow, the result
-  with its count, whether it needs the table (anything three cells wide or tall), and
-  what it eats. Once the furnace recipe has arrived, a Furnace shelf shows each
-  smelt, input over flame to output, and what burns. A beacon not yet lit is one dim
-  line with a count of what it will teach and nothing else. Transmissions is every
-  message heard so far, whole and oldest first
+  menu's Journal page) is a book of two pages, Recipes and Transmissions; see The
+  journal under The mission
 - While the menu has the page, its input belongs to the menu and never reaches the
   world: no walked keys remembered into the resume, no swinging pick behind the
   panel, no hotbar digits, wheel, mute, or screen keys. `menuOpen()` in `input.js`

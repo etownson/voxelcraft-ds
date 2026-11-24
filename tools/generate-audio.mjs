@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate VoxelCraft's synthesized sample bank.
+ * Generate VoxelVerse's synthesized sample bank.
  *
  * The active bank is the CC0 recordings in `assets/audio/`, built by
  * `tools/build-cc0-bank.py`. That script needs only two files from this bank —

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build VoxelCraft's active CC0 sound bank from downloaded source packs.
+"""Build VoxelVerse's active CC0 sound bank from downloaded source packs.
 
 The active bank is `assets/audio/`. Two slots — the creeper fuse and the
 heartbeat — are synthesized: the script renders the reference bank into a

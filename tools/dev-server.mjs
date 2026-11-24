@@ -78,5 +78,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`voxelcraft dev server on http://localhost:${PORT} (root ${ROOT})`);
+  console.log(`VoxelVerse dev server on http://localhost:${PORT} (root ${ROOT})`);
 });

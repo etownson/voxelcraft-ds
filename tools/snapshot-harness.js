@@ -1,5 +1,5 @@
 /*
- * VoxelCraft refactor guard.
+ * VoxelVerse refactor guard.
  *
  * A fixed scripted scenario that runs inside ONE synchronous evaluate, so no
  * requestAnimationFrame can interleave and wall-clock time cannot leak in. The
