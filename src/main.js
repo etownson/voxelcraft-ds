@@ -27,6 +27,12 @@ import {
   arrows, beginBowDraw, bowDraw, cancelBowDraw, clearArrows, mobShootsWalker, releaseBowDraw,
   setArcheryWorld, updateArchery
 } from './archery.js';
+import {
+  announceArrow, announceBeacon, announceExplosion, announceMobKilled, announceSleep,
+  coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop, isCoopGuest, isCoopHost,
+  isRemoteWalker, joinHostWorld, leaveCoop, sendEssence, sendLoot, setCoopView, startHosting,
+  updateCoop
+} from './coop.js';
 import { atlasCanvas } from './atlas.js';
 import {
   audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong,
@@ -41,8 +47,8 @@ import {
 import {
   SPAWN_TRANSMISSION, beaconReport, beaconSites, beaconsActivatedCount, clearBeaconBeams,
   frontierZone, threatZoneAt, threatZoneCount,
-  nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconPainter, setSpawnPoint0,
-  setTransmissionDeliverer, spawnPoint, startingEssence
+  nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconLitListener, setBeaconPainter,
+  setSpawnPoint0, setTransmissionDeliverer, spawnPoint, startingEssence
 } from './beacons.js';
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
 import { attackMob, clearMobTarget, mobTarget, updateCombat, updateMobTarget } from './combat.js';
@@ -111,14 +117,15 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
-import { menuState, padMenuTick, paintMenuMission, setMenuActions } from './menu.js';
+import { menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
+import { makeRoomCode, normalizeRoomCode, roomCode } from './net.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
 import { camera, renderer, scene, skyDome } from './render.js';
 import {
   LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
-  forgetSavedWorld, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
+  coopGuestKey, forgetSavedWorld, setSaveTarget, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
   readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedBeacons,
   restoreSavedEssence,
   restoreSavedInventory,
@@ -126,6 +133,7 @@ import {
   stopAutosave, updateSaveLoop
 } from './save.js';
 import { registerSpeaker } from './say.js';
+import { coopName } from './settings.js';
 import {
   advanceDayTime, applyDayNight, clockHours, dayTime, daylight, formatClock, isNight,
   setDayTime, setTimeScale, timeScale, updateDayNight, updateWaterLook
@@ -159,6 +167,11 @@ function refreshSaveStatus() {
 
 /** New world, once the menu has asked and been told yes: wipe and reload. */
 function eraseWorld() {
+  // A guest is standing in somebody else's world, which is not theirs to erase.
+  if (isCoopGuest()) {
+    showToast('Leave co-op first: this world is the host\u2019s');
+    return;
+  }
   // Stop the unload-triggered saves from resurrecting the wiped world.
   stopAutosave();
   try {
@@ -170,11 +183,77 @@ function eraseWorld() {
   window.location.reload();
 }
 
+/* ---------- Co-op: hosting, joining and leaving ---------- */
+
+/* A host keeps one room code for good, so the link a friend saved last week
+   still works; and a host who reloads mid-session opens the room again. */
+const COOP_HOST_CODE_KEY = 'voxelcraft:coop:hostCode';
+const COOP_HOSTING_KEY = 'voxelcraft:coop:hosting';
+
+function storedValue(key) {
+  try { return localStorage.getItem(key); } catch (unavailable) { return null; }
+}
+function storeValue(key, value) {
+  try {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch (unavailable) {}
+}
+
+function pageUrl() {
+  return window.location.origin + window.location.pathname + window.location.search;
+}
+
+function coopLinkFor(code) { return pageUrl() + '#join=' + code; }
+
+/** The room a `#join=CODE` link asks for, or null. */
+function joinCodeFromLocation() {
+  const match = /(?:^#|&)join=([A-Za-z0-9-]+)/.exec(window.location.hash || '');
+  return match ? normalizeRoomCode(match[1]) : null;
+}
+
+function hostThisWorld(name) {
+  const code = normalizeRoomCode(storedValue(COOP_HOST_CODE_KEY)) || makeRoomCode();
+  storeValue(COOP_HOST_CODE_KEY, code);
+  storeValue(COOP_HOSTING_KEY, '1');
+  startHosting(code, name);
+}
+
+/* Joining is a fresh page: the guest's own world is saved and set aside, and
+   the boot below fetches the host's before it builds any ground. */
+function joinSomeoneElse(text, name) {
+  const code = normalizeRoomCode(text);
+  if (!code) {
+    paintMenuCoop({ status: 'A room code is six letters and digits.', error: true });
+    return;
+  }
+  saveWorld();
+  window.location.href = coopLinkFor(code);
+  window.location.reload();
+}
+
+function leaveTheRoom() {
+  if (isCoopGuest()) {
+    // Home is the page without the link, and the world saved there.
+    saveWorld();
+    stopAutosave();
+    window.history.replaceState(null, '', pageUrl());
+    window.location.reload();
+    return;
+  }
+  storeValue(COOP_HOSTING_KEY, null);
+  leaveCoop();
+}
+
 function initSaveUi(hasSavedWorld) {
   setMenuActions({
     newWorld: eraseWorld,
     // The menu names the spot; where the walker's feet are is the page's to say.
-    saveSpot: (label) => saveWaypoint(label, player.pos.x, player.pos.y, player.pos.z)
+    saveSpot: (label) => saveWaypoint(label, player.pos.x, player.pos.y, player.pos.z),
+    hostCoop: hostThisWorld,
+    joinCoop: joinSomeoneElse,
+    leaveCoop: leaveTheRoom,
+    coopLink: () => (roomCode() ? coopLinkFor(roomCode()) : null)
   });
   if (hasSavedWorld) {
     saveStatusEl.textContent = 'Saved world found';
@@ -218,17 +297,29 @@ setFxView({
  * someone back moves the body the controller owns. */
 setMobWorld({
   walker: () => player,
-  hurt: (amount, cause) => damagePlayer(amount, cause),
-  drop: (itemId, count, x, y, z, scatter, dur) =>
-    spawnItemDrop(itemId, count, x, y, z, scatter, dur),
-  dropEssence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
+  // In co-op the host's mobs see every player, and a bite, a loot drop or a
+  // kill's essence that belongs to another player is sent to them.
+  walkers: coopWalkers,
+  hurt: (amount, cause, walker) => (isRemoteWalker(walker)
+    ? hurtRemoteWalker(walker, amount, cause)
+    : damagePlayer(amount, cause)),
+  drop: (itemId, count, x, y, z, scatter, dur, owner) => (owner
+    ? sendLoot(owner, itemId, count, x, y, z)
+    : spawnItemDrop(itemId, count, x, y, z, scatter, dur)),
+  dropEssence: (amount, x, y, z, owner) => (owner
+    ? sendEssence(owner, amount, x, y, z)
+    : spawnEssenceBurst(amount, x, y, z)),
   spill: (x, y, z) => spillBlockEntityContents(x, y, z),
-  shoot: (mob, speed, damage) => mobShootsWalker(mob, speed, damage)
+  shoot: (mob, speed, damage, walker) =>
+    mobShootsWalker(mob, speed, damage, undefined, walker || player),
+  killed: announceMobKilled,
+  exploded: announceExplosion
 });
 
 /* An arrow that finds the walker hurts them the way a bite does. */
 setArcheryWorld({
-  hurt: (amount, cause) => damagePlayer(amount, cause)
+  hurt: (amount, cause) => damagePlayer(amount, cause),
+  loosed: announceArrow
 });
 
 /* And for the block entities, whose whole idea of a screen is the one furnace
@@ -282,6 +373,7 @@ setEssencePainter(() => {
    that leaves no beacon to point at is the fifth one. */
 let finaleSongWaiting = false;
 setBeaconPainter(paintMenuMission);
+setBeaconLitListener(announceBeacon);
 setTransmissionDeliverer((lines) => {
   finaleSongWaiting = nextBeacon() === null;
   showTransmission(lines);
@@ -317,7 +409,29 @@ setInteractionView({
   },
   showSleepFade: () => sleepFadeEl.classList.add('active'),
   hideSleepFade: () => sleepFadeEl.classList.remove('active'),
-  paintReadout: updateDebug
+  paintReadout: updateDebug,
+  slept: announceSleep
+});
+
+/* Co-op's view of this page: the walker's body and pack, the screen a chest
+   or furnace is open in, the toast and the menu's co-op page. */
+setCoopView({
+  hurt: (amount, cause) => damagePlayer(amount, cause),
+  drop: (itemId, count, x, y, z) => spawnItemDrop(itemId, count, x, y, z),
+  essence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
+  openContainer: () => ((activeScreen === 'furnace' || activeScreen === 'chest') && activeScreenAt
+    ? activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z
+    : null),
+  redrawContainer: () => renderScreen(),
+  closeContainer: () => closeScreen(),
+  daySkipped: () => {
+    applyDayNight();
+    updateDebug();
+    showToast('Someone slept through the night');
+  },
+  swinging: () => isMiningHeld() && !player.dead,
+  toast: showToast,
+  paintRoom: paintMenuCoop
 });
 
 /* What the body looks like, and where it stands: the armour bar redraws from the
@@ -445,7 +559,36 @@ function heldFrame() {
   };
 }
 
-const loadedSave = readSavedWorld();
+/* A `#join=CODE` link boots into somebody else's world: the room is joined
+   and the host's world fetched before any ground is made, and this guest's
+   own body, pack and purse come from the record it keeps for that room. A
+   join that fails boots the guest's own world, and says why. */
+const coopJoinCode = joinCodeFromLocation();
+let hostWorld = null;
+if (coopJoinCode) {
+  hostWorld = await joinHostWorld(coopJoinCode, coopName() || 'Player');
+  if (!hostWorld) window.history.replaceState(null, '', pageUrl());
+}
+let ownCoopRecord = null;
+if (hostWorld) {
+  const guestKey = coopGuestKey(coopJoinCode);
+  setSaveTarget(guestKey, true);
+  ownCoopRecord = readSavedWorld(guestKey);
+}
+const loadedSave = hostWorld
+  ? {
+    ...hostWorld,
+    ...(ownCoopRecord ? {
+      player: ownCoopRecord.player,
+      slot: ownCoopRecord.slot,
+      essence: ownCoopRecord.essence,
+      inventory: ownCoopRecord.inventory,
+      armour: ownCoopRecord.armour,
+      spawn: ownCoopRecord.spawn || hostWorld.spawn
+    } : {}),
+    time: hostWorld.time
+  }
+  : readSavedWorld();
 if (loadedSave) {
   applySavedEdits(world, loadedSave);
   applySavedBlockEntities(world, loadedSave);
@@ -486,9 +629,23 @@ if (loadedSave && restoreSavedPlayer(loadedSave)) {
     spawnColumn.x = Math.trunc(savedSpawn.x);
     spawnColumn.z = Math.trunc(savedSpawn.z);
   }
+} else if (hostWorld) {
+  // A guest's first visit: the respawn is the host's, and the arrival is
+  // a step beside the host, wherever they are standing.
+  const shared = hostWorld.spawn;
+  if (shared && Number.isFinite(shared.x) && Number.isFinite(shared.z)) {
+    spawnColumn.x = Math.trunc(shared.x);
+    spawnColumn.z = Math.trunc(shared.z);
+  }
+  const beside = hostWorld.host && Number.isFinite(hostWorld.host.x) && Number.isFinite(hostWorld.host.z)
+    ? { x: Math.floor(hostWorld.host.x) + 1, z: Math.floor(hostWorld.host.z) }
+    : spawnColumn;
+  prepareSpawnChunks(Math.floor(beside.x / CHUNK_SIZE), Math.floor(beside.z / CHUNK_SIZE));
+  spawnPlayer(beside);
 } else {
   spawnPlayer(spawnColumn);
 }
+if (hostWorld && Number.isFinite(hostWorld.time)) setDayTime(hostWorld.time);
 world.updateStreaming(player.pos.x, player.pos.z);
 selectHotbarSlot(loadedSave ? clamp(Math.trunc(Number(loadedSave.slot) || 0), 0, HOTBAR_SIZE - 1) : 0);
 renderHotbar();
@@ -497,6 +654,15 @@ updateDebug();
 
 rememberSavedWorld((loadedSave && loadedSave.savedAt) || 0);
 initSaveUi(Boolean(loadedSave));
+
+if (hostWorld) {
+  coopWorldReady();
+} else if (coopJoinCode) {
+  showToast('Couldn\u2019t join room ' + coopJoinCode + ' \u2014 this is your own world');
+} else if (storedValue(COOP_HOSTING_KEY) === '1') {
+  // Hosting when the page went away: open the same room again.
+  hostThisWorld(coopName() || 'Player');
+}
 
 /** The arrival transmission is armed at boot and spent by the frame loop. */
 let arrivalWaiting = false;
@@ -652,6 +818,8 @@ function tourDebugStops(direction = 1) {
 window.__voxelcraft = {
   version: '0.1.0-milestone-13',
   seed: WORLD_SEED,
+  /** The co-op room: mode, code, peers, the avatars heard and the mob pictures. */
+  coop: () => coopReport(),
   world,
   camera,
   scene,
@@ -2184,20 +2352,26 @@ function animate(now) {
 
   // The pause overlay and the inventory/crafting screens freeze the whole
   // world, Minecraft-style. Rendering, chunk streaming, pad menu navigation,
-  // ambience and autosave keep running.
-  if (!activeScreen && overlayEl.classList.contains('hidden')) {
+  // ambience and autosave keep running. A shared world cannot be paused by
+  // one player, so in co-op it keeps going behind the menu: only this
+  // walker's hands stop.
+  const uiOpen = !!activeScreen || !overlayEl.classList.contains('hidden');
+  if (!uiOpen || inCoop()) {
     updatePlayer(dt, readPlayerInput());
     // Runs after the walker is walked: the scene pins the fall peak behind
     // the physics layer, so the arrival can never read as a drop.
     updateIntro(dt);
-    updateTarget();
-    updateMobTarget();
-    const canMine = isMiningHeld() && !player.dead && isPlayable() && !introActive();
-    updateMining(dt, canMine && !mobTarget());
-    updateCombat(dt, isMiningHeld());
-    updateMobs(dt);
+    if (!uiOpen) {
+      updateTarget();
+      updateMobTarget();
+      const canMine = isMiningHeld() && !player.dead && isPlayable() && !introActive();
+      updateMining(dt, canMine && !mobTarget());
+      updateCombat(dt, isMiningHeld());
+    }
+    // A guest's mobs and crops are the host's: they arrive, they do not grow.
+    if (!isCoopGuest()) updateMobs(dt);
     updateArchery(dt);
-    updateHeldItem(dt, heldFrame());
+    if (!uiOpen) updateHeldItem(dt, heldFrame());
     updateHealth(dt);
     updateBurning(dt);
     updateHunger(dt);
@@ -2208,13 +2382,14 @@ function animate(now) {
     updateDayNight(dt);
     updateExplosionEffects(dt);
     updateBlockEntities(dt);
-    updateCrops(dt);
+    if (!isCoopGuest()) updateCrops(dt);
     updateWater(dt);
-  } else {
+  }
+  if (uiOpen) {
     // A pause or an open screen takes the controls away, and the sprint latch
     // goes with them: resuming must never leave the player running unawares.
     clearSprintLatch();
-    if (activeScreen === 'furnace') {
+    if (activeScreen === 'furnace' && !inCoop()) {
       // The furnace whose screen is open keeps smelting while you browse your
       // inventory; everything else in the world stays frozen.
       updateBlockEntities(dt);
@@ -2229,6 +2404,7 @@ function animate(now) {
   paintThreat(threatZoneAt(player.pos.x, player.pos.y, player.pos.z), frontierZone(), threatZoneCount());
 
   world.updateStreaming(player.pos.x, player.pos.z);
+  updateCoop(dt);
   updateAudio(dt, player);
   updateSaveLoop(dt);
   skyDome.position.copy(camera.position);

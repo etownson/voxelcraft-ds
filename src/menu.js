@@ -1,6 +1,6 @@
 /*
  * The main menu: the start form and the pause panel in one card. A rail down
- * the left holds Start, Journal, Waypoints, Settings and Controls; the page for whichever
+ * the left holds Start, Journal, Waypoints, Co-op, Settings and Controls; the page for whichever
  * of them has the highlight fills the right. Start sits at the top of the rail
  * and never moves, and only the page scrolls.
  *
@@ -32,7 +32,7 @@ import { essenceCount } from './essence.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
-import { fpsShown, setFpsShown } from './settings.js';
+import { coopName, fpsShown, setCoopName, setFpsShown } from './settings.js';
 import {
   deleteWaypoint, nextWaypointLabel, setActiveWaypoint, waypointTargets
 } from './waypoints.js';
@@ -55,6 +55,17 @@ const waypointListEl = document.getElementById('waypoint-list');
 const waypointLabelInput = document.getElementById('waypoint-label');
 const waypointSaveButton = document.getElementById('waypoint-save');
 const fpsToggle = document.getElementById('fps-toggle');
+const coopNameInput = document.getElementById('coop-name');
+const coopOffEl = document.getElementById('coop-off');
+const coopOnEl = document.getElementById('coop-on');
+const coopHostButton = document.getElementById('coop-host');
+const coopCodeInput = document.getElementById('coop-code');
+const coopJoinButton = document.getElementById('coop-join');
+const coopRoomEl = document.getElementById('coop-room');
+const coopCopyButton = document.getElementById('coop-copy');
+const coopLeaveButton = document.getElementById('coop-leave');
+const coopPlayersEl = document.getElementById('coop-players');
+const coopStatusEl = document.getElementById('coop-status');
 
 for (const row of overlayEl.querySelectorAll('.debug-only')) {
   row.classList.toggle('hidden', !debugEnabled);
@@ -72,7 +83,15 @@ const menuActions = {
   /** Erase the saved world and start a fresh one. */
   newWorld: () => {},
   /** Save where the walker stands under this label; answers the saved spot. */
-  saveSpot: () => null
+  saveSpot: () => null,
+  /** Open this world as a co-op room. */
+  hostCoop: () => {},
+  /** Join somebody else's room by its code. */
+  joinCoop: () => {},
+  /** Leave the room: a host keeps playing alone, a guest goes home. */
+  leaveCoop: () => {},
+  /** The link a friend opens to join this room, or null outside one. */
+  coopLink: () => null
 };
 
 /** main.js hands the menu the verbs it cannot do itself. */
@@ -143,6 +162,7 @@ function showPage(name) {
   if (name === 'home') paintHome();
   if (name === 'waypoints') paintWaypoints();
   if (name === 'settings') paintFpsToggle();
+  if (name === 'coop') paintCoopName();
   pagesEl.scrollTop = 0;
   paintHints();
 }
@@ -285,6 +305,93 @@ waypointLabelInput.addEventListener('keydown', (event) => {
   event.preventDefault();
   playMenuClickSound();
   saveSpotHere();
+});
+
+/* ---------- Co-op ---------- */
+
+/* The page is painted from whatever the co-op layer last said, which main.js
+   hands over through paintMenuCoop; until then it is the offer to host or join. */
+let coopView = { mode: 'off', code: null, players: [], status: '', error: false };
+
+function paintCoopName() {
+  if (document.activeElement !== coopNameInput) coopNameInput.value = coopName();
+}
+
+/**
+ * Paints the co-op page: `mode` is 'off', 'connecting', 'host' or 'guest',
+ * `players` is a list of { name, role, self }, and `status` is one line of
+ * what is going on, an error when `error` says so.
+ */
+export function paintMenuCoop(view) {
+  coopView = { ...coopView, ...view };
+  const live = coopView.mode !== 'off';
+  const wasFocusedIn = (el) => el && el.contains(nav.current);
+  const leavingOff = live && wasFocusedIn(coopOffEl);
+  const leavingOn = !live && wasFocusedIn(coopOnEl);
+  coopOffEl.classList.toggle('hidden', live);
+  coopOnEl.classList.toggle('hidden', !live);
+  coopRoomEl.textContent = coopView.code ? 'Room ' + coopView.code : 'Room ------';
+  coopCopyButton.classList.toggle('hidden', !coopView.code);
+  coopLeaveButton.textContent = coopView.mode === 'guest' ? 'Leave and go home' : 'Leave';
+  const rows = coopView.players.map((p) => {
+    const li = document.createElement('li');
+    li.className = p.self ? 'next' : 'lit';
+    li.textContent = p.name + (p.role === 'host' ? ' \u00b7 host' : '') + (p.self ? ' \u00b7 you' : '');
+    return li;
+  });
+  coopPlayersEl.replaceChildren(...rows);
+  coopStatusEl.textContent = coopView.status || '';
+  coopStatusEl.classList.toggle('error', !!coopView.error);
+  if (leavingOff) nav.focus(coopCopyButton.classList.contains('hidden') ? coopLeaveButton : coopCopyButton);
+  if (leavingOn) nav.focus(coopHostButton);
+}
+
+function chosenName() {
+  setCoopName(coopNameInput.value);
+  return coopName() || 'Player';
+}
+
+coopNameInput.addEventListener('change', () => setCoopName(coopNameInput.value));
+
+coopHostButton.addEventListener('click', () => {
+  if (!freshPick(coopHostButton)) return;
+  menuActions.hostCoop(chosenName());
+});
+
+function joinTyped() {
+  menuActions.joinCoop(coopCodeInput.value, chosenName());
+}
+
+coopJoinButton.addEventListener('click', () => {
+  if (!freshPick(coopJoinButton)) return;
+  joinTyped();
+});
+coopCodeInput.addEventListener('keydown', (event) => {
+  if (event.code !== 'Enter' && event.code !== 'NumpadEnter') return;
+  if (event.repeat) return;
+  event.preventDefault();
+  playMenuClickSound();
+  joinTyped();
+});
+
+coopCopyButton.addEventListener('click', () => {
+  if (!freshPick(coopCopyButton)) return;
+  const link = menuActions.coopLink();
+  if (!link) return;
+  const said = (words) => paintMenuCoop({ status: words, error: false });
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(
+      () => said('Link copied. Send it to a friend.'),
+      () => said('Share this link: ' + link)
+    );
+  } else {
+    said('Share this link: ' + link);
+  }
+});
+
+coopLeaveButton.addEventListener('click', () => {
+  if (!freshPick(coopLeaveButton)) return;
+  menuActions.leaveCoop();
 });
 
 /* ---------- Display settings ---------- */

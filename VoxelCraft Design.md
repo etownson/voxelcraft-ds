@@ -782,6 +782,58 @@ Edited blocks override generated terrain and persist across reloads:
 - Stored hunger counters are pulled back inside their invariants on load (saturation
   clamped to the food it cushions, out-of-range exhaustion reset)
 
+## Co-op
+
+Up to four players share one world, peer to peer, with no server of the game's own:
+
+- **Transport.** Browsers connect directly over WebRTC through Trystero (`trystero` in
+  the import map, pinned, from jsDelivr). Trystero finds peers by posting encrypted
+  offers on free public Nostr relays, so there is no account and no bill. It is
+  imported only when a room is opened, so a single-player session never touches the
+  network. A room is a six-character code; the code doubles as the room password,
+  so the relays only see ciphertext. Every peer connects to every other peer.
+  Roughly one network pair in ten cannot connect without a TURN relay, and a dead
+  public relay shows up as a failed WebSocket in the console while a room is open
+- **The host owns the world.** Hosting opens the world already loaded; its save is
+  the world's save. A host keeps one room code for good (`voxelcraft:coop:hostCode`)
+  and, after a reload, opens the room again by itself (`voxelcraft:coop:hosting`).
+  The world is only reachable while the host's tab is open and in front: a hidden
+  tab stops its frame loop, and with it every mob in the room
+- **Joining** is a fresh page at `#join=CODE`. The boot waits for the host's world
+  (`serializeSharedWorld`: the block diff, block entities, SP0, the beacon count,
+  the clock, the respawn and where the host stands) before it builds any ground, and
+  a first visit arrives a step beside the host. A guest never writes `SAVE_KEY`: its
+  own body, pack, armour, purse and respawn go under `voxelcraft:coop:<code>` in the
+  save's own shape without the world, and come back when it rejoins that room. A
+  join that fails boots the guest's own world and says why. New world is refused to
+  a guest
+- **Blocks.** Every `setBlock` and `setBlocksBatch` made in one browser is sent to the
+  others, a frame's worth at a time, and applied there inside `withEditsSilenced` so
+  it is never echoed back. Flowing water is not sent: every browser runs the same
+  flow from the same blocks
+- **Players** send their pose twelve times a second (and once to anyone who joins);
+  everyone else draws a blocky body that eases toward it, with a name tag
+  (`remote-players.js`). The name is a screen preference, outside any save
+- **Mobs** think only on the host. Its mobs chase the nearest living player, each
+  spawn pass centres on the next player in turn, and a creeper's blast reaches
+  everyone in range. The host sends every mob ten times a second; a guest draws
+  them as pictures that never spawn, think or die on their own. A guest's hit or
+  arrow on a picture is sent to the host to apply; a bite or blast on a guest is
+  sent to that guest, with the shove, to feel. Mobs exist only where the host's
+  chunks are loaded, so a guest who wanders far from the host walks an empty world
+- **Loot** exists in one browser only: a broken block drops into the breaker's world,
+  and a mob a guest killed sends its loot and essence to that guest. Nothing can be
+  picked up twice
+- **Containers.** Whoever has a chest or furnace open sends its contents whenever they
+  change, and everyone else takes them; a container broken under an open screen
+  closes it. Every browser near a furnace keeps it smelting
+- **The mission and the clock.** A beacon lit anywhere is lit everywhere
+  (`acceptRemoteBeacon`), transmission and all, without spending anyone else's
+  essence. The host's clock is everyone's, and a night slept through by anyone ends
+  for all. Crops grow on the host
+- **No pause.** The menu or a screen stops one walker's hands, not the shared world:
+  in a room the world keeps running behind them
+
 ## Rendering and performance
 
 - Each chunk builds a small number of meshes grouped by pass: opaque, cutout
@@ -858,8 +910,9 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   debug give shelf
 - The main menu is the start form and the pause panel in one card: a rail down the
   left holds Start (Resume once the world has been entered), Journal, Waypoints,
-  Settings and Controls, and the page for whichever has the highlight fills the
-  right. Start sits at the top of the rail and never moves; only the page scrolls.
+  Co-op, Settings and Controls, and the page for whichever has the highlight fills the
+  right. The Co-op page takes a name, hosts this world or joins a room by code, and
+  once in a room shows the code, a copy-link button, the players and a status line. Start sits at the top of the rail and never moves; only the page scrolls.
   The Start page is the mission: two lines of what the walker was sent for, then one
   line a beacon (lit, the next one with its price and the essence carried, or not
   found yet; never coordinates), and the save line. Waypoints lists what the HUD
@@ -1033,7 +1086,7 @@ The game is `index.html` plus a graph of native ES modules — no build step bet
 repository and the page:
 
     index.html          the document: canvas, overlays, screen furniture, the
-                        three import map, and one import
+                        import map (three, and trystero for co-op), and one import
     styles.css          HUD, screens, overlays
     src/main.js         the composition root (see below)
     src/config.js       every tuning number and the block ids
@@ -1068,6 +1121,9 @@ repository and the page:
     src/hud.js          every element: bars, hotbar, toasts, screens, pad UI
     src/input.js        keyboard, mouse, pointer lock, the pad, the walk
     src/save.js         the record, the restore, autosave
+    src/net.js          the co-op wire: rooms, peers, typed messages (Trystero)
+    src/coop.js         co-op: what crosses the wire and what it does on landing
+    src/remote-players.js  the other players' bodies and name tags
     src/say.js          one way for any layer to tell the player something
     assets/audio/       the active CC0 bank
     assets/music/       the scheduled music, one folder per clock window, plus first-spawn
@@ -1125,6 +1181,8 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
-`waypoints()` lists what the arrow can follow and where it points now. The API is
+`waypoints()` lists what the arrow can follow and where it points now. `coop()`
+reports the co-op room: mode, code, this peer and the host, the peers, the avatars
+heard, how many mob pictures a guest is drawing, and the status line. The API is
 always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
 human-facing halves of the same door, and only those need the flag.

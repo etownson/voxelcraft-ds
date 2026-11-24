@@ -44,6 +44,9 @@ let mobDrop = null;
 let dropEssence = null;
 let spillContents = null;
 let shootWalker = null;
+let mobWalkers = null;
+let mobKilled = null;
+let mobExploded = null;
 export function setMobWorld(host) {
   shootWalker = host.shoot;
   mobWalker = host.walker;
@@ -51,7 +54,49 @@ export function setMobWorld(host) {
   mobDrop = host.drop;
   dropEssence = host.dropEssence;
   spillContents = host.spill;
+  // Co-op's three, each optional: every walker in the world rather than the
+  // one, word of a death, and word of a blast. A page that hands none of them
+  // over is the single-player game, unchanged.
+  mobWalkers = host.walkers ?? null;
+  mobKilled = host.killed ?? null;
+  mobExploded = host.exploded ?? null;
 }
+
+/* Which walker the mob being thought about right now is thinking about: the
+   nearest one, chosen once per mob per frame, so a zombie between two players
+   goes for whoever is closer. With no list there is only ever the one. */
+let focusWalker = null;
+function walkerNow() { return focusWalker || mobWalker(); }
+
+function walkerList() {
+  const list = mobWalkers ? mobWalkers() : null;
+  return list && list.length ? list : [mobWalker()];
+}
+
+function nearestWalker(x, y, z) {
+  const list = walkerList();
+  if (list.length === 1) return list[0];
+  let best = null;
+  let bestD = Infinity;
+  for (const walker of list) {
+    // The dead are nobody's quarry, but they still hold a mob in the world.
+    const d = Math.hypot(walker.pos.x - x, walker.pos.y - y, walker.pos.z - z) +
+      (walker.dead ? 1e6 : 0);
+    if (d < bestD) { best = walker; bestD = d; }
+  }
+  return best;
+}
+
+/* A guest's mobs are pictures of the host's: they do not think, spawn or die
+   on their own, and a hit on one is the host's to apply. `report(mob, amount,
+   knockX, knockZ)` is handed the hit instead, and the picture only flinches. */
+let mobAuthority = null;
+export function setMobAuthority(report) { mobAuthority = report; }
+
+/* Whether this browser rolls herds onto freshly meshed ground. A guest does
+   not: its animals are the host's. */
+let mobSpawningOn = true;
+export function setMobSpawning(on) { mobSpawningOn = !!on; }
 
 /**
  * The two groups share one performance budget but each has a cap of its own, and
@@ -700,7 +745,7 @@ function removeMob(mob, index = mobs.indexOf(mob)) {
   mobs.splice(index, 1);
 }
 
-function dropMobLoot(mob) {
+function dropMobLoot(mob, owner) {
   for (const drop of mob.def.drops || []) {
     // A shorn sheep has nothing left to give but its meat.
     if (mob.sheared && drop.id === 'wool') continue;
@@ -709,12 +754,13 @@ function dropMobLoot(mob) {
     if (count <= 0) continue;
     mobDrop(
       drop.id, count,
-      mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z
+      mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z,
+      undefined, undefined, owner
     );
   }
 }
 
-function dropMobEssence(mob) {
+function dropMobEssence(mob, owner) {
   // Essence is what enemies pay, and only enemies: a herd is food, not fuel.
   // The yield scales with the difficulty of the ground the mob came from, the
   // way its health and bite do: what is hard to kill is worth more to light.
@@ -724,22 +770,44 @@ function dropMobEssence(mob) {
     Math.floor(Math.random() * (yieldToTake.max - yieldToTake.min + 1));
   const amount = Math.round(base * (1 + DIFFICULTY_ESSENCE_SCALE * mob.difficulty));
   if (amount <= 0) return;
-  dropEssence(amount, mob.pos.x, mob.pos.y + mob.def.height * 0.4, mob.pos.z);
+  dropEssence(amount, mob.pos.x, mob.pos.y + mob.def.height * 0.4, mob.pos.z, owner);
 }
 
-function killMob(mob) {
+/* `owner` is whoever struck the last blow, when that was another player in
+   co-op: the loot and the essence are theirs, and the drop seam takes them there. */
+function killMob(mob, owner = null) {
   if (!mob || mob.dead) return;
   mob.dead = true;
+  mobDeathBurst(mob);
+  dropMobLoot(mob, owner);
+  dropMobEssence(mob, owner);
+  if (mobKilled) mobKilled(mob);
+}
+
+/** The puff a mob leaves when it dies, for the host's own and a guest's picture. */
+export function mobDeathBurst(mob) {
   spawnBurstParticles(
     mob.pos.x, mob.pos.y + mob.def.height * 0.5, mob.pos.z,
     0xb04a4a, 14, 4.4
   );
-  dropMobLoot(mob);
-  dropMobEssence(mob);
 }
 
 export function damageMob(mob, amount, knockX = 0, knockZ = 0, options = {}) {
   if (!mob || mob.dead) return false;
+  if (mobAuthority && !options.authoritative) {
+    // A guest's picture: flinch, and let the host decide what the hit did.
+    mob.hurtFlash = 0.22;
+    spawnBurstParticles(
+      mob.pos.x, mob.pos.y + mob.def.height * 0.62, mob.pos.z,
+      0xc84242, 6, 2.6
+    );
+    if (mob.audioCooldown <= 0) {
+      mob.audioCooldown = 0.55;
+      playMobHurtSound(mob.type, mob.pos.x, mob.pos.y + mob.def.height * 0.6, mob.pos.z);
+    }
+    mobAuthority(mob, amount, knockX, knockZ);
+    return false;
+  }
   mob.health -= amount;
   mob.hurtFlash = 0.22;
   spawnBurstParticles(
@@ -770,7 +838,7 @@ export function damageMob(mob, amount, knockX = 0, knockZ = 0, options = {}) {
   }
 
   if (mob.health <= 0) {
-    killMob(mob);
+    killMob(mob, options.by ?? null);
     return true;
   }
   return false;
@@ -904,9 +972,9 @@ function mobSeesWalker(mob) {
   const fromX = mob.pos.x;
   const fromY = mob.pos.y + mob.def.height * 0.8;
   const fromZ = mob.pos.z;
-  const toX = mobWalker().pos.x;
-  const toY = mobWalker().pos.y + EYE_HEIGHT;
-  const toZ = mobWalker().pos.z;
+  const toX = walkerNow().pos.x;
+  const toY = walkerNow().pos.y + EYE_HEIGHT;
+  const toZ = walkerNow().pos.z;
   const length = Math.hypot(toX - fromX, toY - fromY, toZ - fromZ);
   const steps = Math.max(2, Math.ceil(length / 0.35));
   for (let i = 1; i < steps; i++) {
@@ -992,17 +1060,16 @@ function explodeCreeper(mob) {
     dropEssence(blastEssence, cx, cy, cz);
   }
 
-  spawnBurstParticles(cx, cy, cz, 0xff9a3c, 26, 10);
-  spawnBurstParticles(cx, cy, cz, 0x7d7d7d, 22, 8);
-  spawnBurstParticles(cx, cy + 0.4, cz, 0x383838, 16, 6);
-  playExplosionSound(cx, cy, cz);
-  triggerExplosionPunch(cx, cy, cz);
+  explosionEffectsAt(cx, cy, cz);
+  if (mobExploded) mobExploded(cx, cy, cz);
 
-  const playerCx = mobWalker().pos.x;
-  const playerCy = mobWalker().pos.y + 0.9;
-  const playerCz = mobWalker().pos.z;
-  const distance = Math.hypot(playerCx - cx, playerCy - cy, playerCz - cz);
-  if (distance < 6) {
+  // Everyone close enough feels it, not only the walker the creeper wanted.
+  for (const walker of walkerList()) {
+    const playerCx = walker.pos.x;
+    const playerCy = walker.pos.y + 0.9;
+    const playerCz = walker.pos.z;
+    const distance = Math.hypot(playerCx - cx, playerCy - cy, playerCz - cz);
+    if (distance >= 6) continue;
     // The blast carries the difficulty of the ground the creeper was bred on,
     // the same way its health does: `mob.attack` is the def's 14 scaled up.
     const damage = Math.round(
@@ -1010,16 +1077,25 @@ function explodeCreeper(mob) {
     );
     const knock = 8 * (1 - distance / 6);
     if (distance > 0.01) {
-      mobWalker().vel.x += ((playerCx - cx) / distance) * knock;
-      mobWalker().vel.z += ((playerCz - cz) / distance) * knock;
-      mobWalker().vel.y += 4.5 * (1 - distance / 6);
-      mobWalker().onGround = false;
+      walker.vel.x += ((playerCx - cx) / distance) * knock;
+      walker.vel.z += ((playerCz - cz) / distance) * knock;
+      walker.vel.y += 4.5 * (1 - distance / 6);
+      walker.onGround = false;
     }
-    hurtWalker(damage, 'creeper');
+    hurtWalker(damage, 'creeper', walker);
   }
 
   mob.dead = true;
   mob.group.visible = false;
+}
+
+/** The flash, smoke and bang of a blast, without the blast. */
+export function explosionEffectsAt(cx, cy, cz) {
+  spawnBurstParticles(cx, cy, cz, 0xff9a3c, 26, 10);
+  spawnBurstParticles(cx, cy, cz, 0x7d7d7d, 22, 8);
+  spawnBurstParticles(cx, cy + 0.4, cz, 0x383838, 16, 6);
+  playExplosionSound(cx, cy, cz);
+  triggerExplosionPunch(cx, cy, cz);
 }
 
 function updateMobBurning(mob, dt) {
@@ -1130,16 +1206,16 @@ function archerShoot(mob, distance, dy) {
   if (distance > def.ranged.range || Math.abs(dy) > 10) return;
   if (!mobSeesWalker(mob)) return;
   mob.attackCooldown = def.attackInterval * (0.85 + Math.random() * 0.3);
-  shootWalker(mob, def.ranged.speed, mob.attack ?? def.damage);
+  shootWalker(mob, def.ranged.speed, mob.attack ?? def.damage, walkerNow());
 }
 
 function updateMobAI(mob, dt) {
   const def = mob.def;
-  const dx = mobWalker().pos.x - mob.pos.x;
-  const dz = mobWalker().pos.z - mob.pos.z;
-  const dy = mobWalker().pos.y - mob.pos.y;
+  const dx = walkerNow().pos.x - mob.pos.x;
+  const dz = walkerNow().pos.z - mob.pos.z;
+  const dy = walkerNow().pos.y - mob.pos.y;
   const distance = Math.hypot(dx, dz);
-  const playerAlive = !mobWalker().dead;
+  const playerAlive = !walkerNow().dead;
 
   mob.stateTimer -= dt;
   if (mob.fleeTimer > 0) mob.fleeTimer -= dt;
@@ -1222,7 +1298,7 @@ function updateMobAI(mob, dt) {
         moveZ = dz;
         if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0) {
           mob.attackCooldown = def.attackInterval;
-          hurtWalker(mob.attack ?? def.damage, mob.type);
+          hurtWalker(mob.attack ?? def.damage, mob.type, walkerNow());
         }
       }
     } else {
@@ -1312,6 +1388,36 @@ function updateMobAI(mob, dt) {
   if (mob.pos.y < -2) mob.dead = true;
 }
 
+/** One frame of a guest's picture of a mob: legs, head, flash and fuse. */
+export function animateMobPuppet(mob, dt) {
+  updateMobAnimation(mob, dt);
+  mob.group.position.copy(mob.pos);
+  mob.group.rotation.y = mob.yaw;
+}
+
+/** Takes a mob out of the world outright, for a guest whose host let it go. */
+export function removeMobRecord(mob) {
+  removeMob(mob);
+}
+
+/**
+ * Builds the mob's model again for what it now is, after a shearing. The old
+ * model's materials go with it.
+ */
+export function refitMobModel(mob) {
+  const model = createMobModel(mob.type, mob.sheared);
+  scene.remove(mob.group);
+  for (const material of mob.materials) material.dispose();
+  mob.group = model.group;
+  mob.legs = model.legs;
+  mob.head = model.head;
+  mob.headBaseY = model.headBaseY;
+  mob.materials = model.materials;
+  mob.group.position.copy(mob.pos);
+  mob.group.rotation.y = mob.yaw;
+  scene.add(mob.group);
+}
+
 function updateMobAnimation(mob, dt) {
   const speed = Math.hypot(mob.vel.x, mob.vel.z);
   mob.walkPhase += dt * (3.2 + speed * 2.4);
@@ -1353,10 +1459,11 @@ export function updateMobs(dt) {
   for (let i = mobs.length - 1; i >= 0; i--) {
     const mob = mobs[i];
     if (!mob) continue;
+    focusWalker = nearestWalker(mob.pos.x, mob.pos.y, mob.pos.z);
 
-    const dx = mob.pos.x - mobWalker().pos.x;
-    const dz = mob.pos.z - mobWalker().pos.z;
-    const dy = mob.pos.y - mobWalker().pos.y;
+    const dx = mob.pos.x - walkerNow().pos.x;
+    const dz = mob.pos.z - walkerNow().pos.z;
+    const dy = mob.pos.y - walkerNow().pos.y;
     // Three dimensions: a mob in a cave under the player shares their x and z,
     // and counting it as "right here" is what let invisible zombies hold mob
     // slots for a whole session.
@@ -1403,13 +1510,19 @@ export function updateMobs(dt) {
     mob.group.position.copy(mob.pos);
     mob.group.rotation.y = mob.yaw;
   }
+  focusWalker = null;
+
+  // The night comes for somebody: each spawn pass is centred on one walker,
+  // taken in turn, so a guest off on their own gets a night of their own.
+  const walkers = walkerList();
+  focusWalker = walkers[spawnTurn++ % walkers.length];
 
   hostileSpawnTimer -= dt;
   if (hostileSpawnTimer <= 0) {
     hostileSpawnTimer = isNight() ? 1.4 : 3.6;
     // Frequency is the third scaling dimension of the design: the farther the
     // walker has travelled from SP0, the less the night waits between arrivals.
-    const walker = mobWalker().pos;
+    const walker = walkerNow().pos;
     hostileSpawnTimer /= 1 + DIFFICULTY_SPAWN_SCALE * difficultyAt(walker.x, walker.y, walker.z);
     trySpawnHostile();
   }
@@ -1419,7 +1532,11 @@ export function updateMobs(dt) {
     passiveSpawnTimer = PASSIVE_SPAWN_INTERVAL;
     trySpawnPassive();
   }
+  focusWalker = null;
 }
+
+/** Whose turn it is to be the centre of a spawn pass, in co-op. */
+let spawnTurn = 0;
 
 export function countMobs(hostile) {
   let count = 0;
@@ -1480,8 +1597,8 @@ function spawnHostileAtRandomColumn() {
   const angle = Math.random() * Math.PI * 2;
   const radius = MOB_SPAWN_MIN_RADIUS +
     Math.random() * (MOB_SPAWN_MAX_RADIUS - MOB_SPAWN_MIN_RADIUS);
-  const x = Math.floor(mobWalker().pos.x + Math.cos(angle) * radius);
-  const z = Math.floor(mobWalker().pos.z + Math.sin(angle) * radius);
+  const x = Math.floor(walkerNow().pos.x + Math.cos(angle) * radius);
+  const z = Math.floor(walkerNow().pos.z + Math.sin(angle) * radius);
 
   if (!world.getChunk(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE))) {
     hostileSpawnTally.no_chunk++;
@@ -1543,6 +1660,7 @@ function spawnHostileAtRandomColumn() {
  * the starting herd walked out of range and the rest of the world was empty.
  */
 function rollChunkHerd(chunk) {
+  if (!mobSpawningOn) return false;
   if (chunk.mobSpawnChecked) return false;
   // The only gate this needs is its own cap: PASSIVE_CAP and HOSTILE_CAP are
   // sized to fit inside MOB_CAP together, so a full herd can never be what
@@ -1551,7 +1669,7 @@ function rollChunkHerd(chunk) {
 
   const centerX = chunk.cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const centerZ = chunk.cz * CHUNK_SIZE + CHUNK_SIZE / 2;
-  if (Math.hypot(centerX - mobWalker().pos.x, centerZ - mobWalker().pos.z) > PASSIVE_SPAWN_RADIUS) {
+  if (Math.hypot(centerX - walkerNow().pos.x, centerZ - walkerNow().pos.z) > PASSIVE_SPAWN_RADIUS) {
     return false;
   }
 
@@ -1583,7 +1701,7 @@ function rollChunkHerd(chunk) {
     if (chunk.getBlock(lx, y, lz) !== B.GRASS) continue;
     if (chunk.getBlock(lx, y + 1, lz) !== B.AIR) continue;
     if (chunk.getBlock(lx, y + 2, lz) !== B.AIR) continue;
-    if (Math.hypot(wx + 0.5 - mobWalker().pos.x, wz + 0.5 - mobWalker().pos.z) < 6) continue;
+    if (Math.hypot(wx + 0.5 - walkerNow().pos.x, wz + 0.5 - walkerNow().pos.z) < 6) continue;
 
     spot = { x: wx + 0.5, y: y + 1, z: wz + 0.5 };
     break;
@@ -1633,8 +1751,8 @@ export function trySpawnPassive() {
   // Grazing animals should not arrive on a dark landscape.
   if (daylight < 0.35) return null;
 
-  const pcx = Math.floor(mobWalker().pos.x / CHUNK_SIZE);
-  const pcz = Math.floor(mobWalker().pos.z / CHUNK_SIZE);
+  const pcx = Math.floor(walkerNow().pos.x / CHUNK_SIZE);
+  const pcz = Math.floor(walkerNow().pos.z / CHUNK_SIZE);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const cx = pcx + Math.floor(Math.random() * 9) - 4;

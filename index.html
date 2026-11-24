@@ -10,7 +10,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+    "trystero": "https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm"
   }
 }
 </script>
@@ -68,6 +69,7 @@
   </div>
 </div>
 <div id="cursor-stack" class="hidden"><div class="icon"></div><span class="count"></span></div>
+<div id="coop-tags" aria-hidden="true"></div>
 <div id="damage-flash"></div>
 <div id="water-tint"></div>
 <div id="lava-tint"></div>
@@ -95,6 +97,7 @@
         <button id="menu-start" class="menu-choice start" type="button" data-nav data-page="home">Start</button>
         <button id="menu-journal" class="menu-choice" type="button" data-nav data-page="journal" aria-controls="menu-journal-panel">Journal</button>
         <button id="menu-waypoints" class="menu-choice" type="button" data-nav data-page="waypoints" aria-controls="menu-waypoints-panel">Waypoints</button>
+        <button id="menu-coop" class="menu-choice" type="button" data-nav data-page="coop" aria-controls="menu-coop-panel">Co-op</button>
         <button id="menu-settings" class="menu-choice" type="button" data-nav data-page="settings" aria-controls="menu-settings-panel">Settings</button>
         <button id="menu-controls" class="menu-choice" type="button" data-nav data-page="controls" aria-controls="menu-controls-panel">Controls</button>
       </nav>
@@ -119,6 +122,37 @@
             <input id="waypoint-label" class="waypoint-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Waypoint 1" data-nav aria-label="Waypoint label">
             <button id="waypoint-save" class="menu-button" type="button" data-nav>Save</button>
           </div>
+        </section>
+
+        <section id="menu-coop-panel" class="menu-panel menu-coop hidden" data-page="coop" aria-label="Co-op">
+          <div class="menu-heading">Play together</div>
+          <p class="menu-blurb">Up to four players share one world. The host&rsquo;s browser keeps the world, so it is only open while the host is playing. Browsers connect to each other directly: there is no server and no account.</p>
+          <div class="setting-row">
+            <label class="setting-label" for="coop-name">Your name</label>
+            <input id="coop-name" class="waypoint-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Player" data-nav aria-label="Your name">
+          </div>
+          <div id="coop-off" class="coop-block">
+            <div class="setting-row">
+              <span class="setting-label">Open this world to friends</span>
+              <button id="coop-host" class="menu-button" type="button" data-nav>Host</button>
+            </div>
+            <div class="setting-row waypoint-save-row">
+              <input id="coop-code" class="waypoint-input" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="Room code" data-nav aria-label="Room code">
+              <button id="coop-join" class="menu-button" type="button" data-nav>Join</button>
+            </div>
+          </div>
+          <div id="coop-on" class="coop-block hidden">
+            <div class="setting-row">
+              <span id="coop-room" class="setting-label">Room ------</span>
+              <span class="confirm-buttons">
+                <button id="coop-copy" class="menu-button" type="button" data-nav>Copy link</button>
+                <button id="coop-leave" class="menu-button danger" type="button" data-nav>Leave</button>
+              </span>
+            </div>
+            <div class="menu-heading">Players</div>
+            <ul id="coop-players" class="mission-status"></ul>
+          </div>
+          <p id="coop-status" class="menu-blurb muted" aria-live="polite"></p>
         </section>
 
         <section id="menu-settings-panel" class="menu-panel menu-settings hidden" data-page="settings" aria-label="Settings">

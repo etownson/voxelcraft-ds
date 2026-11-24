@@ -127,6 +127,11 @@ let deliverTransmission = (lines) => { for (const line of lines) say(line); };
 /** The page says how a transmission is delivered. */
 export function setTransmissionDeliverer(deliver) { deliverTransmission = deliver; }
 
+/* Who hears that a beacon was lit here, by the walker in this browser. Co-op
+   passes it on, so every player's mission moves together. */
+let beaconLit = () => {};
+export function setBeaconLitListener(listener) { beaconLit = listener; }
+
 /** Whether a column can hold a monument: dry, flat, treeless and cave-tight. */
 function monumentGround(x, z) {
   const column = sampleColumn(x, z);
@@ -384,6 +389,7 @@ export function tryLightBeacon(x, y, z) {
   spawnBurstParticles(x + 0.5, y + 1.2, z + 0.5, beaconColor(site.index), 24, 4.2);
   playBeaconSound();
 
+  beaconLit(index);
   deliverTransmission(TRANSMISSIONS[index]);
   const next = nextBeacon();
   if (next) {
@@ -391,6 +397,28 @@ export function tryLightBeacon(x, y, z) {
     // page keeps the price.
     say('The next beacon wants ' + next.cost + ' essence. Follow the arrow.');
   }
+  paintMission();
+  return true;
+}
+
+/**
+ * Another player lit beacon `index`. The machine's block arrives with the
+ * shared edits; this moves the mission along here as if it had been lit in
+ * front of this walker, words and all, without spending anyone's essence.
+ */
+export function acceptRemoteBeacon(index) {
+  index = Math.trunc(Number(index));
+  if (!(index >= 0 && index < BEACON_COUNT) || index < beaconsActivated) return false;
+  const lighting = [];
+  for (let i = beaconsActivated; i <= index; i++) lighting.push(i);
+  beaconsActivated = index + 1;
+  setRecipesTransmitted(beaconsActivated);
+  markWorldDirty();
+  for (const i of lighting) raiseBeaconBeam(beaconSites()[i]);
+  const site = beaconSites()[index];
+  spawnBurstParticles(site.x + 0.5, site.y + 1.2, site.z + 0.5, beaconColor(site.index), 24, 4.2);
+  playBeaconSound();
+  deliverTransmission(TRANSMISSIONS[index]);
   paintMission();
   return true;
 }

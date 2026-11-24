@@ -52,11 +52,21 @@ const STUCK_SECONDS = 4;
 const ARROW_STEP = 0.25;
 
 let hurtWalker = null;
+let arrowLoosed = null;
 
-/** The page says who an arrow that hits the walker hurts, and how. */
+/** The page says who an arrow that hits the walker hurts, and how. In co-op it
+ *  also hears of every arrow loosed here, so the other players see it fly. */
 export function setArcheryWorld(host) {
   hurtWalker = host.hurt;
+  arrowLoosed = host.loosed ?? null;
 }
+
+/* Arrows another browser loosed, flown here so they can be seen. One a player
+   shot touches nothing: its owner's browser decides what it hit. One a mob
+   shot finds this walker the way a skeleton's own does, because whether this
+   walker was hit is this browser's to say. */
+export const REMOTE_PLAYER_ARROW = 'remote';
+export const REMOTE_MOB_ARROW = { remote: true };
 
 export const arrows = [];
 
@@ -102,6 +112,9 @@ export function launchArrow(x, y, z, vx, vy, vz, damage, from = 'walker') {
   orientArrow(arrow);
   scene.add(mesh);
   arrows.push(arrow);
+  if (arrowLoosed && from !== REMOTE_PLAYER_ARROW && from !== REMOTE_MOB_ARROW) {
+    arrowLoosed(x, y, z, vx, vy, vz, damage, from === 'walker');
+  }
   return arrow;
 }
 
@@ -216,9 +229,11 @@ function flyArrow(arrow, dt) {
     const dy = arrow.vel.y * step;
     const dz = arrow.vel.z * step;
 
-    const hit = arrow.from === 'walker'
-      ? mobAlong(arrow, dx, dy, dz)
-      : walkerAlong(arrow, dx, dy, dz);
+    const hit = arrow.from === REMOTE_PLAYER_ARROW
+      ? null
+      : arrow.from === 'walker'
+        ? mobAlong(arrow, dx, dy, dz)
+        : walkerAlong(arrow, dx, dy, dz);
     if (hit) {
       arrow.pos.set(arrow.pos.x + dx * hit.t, arrow.pos.y + dy * hit.t, arrow.pos.z + dz * hit.t);
       if (hit.mob) strikeMob(arrow, hit.mob);
@@ -330,13 +345,13 @@ function loose(power) {
  * flight will take and wobbles a little, so standing still is not safety but
  * a skeleton at range is no sniper either.
  */
-export function mobShootsWalker(mob, speed, damage, spread = 0.035) {
+export function mobShootsWalker(mob, speed, damage, spread = 0.035, target = player) {
   const fromX = mob.pos.x;
   const fromY = mob.pos.y + mob.def.height * 0.82;
   const fromZ = mob.pos.z;
-  const toX = player.pos.x;
-  const toY = player.pos.y + EYE_HEIGHT * 0.7;
-  const toZ = player.pos.z;
+  const toX = target.pos.x;
+  const toY = target.pos.y + EYE_HEIGHT * 0.7;
+  const toZ = target.pos.z;
   const flat = Math.hypot(toX - fromX, toZ - fromZ);
   const time = flat / speed;
   const lift = 0.5 * ARROW_GRAVITY * time * time;

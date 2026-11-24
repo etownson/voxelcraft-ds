@@ -59,7 +59,9 @@ const interactionView = {
   placeSpawn: () => {},
   showSleepFade: () => {},
   hideSleepFade: () => {},
-  paintReadout: () => {}
+  paintReadout: () => {},
+  // Co-op: the night just ended here, so it ends for the other players too.
+  slept: () => {}
 };
 
 export function setInteractionView(shown) { Object.assign(interactionView, shown); }
@@ -814,6 +816,7 @@ function sleepThroughNight() {
   setTimeout(() => {
     setDayTime(DAY_START);
     applyDayNight();
+    interactionView.slept();
     interactionView.paintReadout();
     sleeping = false;
     interactionView.hideSleepFade();

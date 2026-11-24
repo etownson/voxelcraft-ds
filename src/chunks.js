@@ -43,6 +43,26 @@ export function isWorldDirty() { return worldDirty; }
 export function clearWorldDirty() { worldDirty = false; }
 
 /**
+ * Who wants to hear about a block this browser changed: co-op sends it to the
+ * other players. A change that came from another player is applied inside
+ * `withEditsSilenced`, so it is never sent back where it came from.
+ */
+let blockEditListener = null;
+let editsSilenced = 0;
+export function setBlockEditListener(listener) { blockEditListener = listener; }
+export function withEditsSilenced(apply) {
+  editsSilenced++;
+  try {
+    return apply();
+  } finally {
+    editsSilenced--;
+  }
+}
+function announceEdit(gx, gy, gz, id, facing) {
+  if (blockEditListener && editsSilenced === 0) blockEditListener(gx, gy, gz, id, facing);
+}
+
+/**
  * Who wants to hear that a chunk has just been meshed. The mob layer gives a
  * freshly meshed chunk its herd, and the mesher has no business knowing that
  * animals are a thing.
@@ -449,6 +469,7 @@ export class World {
     const cz = Math.floor(gz / CHUNK_SIZE);
     const oldId = this.getBlock(gx, gy, gz);
     this.recordOverride(gx, gy, gz, id);
+    announceEdit(gx, gy, gz, id, facing);
     this.trackTorch(gx, gy, gz, oldId, id);
     this.trackBlockEntity(gx, gy, gz, oldId, id, facing);
     this.trackCrop(gx, gy, gz, oldId, id);
@@ -479,6 +500,7 @@ export class World {
       const cz = Math.floor(gz / CHUNK_SIZE);
       const oldId = this.getBlock(gx, gy, gz);
       this.recordOverride(gx, gy, gz, id);
+      announceEdit(gx, gy, gz, id, null);
       this.trackTorch(gx, gy, gz, oldId, id);
       this.trackBlockEntity(gx, gy, gz, oldId, id);
       this.trackCrop(gx, gy, gz, oldId, id);

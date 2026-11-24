@@ -23,9 +23,9 @@ import { spawnItemDrop } from './drops.js';
 import { triggerHeldSwing } from './held.js';
 import { wearHeldTool } from './interaction.js';
 import { getSelectedStack } from './inventory.js';
-import { createMobModel, damageMob, mobs } from './mob.js';
+import { damageMob, mobs, refitMobModel } from './mob.js';
 import { addExhaustion, aimOrigin, player } from './player.js';
-import { camera, scene } from './render.js';
+import { camera } from './render.js';
 import { say } from './say.js';
 
 let currentMobTarget = null;
@@ -173,18 +173,7 @@ export function attackMob(mob) {
  */
 function shearMob(mob) {
   mob.sheared = true;
-
-  const model = createMobModel(mob.type, true);
-  scene.remove(mob.group);
-  for (const material of mob.materials) material.dispose();
-  mob.group = model.group;
-  mob.legs = model.legs;
-  mob.head = model.head;
-  mob.headBaseY = model.headBaseY;
-  mob.materials = model.materials;
-  mob.group.position.copy(mob.pos);
-  mob.group.rotation.y = mob.yaw;
-  scene.add(mob.group);
+  refitMobModel(mob);
 
   const count = 1 + Math.floor(Math.random() * 3);
   spawnItemDrop('wool', count, mob.pos.x, mob.pos.y + mob.def.height * 0.45, mob.pos.z);

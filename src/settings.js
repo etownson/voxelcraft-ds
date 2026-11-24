@@ -35,3 +35,16 @@ export function onSettingsChanged(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/* The name the other players see over this player's head in co-op. It belongs
+   to the person, not to any world, so it lives out here with the screen's own
+   preferences. */
+let coopNameValue = (storageGet(SETTINGS_KEY + ':coopName') || '').slice(0, 24);
+
+/** The co-op display name, or '' when none was given. */
+export function coopName() { return coopNameValue; }
+
+export function setCoopName(name) {
+  coopNameValue = String(name || '').trim().slice(0, 24);
+  storageSet(SETTINGS_KEY + ':coopName', coopNameValue);
+}

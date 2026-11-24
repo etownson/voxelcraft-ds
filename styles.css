@@ -631,6 +631,23 @@ kbd {
 #overlay .waypoint-empty { font-size: 11px; color: #7d90a2; padding: 6px 10px; }
 #overlay .control-row.hidden { display: none; }
 
+/* Co-op: the room, who is in it, and what the wire last said. */
+#overlay .menu-coop .setting-row { max-width: 520px; }
+#overlay .menu-coop #coop-name { max-width: 220px; }
+#overlay .coop-block { display: flex; flex-direction: column; gap: 2px; }
+#overlay .coop-block.hidden { display: none; }
+#overlay #coop-room { font-variant-numeric: tabular-nums; letter-spacing: 0.08em; color: #f1f5f9; }
+#overlay #coop-status.error { color: #f3b3a8; }
+
+/* Names over the other players' heads. */
+#coop-tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.coop-tag {
+  position: absolute; transform: translate(-50%, -100%);
+  font-size: 11px; line-height: 1; padding: 3px 6px; white-space: nowrap;
+  color: #f1f5f9; background: rgba(0, 0, 0, 0.45); border-radius: 2px;
+}
+.coop-tag.hidden { display: none; }
+
 #overlay .confirm-row {
   background: rgba(224, 138, 126, 0.08);
   border: 1px solid rgba(224, 138, 126, 0.3); border-radius: 3px;

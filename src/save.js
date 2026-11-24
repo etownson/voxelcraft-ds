@@ -71,6 +71,12 @@ import { dayTime } from './sky.js';
  * it did. The lava bucket is a new item id on the same terms, and the player's
  * `fire`, the seconds left to burn, is written only while it is above zero, so
  * a save without it is a player who is not on fire.
+ *
+ * Co-op adds no field to this schema. A guest in someone else's world never
+ * writes SAVE_KEY: its own walk, pack, purse and spawn go under a key of their
+ * own, `voxelcraft:coop:<room code>`, in the same record shape minus the world
+ * (no `edits`, no `entities`), because the world is the host's to keep. That
+ * record is read only by a guest rejoining the same room.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
@@ -87,6 +93,19 @@ let saveDisabled = false;
 let autosaveTimer = AUTOSAVE_SECONDS;
 let saveNotice = null;
 let saveSpawn = null;
+/* Where a write lands, and whether it carries the world. A guest's writes go
+   to its own co-op key, without the world: see the schema note above. */
+let saveTarget = SAVE_KEY;
+let savePersonalOnly = false;
+
+/** The storage key a guest in room `code` keeps its own player under. */
+export function coopGuestKey(code) { return 'voxelcraft:coop:' + code; }
+
+/** From now on, writes go to `key`; `personalOnly` leaves the world out. */
+export function setSaveTarget(key, personalOnly = false) {
+  saveTarget = key;
+  savePersonalOnly = !!personalOnly;
+}
 
 /* What a save is worth telling anyone about: when the world now loaded was
    written, how big it was, whether it went wrong, and whether anything is still
@@ -126,7 +145,7 @@ export function forgetSavedWorld() {
   lastSaveError = null;
 }
 
-function serializeWorldSave() {
+function serializeEdits() {
   const edits = {};
   for (const [key, map] of world.overridesByChunk) {
     if (!map.size) continue;
@@ -134,6 +153,33 @@ function serializeWorldSave() {
     for (const [index, id] of map) flat.push(index, id);
     edits[key] = flat;
   }
+  return edits;
+}
+
+/**
+ * The world as a host hands it to a guest joining: everything a save says
+ * about the ground and the mission, and nothing about the host's own body or
+ * pack except where they stand, so the guest can arrive beside them.
+ */
+export function serializeSharedWorld() {
+  return {
+    v: SAVE_SCHEMA,
+    seed: WORLD_SEED,
+    time: dayTime,
+    sp0: spawnPoint(),
+    beacons: beaconsActivatedCount(),
+    spawn: { x: saveSpawn.x, z: saveSpawn.z },
+    host: { x: player.pos.x, y: player.pos.y, z: player.pos.z },
+    entities: serializeBlockEntities(),
+    edits: serializeEdits()
+  };
+}
+
+/** A stack as the compact record saves and co-op messages carry. */
+export function stackToRecord(stack) { return stackRecord(stack); }
+
+function serializeWorldSave() {
+  const edits = savePersonalOnly ? null : serializeEdits();
   return {
     v: SAVE_SCHEMA,
     seed: WORLD_SEED,
@@ -167,7 +213,7 @@ function serializeWorldSave() {
     spawn: { x: saveSpawn.x, z: saveSpawn.z },
     inventory: inventory.map((slot) => stackRecord(slot)),
     armour: armorSlots.map((slot) => stackRecord(slot)),
-    entities: serializeBlockEntities(),
+    entities: savePersonalOnly ? null : serializeBlockEntities(),
     edits
   };
 }
@@ -223,7 +269,7 @@ export function saveWorld() {
   if (saveDisabled) return false;
   try {
     const json = JSON.stringify(serializeWorldSave());
-    localStorage.setItem(SAVE_KEY, json);
+    localStorage.setItem(saveTarget, json);
     lastSaveAt = Date.now();
     lastSaveBytes = new Blob([json]).size;
     lastSaveError = null;
@@ -241,10 +287,10 @@ export function saveWorld() {
 }
 
 /** Reads and validates the stored save, or returns null when absent or stale. */
-export function readSavedWorld() {
+export function readSavedWorld(key = SAVE_KEY) {
   let raw = null;
   try {
-    raw = localStorage.getItem(SAVE_KEY);
+    raw = localStorage.getItem(key);
   } catch (err) {
     console.warn('World save is unreadable:', err);
     return null;
@@ -257,7 +303,7 @@ export function readSavedWorld() {
   } catch (err) {
     console.warn('Discarding corrupt world save:', err);
     try {
-      localStorage.removeItem(SAVE_KEY);
+      localStorage.removeItem(key);
     } catch (unavailable) {}
     return null;
   }
