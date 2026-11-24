@@ -70,6 +70,9 @@
       "feather||||||||",
       "wool||||||||",
       "shears||||||||",
+      "string||||||||",
+      "bow||||||||",
+      "arrow||||||||",
       "bucket||||||||",
       "water_bucket||||||||",
       "lava_bucket||||||||",
@@ -158,6 +161,9 @@
       "oak_stairs=oak_stairsx4=P../PP./PPP=2shut",
       "cobblestone_stairs=cobblestone_stairsx4=C../CC./CCC=2shut",
       "ladder=ladderx3=S.S/SSS/S.S=2shut",
+      "bow=bowx1=.SX/S.X/.SX=2shut",
+      "bow_alt=bowx1=XS./X.S/XS.=2shut",
+      "arrows=arrowx4=C/S/F=2shut",
       "wood_pickaxe=wood_pickaxex1=XXX/.S./.S.=1shut",
       "wood_sword=wood_swordx1=X/X/S=1shut",
       "wood_axe=wood_axex1=XX/XS/.S=1shut",
@@ -214,7 +220,7 @@
       "purse:31+31->31",
       "lit:1",
       "journal:13",
-      "forward:4/48"
+      "forward:4/51"
     ],
     "crafting": [
       "planks:OK",
