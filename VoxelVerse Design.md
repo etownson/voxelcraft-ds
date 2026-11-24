@@ -1024,7 +1024,7 @@ Fleece never grows back: a fleecy hillside is worth fencing. The shorn model dro
 fleece layer and shows bare skin. Wool's only use is the bed.
 
 ## Archery and the night's newcomers
-The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 16% of the time and a zombie otherwise. Once beacon 2 is lit, a fifth of spawns roll a spider. A spider that would not fit the spot arrives as a zombie instead, so about one spawn in ten is a spider. Once beacon 3 is lit, another fifth of spawns are skeletons. The newcomers take their share out of the zombies'. All of them scale with the ground they were spawned on, as every enemy does, and pay essence when killed.
+The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 16% of the time and a zombie otherwise. Once beacon 2 is lit, 28% of spawns roll a spider. A spider is wider than a block, so when it would not fit centred on the spot it tries the spot's four corners, which need only a clear 2×2. Only when none of those fit does it arrive as a zombie instead. Once beacon 3 is lit, another fifth of spawns are skeletons. The newcomers take their share out of the zombies'. All of them scale with the ground they were spawned on, as every enemy does, and pay essence when killed.
 
 **Spiders** (beacon 2). 16 health, quick, wide and low: 1.28 blocks across, wider than one block. A spider climbs any wall it runs into while it walks. It bites for 2 on a one-second cooldown. Sunlight does not burn it. Out under the daytime sky it hunts nobody unless it is hit, and then it stays angry for twelve seconds. In a dark cave it hunts as it would at night. It drops 0–2 string.
 

@@ -1581,8 +1581,8 @@ function pickHostileType() {
   const lit = beaconsActivatedCount();
   const roll = Math.random();
   if (roll < 0.16) return 'creeper';
-  if (lit >= 2 && roll < 0.36) return 'spider';
-  if (lit >= 3 && roll < 0.56) return 'skeleton';
+  if (lit >= 2 && roll < 0.44) return 'spider';
+  if (lit >= 3 && roll < 0.64) return 'skeleton';
   return 'zombie';
 }
 
@@ -1591,6 +1591,26 @@ function pickHostileType() {
  * puts a hostile there. Returns null when the column is no good; how many
  * columns a pass is worth trying is the caller's business.
  */
+/**
+ * Where in block (x, z) a hostile of this type fits with its feet at y, or
+ * null. The block centre comes first. A spider centred there spans three
+ * blocks each way, so it also tries the block's four corners, which need only
+ * a clear 2x2. Standing on the centre block alone used to turn half of all
+ * spider rolls into zombies.
+ */
+function hostileSpotFor(type, x, y, z) {
+  const probe = { def: MOB_DEFS[type] };
+  if (!mobCollidesAt(probe, x + 0.5, y, z + 0.5)) return { x: x + 0.5, z: z + 0.5 };
+  if (MOB_DEFS[type].width <= 1) return null;
+  const corners = [[0, 0], [1, 0], [0, 1], [1, 1]];
+  const start = Math.floor(Math.random() * 4);
+  for (let i = 0; i < 4; i++) {
+    const [dx, dz] = corners[(start + i) % 4];
+    if (!mobCollidesAt(probe, x + dx, y, z + dz)) return { x: x + dx, z: z + dz };
+  }
+  return null;
+}
+
 function spawnHostileAtRandomColumn() {
   hostileSpawnTally.attempts++;
 
@@ -1632,11 +1652,12 @@ function spawnHostileAtRandomColumn() {
       continue;
     }
 
-    let type = pickHostileType();
-    // A spider is wider than a block: where it would wedge into the walls
-    // around a one-wide spot, a zombie takes the spot instead.
-    if (mobCollidesAt({ def: MOB_DEFS[type] }, x + 0.5, y + 1, z + 0.5)) type = 'zombie';
-    return spawnMob(type, x + 0.5, y + 1, z + 0.5);
+    const type = pickHostileType();
+    const spot = hostileSpotFor(type, x, y + 1, z);
+    // A spider is wider than a block: where no 2x2 corner of the spot is
+    // clear either, a zombie takes the spot instead.
+    if (!spot) return spawnMob('zombie', x + 0.5, y + 1, z + 0.5);
+    return spawnMob(type, spot.x, y + 1, spot.z);
   }
 
   // Telling "nowhere to stand" apart from "somewhere, but the torches are doing
