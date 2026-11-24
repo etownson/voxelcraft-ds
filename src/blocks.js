@@ -114,7 +114,10 @@ export const BLOCKS = [
     id: B.TORCH, key: 'torch', name: 'Torch',
     tiles: { top: 'torch', bottom: 'torch', side: 'torch' },
     solid: false, opaque: false, cutout: true, hardness: 0,
-    light: 14, placeOnTop: true,
+    // A torch stands on a top face or leans off a side one. Standing torches
+    // keep no facing at all; one on a wall keeps the face it is stuck to in
+    // the facings map, which is the whole of the difference.
+    light: 14, placeOnTop: true, wallMount: true,
     drops: [{ item: 'torch', min: 1, max: 1 }], placeable: true
   },
   {
@@ -357,6 +360,7 @@ for (const block of BLOCKS) {
   block.bed ??= null;
   block.stairs ??= false;
   block.ladder ??= false;
+  block.wallMount ??= false;
   block.beacon ??= null;
   // Only water carries a depth; everything else sits at -1 so isWater(id) can
   // be a single comparison against the block table.

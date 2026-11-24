@@ -68,6 +68,18 @@ export const LADDER_PLANK = 1 / 16;
  */
 export const LADDER_CLIMB_SPEED = 2.3572;
 
+/**
+ * Torches. A standing torch is two crossed planes TORCH_HEIGHT tall. A torch put on the side of a block keeps the standing torch's
+ * stick and leans it out of the wall: the foot sits against the face it was
+ * stuck to and the flame ends up a little out into the room and a little
+ * higher, the way Minecraft hangs one. Each value is a fraction of a block
+ * along the facing (negative is towards the wall) or up.
+ */
+export const TORCH_HEIGHT = 0.8;
+export const WALL_TORCH_FOOT = -0.42;
+export const WALL_TORCH_LEAN = 0.27;
+export const WALL_TORCH_RISE = 0.2;
+
 // Water flow. Only cells an edit disturbed ever get looked at, so an ocean is
 // as cheap as a puddle: the sea is a wall of sources that never re-evaluate,
 // and a hole dug beside it wakes up just enough of the coastline to fill in.

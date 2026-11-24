@@ -15,12 +15,16 @@ import {
 } from './audio.js';
 import { BLOCKS } from './blocks.js';
 import { world } from './chunks.js';
-import { EYE_HEIGHT } from './config.js';
+import {
+  EYE_HEIGHT, TORCH_HEIGHT, WALL_TORCH_FOOT, WALL_TORCH_LEAN, WALL_TORCH_RISE
+} from './config.js';
 import { camera, scene } from './render.js';
 
 const EMBER_LIMIT = 84;
 const EMBER_SPAWN_INTERVAL = 0.11;
 const EMBER_RANGE = 20;
+/** Where on a torch's stick the flame burns, measured up from its foot. */
+const TORCH_FLAME_HEIGHT = 0.78;
 const EMBER_HOT = new THREE.Color(0xffb347);
 const EMBER_COOL = new THREE.Color(0x7a1d05);
 
@@ -107,9 +111,18 @@ export function updateTorchEmbers(dt) {
       const listener = fxView.pos();
       for (const key of world.torches) {
         const parts = key.split(',');
-        const tx = Number(parts[0]) + 0.5;
-        const ty = Number(parts[1]);
-        const tz = Number(parts[2]) + 0.5;
+        let tx = Number(parts[0]) + 0.5;
+        let ty = Number(parts[1]);
+        let tz = Number(parts[2]) + 0.5;
+        // A wall torch's flame sits where its leaning stick ends, not over
+        // the middle of the cell.
+        const facing = world.facings.get(key);
+        if (facing) {
+          const along = WALL_TORCH_FOOT + WALL_TORCH_LEAN * TORCH_FLAME_HEIGHT / TORCH_HEIGHT;
+          tx += facing[0] * along;
+          tz += facing[1] * along;
+          ty += WALL_TORCH_RISE;
+        }
         const dx = tx - listener.x;
         const dy = ty - listener.y;
         const dz = tz - listener.z;
@@ -119,7 +132,7 @@ export function updateTorchEmbers(dt) {
       }
       if (candidates.length) {
         const torch = candidates[(Math.random() * candidates.length) | 0];
-        spawnTorchEmber(torch.x, torch.y + 0.78, torch.z);
+        spawnTorchEmber(torch.x, torch.y + TORCH_FLAME_HEIGHT, torch.z);
       }
     }
   }

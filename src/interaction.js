@@ -406,7 +406,13 @@ export function tryPlaceSelectedBlock() {
   const roomId = world.getBlock(px, py, pz);
   if (roomId !== B.AIR && !isWater(roomId)) return false;
 
-  if (block.placeOnTop) {
+  // A torch clicked onto the side of a block leans off that face; anything
+  // else that sits on top still has to be clicked onto a top face.
+  let wallFacing = null;
+  if (block.wallMount && currentTarget.normal.y === 0) {
+    if (!BLOCKS[currentTarget.id].solid) return false;
+    wallFacing = [currentTarget.normal.x, currentTarget.normal.z];
+  } else if (block.placeOnTop) {
     if (currentTarget.normal.y !== 1) return false;
     if (!BLOCKS[world.getBlock(px, py - 1, pz)].solid) return false;
   }
@@ -431,8 +437,8 @@ export function tryPlaceSelectedBlock() {
     return false;
   }
 
-  const facing = block.ladder
-    ? ladderFacing
+  const facing = block.ladder ? ladderFacing
+    : block.wallMount ? wallFacing
     : block.facings ? frontFacingTowardsPlayer(px, pz) : null;
   if (!world.setBlock(px, py, pz, block.id, facing)) return false;
   // A packed chest sets down with everything it was picked up with.

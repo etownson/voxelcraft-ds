@@ -61,6 +61,10 @@ import { dayTime } from './sky.js';
  * whose wear or contents the id and count pairs cannot hold. Before it a chest
  * forgot the wear on the tools stored in it, so a schema 6 world is no longer
  * readable.
+ *
+ * Wall torches ride schema 7 without a bump: a torch on a wall is a facings
+ * row like a ladder's, and a torch with no row stands upright, which is how
+ * every torch in a save written before them reads.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
@@ -346,7 +350,7 @@ export function applySavedBlockEntities(world, save) {
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
       const blockId = world.overrides.get(x + ',' + y + ',' + z);
       const block = blockId === undefined ? null : BLOCKS[blockId];
-      if (!block || !block.facings) continue;
+      if (!block || !(block.facings || block.wallMount)) continue;
       world.facings.set(x + ',' + y + ',' + z, [dx, dz]);
     }
   }

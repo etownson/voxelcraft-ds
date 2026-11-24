@@ -293,6 +293,14 @@ export class World {
     const oldBlock = BLOCKS[oldId];
     const newBlock = BLOCKS[newId];
 
+    // A wall-mounted block only has a facing when it was put on a wall, so it
+    // gets no default: a torch set down without one is a standing torch.
+    if (newBlock.wallMount) {
+      if (oldBlock.blockEntity) this.blockEntities.delete(key);
+      if (facing) this.facings.set(key, facing);
+      else this.facings.delete(key);
+      return;
+    }
     if (!newBlock.blockEntity && !newBlock.facings) {
       if (oldBlock.blockEntity) this.blockEntities.delete(key);
       this.facings.delete(key);

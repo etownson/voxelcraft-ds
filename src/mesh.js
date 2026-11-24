@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import { TILES, tileRect } from './atlas.js';
 import { BLOCKS, isWater, waterLevel, waterSurfaceHeight } from './blocks.js';
 import {
-  B, CHUNK_SIZE, LADDER_PLANK, WATER_CORNER_CELLS, WORLD_HEIGHT, blockIndex
+  B, CHUNK_SIZE, LADDER_PLANK, TORCH_HEIGHT, WALL_TORCH_FOOT, WALL_TORCH_LEAN, WALL_TORCH_RISE,
+  WATER_CORNER_CELLS, WORLD_HEIGHT, blockIndex
 } from './config.js';
 import { cutoutMaterial, opaqueMaterial, waterMaterial } from './render.js';
 
@@ -328,7 +329,7 @@ function appendTorch(builder, world, x, y, z, wx, wz) {
   const rect = tileRect(block.tileSide);
   const sky = skyBrightness(world.getSkyLight(wx, y, wz));
   const blockLight = blockBrightness(world.getBlockLight(wx, y, wz));
-  const height = 0.8;
+  const height = TORCH_HEIGHT;
   const shades = [1, 1, 1, 1];
 
   const planeA = [
@@ -343,6 +344,20 @@ function appendTorch(builder, world, x, y, z, wx, wz) {
     [x + 0.85, y + height, z + 0.85],
     [x + 0.15, y + height, z + 0.15]
   ];
+  // On a wall the same two planes are sheared rather than rotated: the foot
+  // slides back against the face it hangs from and the top leans out of it,
+  // so the texture's stick stays upright in its own plane and simply tilts.
+  const facing = world.facingAt(wx, y, wz);
+  if (facing) {
+    for (const plane of [planeA, planeB]) {
+      for (const vertex of plane) {
+        const along = WALL_TORCH_FOOT + WALL_TORCH_LEAN * (vertex[1] - y) / height;
+        vertex[0] += facing[0] * along;
+        vertex[1] += WALL_TORCH_RISE;
+        vertex[2] += facing[1] * along;
+      }
+    }
+  }
   builder.quad(planeA, rect, sky, blockLight, shades);
   builder.quad(planeB, rect, sky, blockLight, shades);
 }
