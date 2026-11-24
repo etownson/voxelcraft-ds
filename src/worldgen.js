@@ -9,7 +9,7 @@
 
 import { isWater } from './blocks.js';
 import {
-  B, CHUNK_SIZE, ORE_SALT_COAL, ORE_SALT_DIAMOND, ORE_SALT_IRON, SEA_LEVEL, TREE_MARGIN,
+  B, CHUNK_SIZE, LAVA_LEVEL, ORE_SALT_COAL, ORE_SALT_DIAMOND, ORE_SALT_IRON, SEA_LEVEL, TREE_MARGIN,
   TREE_SALT, WATER_SIDES, WORLD_HEIGHT, WORLD_SEED, blockIndex, clamp, lerp, smoothstep
 } from './config.js';
 import {
@@ -121,7 +121,11 @@ function cutOpensSea(chunk, x, z, y, h) {
   return false;
 }
 
-/** Carve connected spaghetti tunnels and occasional larger caverns. */
+/**
+ * Carve connected spaghetti tunnels and occasional larger caverns. A cut at or
+ * below LAVA_LEVEL fills with a lava source instead of air. The sea test still
+ * applies down there, so no lava is ever generated against water.
+ */
 function carveCaves(chunk) {
   const baseX = chunk.cx * CHUNK_SIZE;
   const baseZ = chunk.cz * CHUNK_SIZE;
@@ -141,7 +145,7 @@ function carveCaves(chunk) {
         // A cave that starts out touching the sea is a cave the simulation then
         // has to flood, so no cut here may reach the water.
         if (cutOpensSea(chunk, x, z, y, h)) continue;
-        blocks[index] = B.AIR;
+        blocks[index] = y <= LAVA_LEVEL ? B.LAVA : B.AIR;
       }
     }
   }

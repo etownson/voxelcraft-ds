@@ -97,6 +97,14 @@ export const WATER_MAX_FLOW = 7;
 export const LAVA_MAX_FLOW = 3;
 export const LAVA_TICK_EVERY = 6;
 /**
+ * The deep lava level. Every cave cell the generator carves at or below this
+ * height is a lava source rather than air, so the bottom of the world holds
+ * lava lakes right where the diamonds run (y 4 to 26). Every carved cell under
+ * the line is filled, so no source is born beside open air and the lakes lie
+ * settled until the player breaks into one.
+ */
+export const LAVA_LEVEL = 10;
+/**
  * What lava does to a body in it. It is water's swim made thick: a slower
  * stroke and a slower wade, so wandering in is a mistake that takes a moment
  * to walk back out of. While anything of the body is in it, it burns four

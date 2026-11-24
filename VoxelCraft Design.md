@@ -58,8 +58,13 @@ Terrain content:
   two independent low-frequency fields that branch and intersect into networks, plus
   occasional larger caverns from a separate blobby pass. Cave density increases with
   depth, and tunnels occasionally break through the surface as walkable cave entrances
+- A deep lava level: every cave cell carved at or below y=10 (`LAVA_LEVEL`) is a lava
+  source instead of air, so the bottom of the world holds lava lakes and lava-floored
+  tunnels right where the diamonds are. Every carved cell under the line is filled, so
+  no lava is born beside open air and the lakes lie still until the player breaks in;
+  the sea test below applies down there too, so no lava is generated against water
 - Water fills columns open to the sky below sea level (oceans, lakes, rivers). Caves are
-  exempt: cave interiors are always air, and carving never opens the sea into a cave —
+  exempt: cave interiors are air (or lava below the lava level), and carving never opens the sea into a cave —
   `cutOpensSea` refuses a carve at or below sea level where the ground above it, or the
   neighbouring column, is flooded down to that height
 - Ore veins, embedded in stone and placed deterministically from the seed, biased to
@@ -467,8 +472,9 @@ A solid never turns back into a fluid, so every meeting is final and the flood s
 reaches a fixed point. Flow edits that change light or opacity (lava arriving or
 leaving, a meeting leaving rock) go through the light engine; plain water edits still
 skip it. A placed block replaces lava the same way it replaces water, rays pass through
-both, and only water wets farmland. Worldgen places no lava yet: so far it only comes
-from a bucket or the debug surface.
+both, and only water wets farmland. Worldgen places lava only as the deep lava level
+(see World generation), which is generated settled; everything else comes from a bucket
+or the debug surface.
 
 `waterFlowCheck()` replays the rules on small rigs. Its `cases` are the water rigs the
 snapshot guard compares; `lava` holds the lava and meeting rigs (`lavaOk`).
