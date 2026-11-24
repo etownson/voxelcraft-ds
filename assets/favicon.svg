@@ -1,23 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <g transform="rotate(-45 32 32)">
-    <!-- struts to the panels -->
-    <rect x="12" y="30.5" width="40" height="3" fill="#8a96a3"/>
-    <!-- left solar panel -->
-    <g>
-      <rect x="1" y="21" width="15" height="22" rx="1.5" fill="#2f6fd6" stroke="#1b3f80" stroke-width="1.5"/>
-      <path d="M8.5 21v22M1 28.3h15M1 35.7h15" stroke="#9cc4ff" stroke-width="1.2"/>
-    </g>
-    <!-- right solar panel -->
-    <g>
-      <rect x="48" y="21" width="15" height="22" rx="1.5" fill="#2f6fd6" stroke="#1b3f80" stroke-width="1.5"/>
-      <path d="M55.5 21v22M48 28.3h15M48 35.7h15" stroke="#9cc4ff" stroke-width="1.2"/>
-    </g>
-    <!-- body -->
-    <rect x="22" y="23" width="20" height="18" rx="3" fill="#d9dee4" stroke="#5b6672" stroke-width="1.5"/>
-    <rect x="25" y="26" width="14" height="5" rx="1" fill="#f2c84b"/>
-    <!-- antenna mast and dish -->
-    <rect x="30.75" y="15" width="2.5" height="8" fill="#5b6672"/>
-    <path d="M22 15 Q32 3 42 15 Z" fill="#eef1f4" stroke="#5b6672" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="32" cy="9" r="1.8" fill="#e04a3a"/>
-  </g>
+  <defs>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3fb6cc" stop-opacity="0.15"/>
+      <stop offset="0.5" stop-color="#3fb6cc" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#3fb6cc"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bff4fa" stop-opacity="0.5"/>
+      <stop offset="0.4" stop-color="#d9fbff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <!-- the beam, a cyan bloom around a white core, rising out of the block -->
+  <rect x="22" y="0" width="20" height="42" fill="url(#glow)"/>
+  <rect x="27" y="0" width="10" height="42" fill="url(#core)"/>
+  <!-- the monument block, seen from above and to one side -->
+  <path d="M32 30 L55 41 L32 52 L9 41 Z" fill="#a3aab6" stroke="#3a3f4a" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M9 41 L32 52 L32 63 L9 52 Z" fill="#6c7280" stroke="#3a3f4a" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M55 41 L32 52 L32 63 L55 52 Z" fill="#4f5562" stroke="#3a3f4a" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- the lit emitter on top, where the beam leaves the block -->
+  <path d="M32 35.5 L43 41 L32 46.5 L21 41 Z" fill="#2e3440"/>
+  <path d="M32 37.5 L39 41 L32 44.5 L25 41 Z" fill="#ffffff"/>
+  <!-- the crystal sockets glowing on the two side faces -->
+  <path d="M15 47 L25 52 L25 58 L15 53 Z" fill="#5fd6e6"/>
+  <path d="M49 47 L39 52 L39 58 L49 53 Z" fill="#3fb6cc"/>
 </svg>
