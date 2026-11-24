@@ -868,6 +868,15 @@ function explodeCreeper(mob) {
   }
 
   if (edits.length) world.setBlocksBatch(edits);
+  // Torches just outside the crater whose wall or floor it took pop off, the
+  // same as when a pickaxe takes the block out from under them.
+  for (const edit of edits) {
+    for (const [tx, ty, tz] of world.torchesHeldBy(edit.x, edit.y, edit.z)) {
+      if (world.getBlock(tx, ty, tz) !== B.TORCH) continue;
+      world.setBlock(tx, ty, tz, B.AIR);
+      drops.push({ id: 'torch', count: 1, x: tx + 0.5, y: ty + 0.3, z: tz + 0.5 });
+    }
+  }
   for (const drop of drops) {
     mobDrop(drop.id, drop.count, drop.x, drop.y, drop.z);
   }

@@ -245,6 +245,12 @@ function breakBlockAt(x, y, z, id, canHarvest = true) {
   if (block.bed) world.clearBedPartner(x, y, z, id);
 
   world.setBlock(x, y, z, B.AIR);
+  // A torch standing on the block, or stuck to one of its sides, has nothing
+  // left to hold it and pops off as an item, whatever the tool was.
+  for (const [tx, ty, tz] of world.torchesHeldBy(x, y, z)) {
+    world.setBlock(tx, ty, tz, B.AIR);
+    spawnItemDrop('torch', 1, tx + 0.5, ty + 0.3, tz + 0.5);
+  }
   addExhaustion(EXHAUSTION.mine);
   if (packed) {
     // Straight into the pack when there is a slot for it. A packed chest left

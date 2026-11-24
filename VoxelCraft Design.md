@@ -91,7 +91,7 @@ and a runtime assertion enforces that each block sits at its own id.
 | 11 | Oak Leaves | Slightly transparent cutout; drops apples, never itself |
 | 12 | Snow Block | High-elevation surface |
 | 13 | Crafting Table | Right-click opens the 3×3 grid |
-| 14 | Torch | Thin geometry on a top face, or leaning off the side face it was placed on (the wall it hangs from is kept in the facings map), light 14, no collision |
+| 14 | Torch | Thin geometry on a top face, or leaning off the side face it was placed on (the wall it hangs from is kept in the facings map), light 14, no collision; pops off as an item when the block holding it is mined or blown up |
 | 15 | Bedrock | Indestructible |
 | 16 | Diamond Ore | Drops Diamond; needs an iron pickaxe or better |
 | 17 / 18 | Furnace / lit Furnace | A burning furnace is a second id and emits light 13 |

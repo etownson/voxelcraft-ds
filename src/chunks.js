@@ -105,6 +105,9 @@ export class Chunk {
   }
 }
 
+/** The four sides a wall torch can hang from, as [dx, dz]. */
+const TORCH_WALL_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
 export class World {
   constructor(seed) {
     this.seed = seed;
@@ -345,6 +348,31 @@ export class World {
     const otherZ = gz + sign * facing[1];
     const other = this.getBlock(otherX, gy, otherZ);
     if (BLOCKS[other].bed) this.setBlock(otherX, gy, otherZ, B.AIR);
+  }
+
+  /**
+   * Torches the cell at gx,gy,gz was holding up, once it no longer can: the
+   * standing torch on its top face and any wall torch stuck to one of its
+   * sides. While the cell is still solid it holds them all, so this is empty.
+   * It only finds them; whoever broke the block decides what falls out.
+   */
+  torchesHeldBy(gx, gy, gz) {
+    if (BLOCKS[this.getBlock(gx, gy, gz)].solid) return [];
+    const held = [];
+    if (gy + 1 < WORLD_HEIGHT && this.getBlock(gx, gy + 1, gz) === B.TORCH &&
+        !this.facingAt(gx, gy + 1, gz)) {
+      held.push([gx, gy + 1, gz]);
+    }
+    for (const [dx, dz] of TORCH_WALL_SIDES) {
+      const x = gx + dx;
+      const z = gz + dz;
+      if (this.getBlock(x, gy, z) !== B.TORCH) continue;
+      // A wall torch faces away from its wall, so the torch east of this cell
+      // hangs on it when it faces east.
+      const facing = this.facingAt(x, gy, z);
+      if (facing && facing[0] === dx && facing[1] === dz) held.push([x, gy, z]);
+    }
+    return held;
   }
 
   /** Furnace state at a position, creating an empty one if it is missing. */
