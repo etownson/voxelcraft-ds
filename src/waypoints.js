@@ -12,7 +12,7 @@
  * list of named places is not worth losing a world over, nor a world worth
  * losing over it. The record carries the seed and SP0 it was written for, so a
  * list from a different world is ignored rather than pointing somewhere
- * meaningless, and New world forgets it outright.
+ * meaningless, and Reset world forgets it outright.
  *
  * Nothing here holds an element. The HUD paints the arrow and the menu draws
  * the list, both from what this layer answers.
@@ -20,8 +20,12 @@
 
 import { beaconSites, beaconsActivatedCount, nextBeacon, spawnPoint } from './beacons.js';
 import { WORLD_SEED } from './config.js';
+import { registerWorldKey, worldKey } from './worlds.js';
 
-const WAYPOINTS_KEY = 'voxelcraft:waypoints:v1';
+/** Each world keeps its own list: the default world under this key, the rest under `:<id>`. */
+export const WAYPOINTS_KEY = 'voxelcraft:waypoints:v1';
+registerWorldKey(WAYPOINTS_KEY);
+const ACTIVE_WAYPOINTS_KEY = worldKey(WAYPOINTS_KEY);
 const LABEL_MAX = 32;
 const SAVED_MAX = 50;
 
@@ -31,15 +35,15 @@ let saved = [];
 let nextId = 1;
 
 function storageGet() {
-  try { return window.localStorage.getItem(WAYPOINTS_KEY); } catch (unavailable) { return null; }
+  try { return window.localStorage.getItem(ACTIVE_WAYPOINTS_KEY); } catch (unavailable) { return null; }
 }
 
 function storageSet(json) {
-  try { window.localStorage.setItem(WAYPOINTS_KEY, json); } catch (unavailable) {}
+  try { window.localStorage.setItem(ACTIVE_WAYPOINTS_KEY, json); } catch (unavailable) {}
 }
 
 function storageRemove() {
-  try { window.localStorage.removeItem(WAYPOINTS_KEY); } catch (unavailable) {}
+  try { window.localStorage.removeItem(ACTIVE_WAYPOINTS_KEY); } catch (unavailable) {}
 }
 
 function persist() {

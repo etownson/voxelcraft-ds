@@ -95,6 +95,7 @@
     <div class="menu-body">
       <nav class="menu-rail" data-nav-zone="rail" aria-label="Main menu">
         <button id="menu-start" class="menu-choice start" type="button" data-nav data-page="home">Start</button>
+        <button id="menu-worlds" class="menu-choice" type="button" data-nav data-page="worlds" aria-controls="menu-worlds-panel">Worlds</button>
         <button id="menu-journal" class="menu-choice" type="button" data-nav data-page="journal" aria-controls="menu-journal-panel">Journal</button>
         <button id="menu-waypoints" class="menu-choice" type="button" data-nav data-page="waypoints" aria-controls="menu-waypoints-panel">Waypoints</button>
         <button id="menu-coop" class="menu-choice" type="button" data-nav data-page="coop" aria-controls="menu-coop-panel">Co-op</button>
@@ -108,6 +109,44 @@
           <p class="menu-blurb">A distant voice has sent you here to wake the old beacons. Find each one, light it with essence, and it answers with new recipes and the way to the next &mdash; your journal keeps them all.</p>
           <ul id="menu-mission-status" class="mission-status"></ul>
           <p id="menu-home-save" class="menu-blurb muted"></p>
+        </section>
+
+        <section id="menu-worlds-panel" class="menu-panel menu-worlds hidden" data-page="worlds" aria-label="Worlds">
+          <div class="menu-heading">Your worlds</div>
+          <p class="menu-blurb">Each world has its own ground, its own mission and its own co-op room, so a friend&rsquo;s link always opens the world you play together.</p>
+          <div id="world-list" class="waypoint-list world-list"></div>
+          <div id="world-confirm" class="setting-row confirm-row hidden" role="alertdialog" aria-label="Are you sure?">
+            <span id="world-confirm-text" class="confirm-text"></span>
+            <span class="confirm-buttons">
+              <button id="world-confirm-no" class="menu-button" type="button" data-nav>Cancel</button>
+              <button id="world-confirm-yes" class="menu-button" type="button" data-nav>Go</button>
+            </span>
+          </div>
+          <div id="world-this" class="coop-block">
+            <div class="menu-heading">This world</div>
+            <div class="setting-row waypoint-save-row">
+              <input id="world-name" class="waypoint-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" data-nav aria-label="World name">
+              <button id="world-rename" class="menu-button" type="button" data-nav>Rename</button>
+            </div>
+            <div class="setting-row">
+              <span id="world-seed" class="setting-label">Seed</span>
+              <button id="world-download" class="menu-button" type="button" data-nav title="Save this world as a file you can keep or load in another browser">Download</button>
+            </div>
+          </div>
+          <div class="menu-heading">New world</div>
+          <div class="setting-row waypoint-save-row">
+            <input id="new-world-name" class="waypoint-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="World name" data-nav aria-label="New world name">
+          </div>
+          <div class="setting-row waypoint-save-row">
+            <input id="new-world-seed" class="waypoint-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Seed (empty for random)" data-nav aria-label="New world seed">
+            <button id="new-world-create" class="menu-button" type="button" data-nav>Create</button>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Load a downloaded world</span>
+            <button id="world-load" class="menu-button" type="button" data-nav>Load file</button>
+            <input id="world-file" type="file" accept=".json,application/json" hidden>
+          </div>
+          <p id="world-status" class="menu-blurb muted" aria-live="polite"></p>
         </section>
 
         <section id="menu-journal-panel" class="menu-panel menu-journal hidden" data-page="journal" aria-label="Journal">
@@ -133,7 +172,7 @@
           </div>
           <div id="coop-off" class="coop-block">
             <div class="setting-row">
-              <span class="setting-label">Open this world to friends</span>
+              <span id="coop-host-label" class="setting-label">Open this world to friends</span>
               <button id="coop-host" class="menu-button" type="button" data-nav>Host</button>
             </div>
             <div class="setting-row waypoint-save-row">
@@ -191,10 +230,10 @@
             </div>
           </div>
 
-          <div class="menu-heading">World</div>
+          <div class="menu-heading">This world</div>
           <div class="setting-row">
             <span id="save-status" class="save-state">No saved world yet</span>
-            <button id="new-world-button" class="menu-button" type="button" data-nav title="Erase the saved world and start a new one">New world</button>
+            <button id="new-world-button" class="menu-button" type="button" data-nav title="Erase this world and start it again from its seed">Reset world</button>
           </div>
           <div id="new-world-confirm" class="setting-row confirm-row hidden" role="alertdialog" aria-label="Erase this world?">
             <span class="confirm-text">Erase this world for good?</span>

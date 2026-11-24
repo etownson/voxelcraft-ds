@@ -36,11 +36,19 @@ Then open <http://localhost:8010>. The port is optional and defaults to 8000.
 | Menu | Esc | Start / Menu |
 | Mute | M | — |
 
+## Worlds
+
+The menu's Worlds page keeps as many worlds as you like, each with its own name and
+seed: a solo world, one for each friend you play with. Download saves a world as a
+`.json` file you can keep or load into another browser with Load file, since worlds
+otherwise live only in this browser's storage.
+
 ## Co-op
 
-Host from the menu's Co-op page to get a six-character room code. Friends join at
-`#join=CODE`. The host's browser owns the world and its save, so the world is only
-reachable while the host's tab is open and in front.
+Host from the menu's Co-op page to get a six-character room code. Each world has its
+own code, so a friend's link always opens the world you play together. The host's
+browser owns the world and its save, so the world is only reachable while the host's
+tab is open and in front.
 
 ## Design and development
 

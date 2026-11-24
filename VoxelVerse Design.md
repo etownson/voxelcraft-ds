@@ -25,6 +25,30 @@ from the repository, with a CC0 audio bank and a procedural synthesizer behind i
 - The document is also the game's tuning record: every gameplay number the game runs on
   lives in `src/config.js`, and this document describes those numbers as they are
 
+## Worlds
+
+A browser keeps any number of worlds, each with a name and a seed, so a solo world and
+a world shared with each friend can sit side by side (`src/worlds.js`):
+
+- **A world is its seed.** Terrain, caves, trees, SP0 and the beacon sites all come from
+  the seed, and every module reads it once, as it loads. So a world is chosen before the
+  game boots, and going to another world saves this one and reloads the page
+- **The first world** (`default`) keeps seed 20261116 and every storage key it had
+  before there were worlds: its save is `SAVE_KEY` itself. Any other world keeps the
+  same records under the same keys with `:<id>` on the end, so worlds never share a
+  save, a waypoint list or a co-op room. The list lives under `voxelcraft:worlds:v1`
+- **New world** takes a name and an optional seed: a whole number is used as-is, any
+  other text is hashed (so "ingrid" is always the same ground), and nothing at all is
+  random. Worlds can be renamed, and any world but the one being played can be deleted
+- **Reset world** (Settings) erases the world being played and starts it again from its
+  seed. It touches no other world
+- **Backups.** Download hands the browser a `.json` file: `{ kind: 'voxelverse-world',
+  name, seed, save, waypoints }`, where `save` is the save record unchanged. Load file
+  reads one back in as a new world of its own and goes there; a file from another save
+  schema is refused, the same as an old save
+- **Co-op rooms are per world.** Each world keeps its own room code for good, so a
+  friend's saved link always opens the world played with them. See Co-op
+
 ## The mission
 
 VoxelVerse is not an open sandbox from the first minute. The walker has been teleported
@@ -1068,18 +1092,25 @@ Up to four players share one world, peer to peer, with no server of the game's o
   Roughly one network pair in ten cannot connect without a TURN relay, and a dead
   public relay shows up as a failed WebSocket in the console while a room is open
 - **The host owns the world.** Hosting opens the world already loaded; its save is
-  the world's save. A host keeps one room code for good (`voxelcraft:coop:hostCode`)
-  and, after a reload, opens the room again by itself (`voxelcraft:coop:hosting`).
+  the world's save. Each world keeps one room code for good, in its entry in the
+  worlds list (the first world adopted the old `voxelcraft:coop:hostCode`), and,
+  after a reload, the world that was hosting opens its room again by itself
+  (`voxelcraft:coop:hosting`, per world).
   The world is only reachable while the host's tab is open and in front: a hidden
   tab stops its frame loop, and with it every mob in the room
-- **Joining** is a fresh page at `#join=CODE`. The boot waits for the host's world
+- **Joining** is a fresh page at `#join=CODE&seed=N`. The link carries the host's
+  seed, because a page is built from its seed as it loads: a visit boots a guest
+  world of that seed that belongs to the page alone and touches none of the guest's
+  own worlds. A bare `#join=CODE` (a typed code) uses the guest's own seed, and if the
+  host's turns out different the page reloads once with the host's seed in the link.
+  The boot waits for the host's world
   (`serializeSharedWorld`: the block diff, block entities, SP0, the beacon count,
   the clock, the respawn and where the host stands) before it builds any ground, and
   a first visit arrives a step beside the host. A guest never writes `SAVE_KEY`: its
   own body, pack, armour, purse and respawn go under `voxelcraft:coop:<code>` in the
   save's own shape without the world, and come back when it rejoins that room. A
-  join that fails boots the guest's own world and says why. New world is refused to
-  a guest
+  join that fails reloads into the guest's own world and says why. Reset world is
+  refused to a guest, and leaving the room goes home to the guest's own world
 - **Blocks.** Every `setBlock` and `setBlocksBatch` made in one browser is sent to the
   others, a frame's worth at a time, and applied there inside `withEditsSilenced` so
   it is never echoed back. Flowing water is not sent: every browser runs the same
@@ -1182,7 +1213,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
 - The main menu is the start form and the pause panel in one card: a rail down the
-  left holds Start (Resume once the world has been entered), Journal, Waypoints,
+  left holds Start (Resume once the world has been entered), Worlds, Journal, Waypoints,
   Co-op, Settings and Controls, and the page for whichever has the highlight fills the
   right. The Co-op page takes a name, hosts this world or joins a room by code, and
   once in a room shows the code, a copy-link button, the players and a status line. Start sits at the top of the rail and never moves; only the page scrolls.
@@ -1192,7 +1223,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   arrow can follow and saves the spot the walker stands on under a typed label (a
   blank label, as from a pad, is numbered); saved spots show their coordinates and
   can be deleted. They live in their own localStorage key, written for this world's
-  seed and SP0, so a save-schema bump never costs them and New world forgets them.
+  seed and SP0, so a save-schema bump never costs them and Reset world forgets them. Each world keeps its own list.
   Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
   toggle, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
@@ -1206,7 +1237,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   steps from the rail into the page, and left off the page's edge, Esc or Backspace
   steps back. Once the world has been entered, B on the pad leaves the menu for the
   world, as Start does: the button that closes every other panel closes this one.
-  Before the first start, and while New world is asking, B steps back instead. Q/E or LB/RB turn the journal's pages inside the journal and
+  Before the first start, and while Reset world or the Worlds page is asking, B steps back instead. Q/E or LB/RB turn the journal's pages inside the journal and
   walk the rail's pages elsewhere. Left and right step a highlighted slider; up and
   down leave it. In a text field every key types except up, down and Esc, which
   leave it, and Enter, which saves. The right stick scrolls the page. Hovering a control highlights it,
@@ -1446,7 +1477,9 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
-`waypoints()` lists what the arrow can follow and where it points now. `coop()`
+`waypoints()` lists what the arrow can follow and where it points now. `world()` names
+the world this page is (id, name, seed, whether it is a visit) and lists every world
+the browser keeps; `seed` is that world's seed. `coop()`
 reports the co-op room: mode, code, this peer and the host, the peers, the avatars
 heard, how many mob pictures a guest is drawing, and the status line. The API is
 always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the

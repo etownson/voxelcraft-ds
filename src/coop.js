@@ -32,7 +32,7 @@ import { REMOTE_MOB_ARROW, REMOTE_PLAYER_ARROW, launchArrow } from './archery.js
 import { BLOCKS, createBlockEntity } from './blocks.js';
 import { acceptRemoteBeacon } from './beacons.js';
 import { markWorldDirty, setBlockEditListener, withEditsSilenced, world } from './chunks.js';
-import { DAY_START, WORLD_HEIGHT, WORLD_SEED, clamp } from './config.js';
+import { DAY_START, WORLD_HEIGHT, clamp } from './config.js';
 import {
   animateMobPuppet, damageMob, explosionEffectsAt, mobDeathBurst, mobs, refitMobModel,
   removeMobRecord, setMobAuthority, setMobSpawning, spawnMob
@@ -294,7 +294,9 @@ export async function joinHostWorld(code, name) {
     ask();
   });
   if (!shared) return failJoin(net.netError() || 'The host did not send their world.');
-  if (shared.seed !== WORLD_SEED || shared.v !== SAVE_SCHEMA) {
+  // A different seed is only a different world: the page that asked reboots
+  // built from the host's. A different schema is a different game.
+  if (shared.v !== SAVE_SCHEMA || !Number.isFinite(shared.seed)) {
     return failJoin('The host is playing another version of the game.');
   }
   return shared;

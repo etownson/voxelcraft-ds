@@ -1,6 +1,6 @@
 /*
  * The main menu: the start form and the pause panel in one card. A rail down
- * the left holds Start, Journal, Waypoints, Co-op, Settings and Controls; the page for whichever
+ * the left holds Start, Worlds, Journal, Waypoints, Co-op, Settings and Controls; the page for whichever
  * of them has the highlight fills the right. Start sits at the top of the rail
  * and never moves, and only the page scrolls.
  *
@@ -15,7 +15,12 @@
  *
  * The journal page mounts the same book the J screen shows (journal.js),
  * rebuilt each time the menu comes up so a fresh transmission is there to read.
- * New world asks before it erases, inside the card, where a pad can answer.
+ * Reset world asks before it erases, inside the card, where a pad can answer.
+ *
+ * The Worlds page lists the worlds this browser keeps (worlds.js), and goes to
+ * one, makes one, renames, deletes, downloads or loads one from a file. Going
+ * anywhere is a reload, which main.js does after saving; switching and deleting
+ * ask first, in the card, like New world.
  *
  * The Start page is also the mission's: how many beacons are lit and what the
  * next one wants, without coordinates. The Waypoints page picks what the HUD
@@ -33,9 +38,11 @@ import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
 import { coopName, fpsShown, setCoopName, setFpsShown } from './settings.js';
+import { formatSavedAt } from './save.js';
 import {
   deleteWaypoint, nextWaypointLabel, setActiveWaypoint, waypointTargets
 } from './waypoints.js';
+import { activeWorld, deleteWorld, listWorlds, renameWorld } from './worlds.js';
 
 const card = overlayEl.querySelector('.menu-card');
 const rail = overlayEl.querySelector('.menu-rail');
@@ -66,6 +73,23 @@ const coopCopyButton = document.getElementById('coop-copy');
 const coopLeaveButton = document.getElementById('coop-leave');
 const coopPlayersEl = document.getElementById('coop-players');
 const coopStatusEl = document.getElementById('coop-status');
+const coopHostLabel = document.getElementById('coop-host-label');
+const worldListEl = document.getElementById('world-list');
+const worldConfirmRow = document.getElementById('world-confirm');
+const worldConfirmText = document.getElementById('world-confirm-text');
+const worldConfirmNo = document.getElementById('world-confirm-no');
+const worldConfirmYes = document.getElementById('world-confirm-yes');
+const worldThisEl = document.getElementById('world-this');
+const worldNameInput = document.getElementById('world-name');
+const worldRenameButton = document.getElementById('world-rename');
+const worldSeedEl = document.getElementById('world-seed');
+const worldDownloadButton = document.getElementById('world-download');
+const newWorldNameInput = document.getElementById('new-world-name');
+const newWorldSeedInput = document.getElementById('new-world-seed');
+const newWorldCreateButton = document.getElementById('new-world-create');
+const worldLoadButton = document.getElementById('world-load');
+const worldFileInput = document.getElementById('world-file');
+const worldStatusEl = document.getElementById('world-status');
 
 for (const row of overlayEl.querySelectorAll('.debug-only')) {
   row.classList.toggle('hidden', !debugEnabled);
@@ -91,7 +115,15 @@ const menuActions = {
   /** Leave the room: a host keeps playing alone, a guest goes home. */
   leaveCoop: () => {},
   /** The link a friend opens to join this room, or null outside one. */
-  coopLink: () => null
+  coopLink: () => null,
+  /** Save this world and boot world `id`. */
+  switchWorld: () => {},
+  /** Make a world from a name and a typed seed and go there; answers an error line or null. */
+  createWorld: () => null,
+  /** Hand this world to the browser as a file; answers a status line. */
+  downloadWorld: () => null,
+  /** Read a downloaded world back in and go there; answers (a promise of) an error line or null. */
+  loadWorldFile: async () => null
 };
 
 /** main.js hands the menu the verbs it cannot do itself. */
@@ -160,6 +192,7 @@ function showPage(name) {
   }
   if (name === 'journal' && !journalBook) mountJournal();
   if (name === 'home') paintHome();
+  if (name === 'worlds') paintWorlds();
   if (name === 'waypoints') paintWaypoints();
   if (name === 'settings') paintFpsToggle();
   if (name === 'coop') paintCoopName();
@@ -170,7 +203,8 @@ function showPage(name) {
 function paintHome() {
   if (missionLive) paintMenuMission();
   if (!homeSaveEl) return;
-  homeSaveEl.textContent = saveStatusEl ? saveStatusEl.textContent : '';
+  const save = saveStatusEl ? saveStatusEl.textContent : '';
+  homeSaveEl.textContent = activeWorld().name + (save ? ' \u00b7 ' + save : '');
 }
 
 /* ---------- The mission's progress ---------- */
@@ -315,6 +349,7 @@ let coopView = { mode: 'off', code: null, players: [], status: '', error: false 
 
 function paintCoopName() {
   if (document.activeElement !== coopNameInput) coopNameInput.value = coopName();
+  if (coopHostLabel) coopHostLabel.textContent = 'Open \u201c' + activeWorld().name + '\u201d to friends';
 }
 
 /**
@@ -392,6 +427,168 @@ coopCopyButton.addEventListener('click', () => {
 coopLeaveButton.addEventListener('click', () => {
   if (!freshPick(coopLeaveButton)) return;
   menuActions.leaveCoop();
+});
+
+/* ---------- Worlds ---------- */
+
+/** What the confirm row will do when it hears yes, or null while it is shut. */
+let worldPending = null;
+
+function worldStatus(line, error = false) {
+  worldStatusEl.textContent = line || '';
+  worldStatusEl.classList.toggle('error', !!error);
+}
+
+function worldRow(world) {
+  const row = document.createElement('div');
+  row.className = 'waypoint-row';
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'waypoint-pick' + (world.current ? ' current' : '');
+  pick.dataset.nav = '';
+  pick.dataset.world = world.id;
+  pick.setAttribute('aria-pressed', world.current ? 'true' : 'false');
+  const name = document.createElement('span');
+  name.className = 'waypoint-name';
+  name.textContent = world.name;
+  const when = document.createElement('span');
+  when.className = 'waypoint-where';
+  when.textContent = world.current
+    ? 'playing now'
+    : (world.lastPlayedAt ? 'played ' + formatSavedAt(world.lastPlayedAt) : 'not played yet');
+  pick.append(name, when);
+  pick.addEventListener('click', () => {
+    if (!freshPick(pick) || world.current) return;
+    askWorld('Go to \u201c' + world.name + '\u201d?', 'Go', false, () => menuActions.switchWorld(world.id));
+  });
+  row.append(pick);
+
+  if (!world.current) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'menu-button danger';
+    remove.dataset.nav = '';
+    remove.dataset.worldDelete = world.id;
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', 'Delete ' + world.name);
+    remove.addEventListener('click', () => {
+      if (!freshPick(remove)) return;
+      askWorld('Delete \u201c' + world.name + '\u201d for good? Download it first to keep a copy.', 'Delete', true, () => {
+        deleteWorld(world.id);
+        closeWorldConfirm();
+        paintWorlds();
+        worldStatus('Deleted \u201c' + world.name + '\u201d.');
+      });
+    });
+    row.append(remove);
+  }
+  return row;
+}
+
+function paintWorlds(focusId = null) {
+  const here = activeWorld();
+  worldListEl.replaceChildren(...listWorlds().map(worldRow));
+  if (here.guest) {
+    const visiting = document.createElement('div');
+    visiting.className = 'waypoint-empty';
+    visiting.textContent = 'You are visiting a friend\u2019s world. Going to one of yours leaves the room.';
+    worldListEl.prepend(visiting);
+  }
+  worldThisEl.classList.toggle('hidden', here.guest);
+  if (document.activeElement !== worldNameInput) worldNameInput.value = here.name;
+  worldSeedEl.textContent = 'Seed ' + here.seed;
+  delete lastFocus.worlds;
+  if (focusId) {
+    const again = worldListEl.querySelector('[data-world="' + focusId + '"]');
+    if (again) nav.focus(again);
+  }
+}
+
+function askWorld(question, yes, danger, action) {
+  worldPending = action;
+  worldConfirmText.textContent = question;
+  worldConfirmYes.textContent = yes;
+  worldConfirmYes.classList.toggle('danger', danger);
+  worldConfirmRow.classList.remove('hidden');
+  nav.focus(worldConfirmNo);
+}
+
+function closeWorldConfirm() {
+  const wasOpen = !worldConfirmRow.classList.contains('hidden');
+  worldPending = null;
+  worldConfirmRow.classList.add('hidden');
+  if (wasOpen) {
+    const first = nav.first(worldListEl);
+    if (first) nav.focus(first);
+  }
+}
+
+worldConfirmNo.addEventListener('click', () => {
+  if (!freshPick(worldConfirmNo)) return;
+  closeWorldConfirm();
+});
+worldConfirmYes.addEventListener('click', () => {
+  if (!freshPick(worldConfirmYes) || !worldPending) return;
+  worldPending();
+});
+
+function renameHere() {
+  if (!renameWorld(activeWorld().id, worldNameInput.value)) {
+    worldStatus('Browser storage refused the new name.', true);
+    return;
+  }
+  worldNameInput.value = activeWorld().name;
+  paintWorlds();
+  paintCoopName();
+  worldStatus('Renamed to \u201c' + activeWorld().name + '\u201d.');
+}
+
+function createTyped() {
+  worldStatus('Making the world\u2026');
+  const error = menuActions.createWorld(newWorldNameInput.value, newWorldSeedInput.value);
+  if (error) worldStatus(error, true);
+}
+
+/** Enter in a text field presses the button beside it. */
+function enterPresses(input, press) {
+  input.addEventListener('keydown', (event) => {
+    if (event.code !== 'Enter' && event.code !== 'NumpadEnter') return;
+    if (event.repeat) return;
+    event.preventDefault();
+    playMenuClickSound();
+    press();
+  });
+}
+
+worldRenameButton.addEventListener('click', () => {
+  if (!freshPick(worldRenameButton)) return;
+  renameHere();
+});
+enterPresses(worldNameInput, renameHere);
+
+newWorldCreateButton.addEventListener('click', () => {
+  if (!freshPick(newWorldCreateButton)) return;
+  createTyped();
+});
+enterPresses(newWorldNameInput, () => nav.focus(newWorldSeedInput));
+enterPresses(newWorldSeedInput, createTyped);
+
+worldDownloadButton.addEventListener('click', () => {
+  if (!freshPick(worldDownloadButton)) return;
+  worldStatus(menuActions.downloadWorld());
+});
+
+worldLoadButton.addEventListener('click', () => {
+  if (!freshPick(worldLoadButton)) return;
+  worldFileInput.value = '';
+  worldFileInput.click();
+});
+worldFileInput.addEventListener('change', async () => {
+  const file = worldFileInput.files && worldFileInput.files[0];
+  if (!file) return;
+  worldStatus('Reading ' + file.name + '\u2026');
+  const error = await menuActions.loadWorldFile(file);
+  if (error) worldStatus(error, true);
 });
 
 /* ---------- Display settings ---------- */
@@ -489,6 +686,10 @@ const nav = createNav(card, {
       closeConfirm();
       return true;
     }
+    if (!worldConfirmRow.classList.contains('hidden')) {
+      closeWorldConfirm();
+      return true;
+    }
     if (zoneOf(el) === 'page') {
       focusRail();
       return true;
@@ -580,6 +781,9 @@ function menuOpened() {
   journalBook = null;
   confirmRow.classList.add('hidden');
   newWorldButton.classList.remove('hidden');
+  worldPending = null;
+  worldConfirmRow.classList.add('hidden');
+  worldStatus('');
   nav.clear();
   showPage('home');
   nav.focus(startButton);
@@ -606,7 +810,8 @@ if (wasOpen) menuOpened();
 function padBResumes() {
   // Not before the world has been entered: B is not a way to start a game.
   // And not while New world is asking: there B is "keep it".
-  return played && confirmRow.classList.contains('hidden');
+  return played && confirmRow.classList.contains('hidden') &&
+    worldConfirmRow.classList.contains('hidden');
 }
 
 /** One frame of pad input while the overlay has the controls. */
@@ -634,7 +839,7 @@ export function menuState() {
         focused.textContent.trim().slice(0, 40))
       : null,
     device: navDevice(),
-    confirming: !confirmRow.classList.contains('hidden'),
+    confirming: !confirmRow.classList.contains('hidden') || !worldConfirmRow.classList.contains('hidden'),
     journal: journalBook ? journalTitle() : null
   };
 }

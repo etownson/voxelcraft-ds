@@ -36,6 +36,7 @@ import { syncHeldAngles } from './held.js';
 import { INVENTORY_SIZE, armorSlots, currentSlot, inventory, paintArmorBar } from './inventory.js';
 import { applyLook, paintHealth, paintHunger, player, restorePlayerLook, view } from './player.js';
 import { dayTime } from './sky.js';
+import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './worlds.js';
 
 /**
  * The world is saved as a diff: only blocks the player has changed are stored,
@@ -77,6 +78,13 @@ import { dayTime } from './sky.js';
  * own, `voxelcraft:coop:<room code>`, in the same record shape minus the world
  * (no `edits`, no `entities`), because the world is the host's to keep. That
  * record is read only by a guest rejoining the same room.
+ *
+ * Worlds add no field either. The first world a browser had, `default`, keeps
+ * its record under SAVE_KEY exactly as before; every other world keeps the
+ * same record under `SAVE_KEY + ':' + its id` (`worldKey` in worlds.js), with
+ * its own seed in `seed`. A save written before worlds is the default world's
+ * and reads exactly as it did. A world downloaded as a file is this same
+ * record, wrapped with the world's name.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
@@ -84,6 +92,9 @@ export const LEGACY_SAVE_KEYS = [
   'voxelcraft:world:v4', 'voxelcraft:world:v5', 'voxelcraft:world:v6'
 ];
 export const SAVE_SCHEMA = 7;
+registerWorldKey(SAVE_KEY);
+/** Where the world this page was booted into keeps its save. */
+export const ACTIVE_SAVE_KEY = worldKey(SAVE_KEY);
 const AUTOSAVE_SECONDS = 25;
 
 let lastSaveAt = 0;
@@ -95,11 +106,16 @@ let saveNotice = null;
 let saveSpawn = null;
 /* Where a write lands, and whether it carries the world. A guest's writes go
    to its own co-op key, without the world: see the schema note above. */
-let saveTarget = SAVE_KEY;
+/* A visit writes nothing until the host's world has arrived and the guest's
+   own co-op key is named: a join that fails must leave no record behind. */
+let saveTarget = activeWorld().guest ? null : ACTIVE_SAVE_KEY;
 let savePersonalOnly = false;
 
 /** The storage key a guest in room `code` keeps its own player under. */
 export function coopGuestKey(code) { return 'voxelcraft:coop:' + code; }
+
+/** The key a write goes to now, or null while a visit has none yet. */
+export function saveTargetKey() { return saveTarget; }
 
 /** From now on, writes go to `key`; `personalOnly` leaves the world out. */
 export function setSaveTarget(key, personalOnly = false) {
@@ -266,7 +282,7 @@ function serializeBlockEntities() {
 }
 
 export function saveWorld() {
-  if (saveDisabled) return false;
+  if (saveDisabled || !saveTarget) return false;
   try {
     const json = JSON.stringify(serializeWorldSave());
     localStorage.setItem(saveTarget, json);
@@ -287,7 +303,7 @@ export function saveWorld() {
 }
 
 /** Reads and validates the stored save, or returns null when absent or stale. */
-export function readSavedWorld(key = SAVE_KEY) {
+export function readSavedWorld(key = ACTIVE_SAVE_KEY) {
   let raw = null;
   try {
     raw = localStorage.getItem(key);
@@ -481,6 +497,8 @@ export function formatSavedAt(timestamp) {
 
 /** True when an unreadable older-schema world is still sitting in storage. */
 export function hasLegacySave() {
+  // Only the first world was ever written under the older schemas.
+  if (activeWorld().id !== DEFAULT_WORLD_ID) return false;
   try {
     return LEGACY_SAVE_KEYS.some((key) => localStorage.getItem(key) != null);
   } catch (unavailable) {
@@ -491,7 +509,7 @@ export function hasLegacySave() {
 /** True when this build has written its own world yet, readable or not. */
 export function hasCurrentSave() {
   try {
-    return localStorage.getItem(SAVE_KEY) != null;
+    return localStorage.getItem(ACTIVE_SAVE_KEY) != null;
   } catch (unavailable) {
     return false;
   }

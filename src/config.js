@@ -3,10 +3,12 @@
  * the player can see, how fast they walk, how long a torch burns, how deep water
  * can push sideways before it stops. Nothing here knows about anything else;
  * every other module is allowed to read these, and none of them is allowed to
- * change one.
+ * change one. The seed is the one number that is not a constant: it is read
+ * from whichever world this page was booted into (worlds.js), once, before
+ * anything generates from it.
  */
 
-
+import { activeWorld } from './worlds.js';
 
 export const CHUNK_SIZE = 16;
 export const CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
@@ -14,7 +16,7 @@ export const WORLD_HEIGHT = 96;
 export const SEA_LEVEL = 48;
 export const CHUNK_VOLUME = CHUNK_AREA * WORLD_HEIGHT;
 
-export const WORLD_SEED = 20261116;
+export const WORLD_SEED = activeWorld().seed;
 export const RENDER_DISTANCE = 8;
 export const DATA_RADIUS = RENDER_DISTANCE + 1;
 export const UNLOAD_RADIUS = RENDER_DISTANCE + 3;

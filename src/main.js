@@ -124,13 +124,13 @@ import {
 } from './player.js';
 import { camera, renderer, scene, skyDome } from './render.js';
 import {
-  LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
+  ACTIVE_SAVE_KEY, LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
   coopGuestKey, forgetSavedWorld, setSaveTarget, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
   readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedBeacons,
   restoreSavedEssence,
   restoreSavedInventory,
   restoreSavedPlayer, resumeAutosave, saveReport, saveWorld, setSaveArrival, setSaveSpawn,
-  stopAutosave, updateSaveLoop
+  saveTargetKey, stopAutosave, updateSaveLoop
 } from './save.js';
 import { registerSpeaker } from './say.js';
 import { coopName } from './settings.js';
@@ -140,8 +140,12 @@ import {
 } from './sky.js';
 import { desiredFluid, updateWater, waterTick } from './water.js';
 import {
-  activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, waypointTargets
+  WAYPOINTS_KEY, activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, waypointTargets
 } from './waypoints.js';
+import {
+  DEFAULT_WORLD_ID, activeWorld, createWorld, deleteWorld, listWorlds, markWorldPlayed,
+  registerWorldKey, seedFromText, setWorldHostCode, switchToWorld, worldHostCode, worldKey
+} from './worlds.js';
 import { sampleColumn, treeAt } from './worldgen.js';
 
 const saveStatusEl = document.getElementById('save-status');
@@ -174,21 +178,100 @@ function eraseWorld() {
   }
   // Stop the unload-triggered saves from resurrecting the wiped world.
   stopAutosave();
-  try {
-    localStorage.removeItem(SAVE_KEY);
-    for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
-  } catch (unavailable) {}
+  removeActiveSave();
   // The saved spots belong to the world that is going.
   forgetWaypoints();
   window.location.reload();
 }
 
+/** Erases this world's save, and the older schemas' leftovers if it is the first world. */
+function removeActiveSave() {
+  try {
+    localStorage.removeItem(ACTIVE_SAVE_KEY);
+    if (activeWorld().id === DEFAULT_WORLD_ID) {
+      for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
+    }
+  } catch (unavailable) {}
+}
+
+/* ---------- Worlds: switching, making, backing up ---------- */
+
+/* Every world is generated from its seed as the modules load, so going to
+   another world is saving this one and booting the page again. */
+function goToWorld(id) {
+  if (!isCoopGuest()) saveWorld();
+  switchToWorld(id);
+}
+
+function makeWorld(name, seedText) {
+  const made = createWorld(name, seedFromText(seedText));
+  if (!made) return 'Browser storage refused the new world.';
+  goToWorld(made.id);
+  return null;
+}
+
+function fileSafe(text) {
+  return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'world';
+}
+
+/** Hands the browser this world as a file: the save record, wrapped with its name. */
+function downloadWorld() {
+  if (activeWorld().guest) return 'This world is the host’s to download.';
+  resumeAutosave();
+  if (!saveWorld()) return saveReport().error || 'The world could not be saved first.';
+  let save = null;
+  let waypoints = null;
+  try {
+    save = JSON.parse(localStorage.getItem(ACTIVE_SAVE_KEY) || 'null');
+    waypoints = JSON.parse(localStorage.getItem(worldKey(WAYPOINTS_KEY)) || 'null');
+  } catch (unreadable) {}
+  if (!save) return 'There is no saved world to download yet.';
+  const world = activeWorld();
+  const file = { kind: 'voxelverse-world', name: world.name, seed: world.seed, save, waypoints };
+  const blob = new Blob([JSON.stringify(file)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'voxelverse-' + fileSafe(world.name) + '-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  return 'Downloaded ' + link.download + '.';
+}
+
+/** Reads a downloaded world back in as a world of its own, and goes there. */
+async function loadWorldFile(file) {
+  let data = null;
+  try { data = JSON.parse(await file.text()); } catch (broken) { data = null; }
+  if (!data || data.kind !== 'voxelverse-world' || !data.save || !Number.isFinite(data.seed)) {
+    return 'That file is not a VoxelVerse world.';
+  }
+  if (data.save.v !== SAVE_SCHEMA) return 'That world is from another version of the game.';
+  if (data.save.seed !== data.seed) return 'That world file is damaged.';
+  const made = createWorld(data.name || file.name.replace(/\.json$/i, ''), data.seed);
+  if (!made) return 'Browser storage refused the world.';
+  try {
+    localStorage.setItem(worldKey(SAVE_KEY, made.id), JSON.stringify(data.save));
+    if (data.waypoints) localStorage.setItem(worldKey(WAYPOINTS_KEY, made.id), JSON.stringify(data.waypoints));
+  } catch (full) {
+    deleteWorld(made.id);
+    return 'The world is too large for browser storage.';
+  }
+  goToWorld(made.id);
+  return null;
+}
+
 /* ---------- Co-op: hosting, joining and leaving ---------- */
 
-/* A host keeps one room code for good, so the link a friend saved last week
-   still works; and a host who reloads mid-session opens the room again. */
-const COOP_HOST_CODE_KEY = 'voxelcraft:coop:hostCode';
-const COOP_HOSTING_KEY = 'voxelcraft:coop:hosting';
+/* Each world keeps one room code for good, so the link a friend saved last
+   week still opens the world they played in; and a host who reloads mid-session
+   opens that world's room again. */
+const COOP_HOSTING_BASE = 'voxelcraft:coop:hosting';
+registerWorldKey(COOP_HOSTING_BASE);
+const COOP_HOSTING_KEY = worldKey(COOP_HOSTING_BASE);
+/* A visit whose join failed reloads into the visitor's own world, and this
+   note carries the reason across the reload. */
+const COOP_JOIN_FAILED_KEY = 'voxelcraft:coop:joinFailed';
 
 function storedValue(key) {
   try { return localStorage.getItem(key); } catch (unavailable) { return null; }
@@ -204,7 +287,11 @@ function pageUrl() {
   return window.location.origin + window.location.pathname + window.location.search;
 }
 
-function coopLinkFor(code) { return pageUrl() + '#join=' + code; }
+/* A link carries the world's seed as well as the room, so the page it opens
+   is built from the right ground before it ever meets the host. */
+function coopLinkFor(code, seed = null) {
+  return pageUrl() + '#join=' + code + (seed == null ? '' : '&seed=' + seed);
+}
 
 /** The room a `#join=CODE` link asks for, or null. */
 function joinCodeFromLocation() {
@@ -213,8 +300,8 @@ function joinCodeFromLocation() {
 }
 
 function hostThisWorld(name) {
-  const code = normalizeRoomCode(storedValue(COOP_HOST_CODE_KEY)) || makeRoomCode();
-  storeValue(COOP_HOST_CODE_KEY, code);
+  const code = normalizeRoomCode(worldHostCode()) || makeRoomCode();
+  setWorldHostCode(code);
   storeValue(COOP_HOSTING_KEY, '1');
   startHosting(code, name);
 }
@@ -253,7 +340,11 @@ function initSaveUi(hasSavedWorld) {
     hostCoop: hostThisWorld,
     joinCoop: joinSomeoneElse,
     leaveCoop: leaveTheRoom,
-    coopLink: () => (roomCode() ? coopLinkFor(roomCode()) : null)
+    coopLink: () => (roomCode() ? coopLinkFor(roomCode(), WORLD_SEED) : null),
+    switchWorld: goToWorld,
+    createWorld: makeWorld,
+    downloadWorld,
+    loadWorldFile
   });
   if (hasSavedWorld) {
     saveStatusEl.textContent = 'Saved world found';
@@ -567,7 +658,26 @@ const coopJoinCode = joinCodeFromLocation();
 let hostWorld = null;
 if (coopJoinCode) {
   hostWorld = await joinHostWorld(coopJoinCode, coopName() || 'Player');
-  if (!hostWorld) window.history.replaceState(null, '', pageUrl());
+  if (hostWorld && hostWorld.seed !== WORLD_SEED) {
+    if (!activeWorld().seedFromLink) {
+      // Joined on a bare code and the host's world is another seed: boot
+      // again built from theirs. The link now says so, so this happens once.
+      window.history.replaceState(null, '', coopLinkFor(coopJoinCode, hostWorld.seed));
+      window.location.reload();
+      await new Promise(() => {});
+    }
+    hostWorld = null;
+    try { sessionStorage.setItem(COOP_JOIN_FAILED_KEY, 'The host’s world did not match their link.'); } catch (unavailable) {}
+  } else if (!hostWorld) {
+    try { sessionStorage.setItem(COOP_JOIN_FAILED_KEY, coopJoinCode); } catch (unavailable) {}
+  }
+  if (!hostWorld) {
+    // A visit's page is built from the host's seed and keeps nothing of its
+    // own, so a join that fails goes home to the visitor's own world.
+    window.history.replaceState(null, '', pageUrl());
+    window.location.reload();
+    await new Promise(() => {});
+  }
 }
 let ownCoopRecord = null;
 if (hostWorld) {
@@ -655,13 +765,29 @@ updateDebug();
 rememberSavedWorld((loadedSave && loadedSave.savedAt) || 0);
 initSaveUi(Boolean(loadedSave));
 
+const joinFailure = takeJoinFailure();
 if (hostWorld) {
   coopWorldReady();
-} else if (coopJoinCode) {
-  showToast('Couldn\u2019t join room ' + coopJoinCode + ' \u2014 this is your own world');
+} else if (joinFailure) {
+  showToast(joinFailure);
 } else if (storedValue(COOP_HOSTING_KEY) === '1') {
   // Hosting when the page went away: open the same room again.
   hostThisWorld(coopName() || 'Player');
+}
+
+markWorldPlayed();
+
+/** The reason a visit came home, said once after the reload that brought it. */
+function takeJoinFailure() {
+  let note = null;
+  try {
+    note = sessionStorage.getItem(COOP_JOIN_FAILED_KEY);
+    sessionStorage.removeItem(COOP_JOIN_FAILED_KEY);
+  } catch (unavailable) {}
+  if (!note) return null;
+  return /\s/.test(note)
+    ? note + ' This is your own world.'
+    : 'Couldn\u2019t join room ' + note + ' \u2014 this is your own world';
 }
 
 /** The arrival transmission is armed at boot and spent by the frame loop. */
@@ -853,7 +979,7 @@ window.__voxelcraft = {
   saveInfo() {
     const written = saveReport();
     return {
-      key: SAVE_KEY,
+      key: saveTargetKey(),
       schema: SAVE_SCHEMA,
       savedAt: written.at || null,
       bytes: written.bytes,
@@ -868,14 +994,15 @@ window.__voxelcraft = {
     return {
       text: saveStatusEl ? saveStatusEl.textContent : null,
       legacy: hasLegacySave(),
-      keys: LEGACY_SAVE_KEYS.concat([SAVE_KEY])
+      keys: LEGACY_SAVE_KEYS.concat([ACTIVE_SAVE_KEY])
     };
   },
+  /** The world this page is, and every world this browser keeps. */
+  world() {
+    return { ...activeWorld(), worlds: listWorlds() };
+  },
   wipeSave() {
-    try {
-      localStorage.removeItem(SAVE_KEY);
-      for (const legacy of LEGACY_SAVE_KEYS) localStorage.removeItem(legacy);
-    } catch (unavailable) {}
+    removeActiveSave();
     // Same guard the "New world" button uses: pagehide also writes a save, so
     // without this the wiped world comes straight back on the next load.
     forgetSavedWorld();

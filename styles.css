@@ -621,6 +621,7 @@ kbd {
 #overlay .waypoint-where {
   color: #7d90a2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
+#overlay .world-list .waypoint-pick.current .waypoint-name::before { content: "\25CF  "; }
 #overlay .waypoint-save-row { justify-content: flex-start; max-width: 520px; }
 #overlay .waypoint-input {
   flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 6px 9px;
@@ -637,7 +638,7 @@ kbd {
 #overlay .coop-block { display: flex; flex-direction: column; gap: 2px; }
 #overlay .coop-block.hidden { display: none; }
 #overlay #coop-room { font-variant-numeric: tabular-nums; letter-spacing: 0.08em; color: #f1f5f9; }
-#overlay #coop-status.error { color: #f3b3a8; }
+#overlay #coop-status.error, #overlay #world-status.error { color: #f3b3a8; }
 
 /* Names over the other players' heads. */
 #coop-tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
