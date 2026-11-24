@@ -969,7 +969,10 @@ Population is a budget:
   no more than the total with no reservations — a healthy herd can never decide how
   dangerous the night is
 - Passive animals — cows, pigs, sheep, chickens — spawn on grass in plains, forest, and
-  rainforest as chunks load. They are deliberately scarce: fewer than half of grassy
+  rainforest as chunks load. Chickens, the only source of feathers, are the most
+  common species in every one of them: plains roll chicken 30%, cow 25%, pig 20%,
+  sheep 25%; forest chicken 40% and cow, pig, sheep 20% each; rainforest chicken
+  60%, pig 22%, cow 18%. They are deliberately scarce: fewer than half of grassy
   chunks hold a herd (38%), a herd is a lone animal 80% of the time and a pair 20%, and
   the refill sweep runs every 5 s. There is no breeding and passives never despawn on a
   roll, so these knobs are the whole supply: meat is a find, not a stipend, and the

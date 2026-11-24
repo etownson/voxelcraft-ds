@@ -1710,12 +1710,14 @@ function rollChunkHerd(chunk) {
 
   let type;
   const roll = rand();
+  // Chickens are the only source of feathers, so every grassy biome keeps
+  // them common; cows and pigs share what is left.
   if (column.biome === 'rainforest') {
-    type = roll < 0.42 ? 'chicken' : roll < 0.74 ? 'pig' : 'cow';
+    type = roll < 0.6 ? 'chicken' : roll < 0.82 ? 'pig' : 'cow';
   } else if (column.biome === 'forest') {
-    type = roll < 0.34 ? 'cow' : roll < 0.62 ? 'pig' : roll < 0.84 ? 'sheep' : 'chicken';
+    type = roll < 0.4 ? 'chicken' : roll < 0.6 ? 'cow' : roll < 0.8 ? 'pig' : 'sheep';
   } else {
-    type = roll < 0.4 ? 'cow' : roll < 0.72 ? 'pig' : 'sheep';
+    type = roll < 0.3 ? 'chicken' : roll < 0.55 ? 'cow' : roll < 0.75 ? 'pig' : 'sheep';
   }
 
   let spawned = false;
