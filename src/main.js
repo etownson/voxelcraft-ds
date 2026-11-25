@@ -148,8 +148,10 @@ import {
 } from './sky.js';
 import { desiredFluid, updateWater, waterTick } from './water.js';
 import {
-  WAYPOINTS_KEY, activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, waypointTargets
+  WAYPOINTS_KEY, activeWaypoint, forgetWaypoints, loadWaypoints, saveWaypoint, setWaypointPlayers,
+  waypointTargets
 } from './waypoints.js';
+import { avatars } from './remote-players.js';
 import {
   DEFAULT_WORLD_ID, activeWorld, createWorld, deleteWorld, listWorlds, markWorldPlayed,
   registerWorldKey, seedFromText, setWorldHostCode, switchToWorld, worldHostCode, worldKey
@@ -550,6 +552,19 @@ setCoopView({
   swinging: () => isMiningHeld() && !player.dead,
   toast: showToast,
   paintRoom: paintMenuCoop
+});
+
+/* The waypoint arrow can follow another player in the room: it reads their
+   bodies as this browser draws them, eased, so the arrow turns smoothly. */
+setWaypointPlayers(() => {
+  const list = [];
+  for (const avatar of avatars.values()) {
+    list.push({
+      id: avatar.id, name: avatar.name, heard: avatar.heard, dead: avatar.dead,
+      x: avatar.shown.x, y: avatar.shown.y, z: avatar.shown.z
+    });
+  }
+  return list;
 });
 
 /* What the body looks like, and where it stands: the armour bar redraws from the

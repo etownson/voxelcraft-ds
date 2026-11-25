@@ -1,7 +1,8 @@
 /*
  * Where the HUD arrow points. A waypoint is a place the walker wants to get
- * back to: the next beacon the transmission wants, one already lit, or a spot
- * they stood on and named themselves.
+ * back to: the next beacon the transmission wants, one already lit, a spot
+ * they stood on and named themselves, or, in co-op, another player in the
+ * room, followed wherever they walk.
  *
  * The beacons are read live from the mission layer, so the "next beacon"
  * target moves on by itself the moment one is lit. Only the saved spots and
@@ -13,6 +14,12 @@
  * losing over it. The record carries the seed and SP0 it was written for, so a
  * list from a different world is ignored rather than pointing somewhere
  * meaningless, and Reset world forgets it outright.
+ *
+ * The other players come in through `setWaypointPlayers`, which main.js fills
+ * from the co-op layer; with nothing registered the list simply has none. A
+ * player target is never kept past the room: peer ids are fresh each visit,
+ * so a reload finds no such player and the arrow goes back to the next beacon,
+ * and so does a player leaving while the arrow follows them.
  *
  * Nothing here holds an element. The HUD paints the arrow and the menu draws
  * the list, both from what this layer answers.
@@ -29,10 +36,21 @@ const ACTIVE_WAYPOINTS_KEY = worldKey(WAYPOINTS_KEY);
 const LABEL_MAX = 32;
 const SAVED_MAX = 50;
 
-/** The target the arrow follows: 'next', 'beacon:N', 'saved:ID' or 'none'. */
+/** The target the arrow follows: 'next', 'beacon:N', 'saved:ID', 'player:PEER' or 'none'. */
 let active = 'next';
 let saved = [];
 let nextId = 1;
+
+/* The other players in the room: [{ id, name, x, y, z, heard, dead }], feet positions. */
+let otherPlayers = () => [];
+
+/** Hands this layer the other players it can point at. */
+export function setWaypointPlayers(list) { otherPlayers = list; }
+
+function findPlayer(id) {
+  for (const p of otherPlayers() || []) if (String(p.id) === id) return p;
+  return null;
+}
 
 function storageGet() {
   try { return window.localStorage.getItem(ACTIVE_WAYPOINTS_KEY); } catch (unavailable) { return null; }
@@ -143,8 +161,17 @@ function resolve(key) {
     const entry = saved.find((e) => e.id === Number(match[1]));
     return entry ? { label: entry.label, x: entry.x, y: entry.y, z: entry.z } : null;
   }
+  match = /^player:(.+)$/.exec(key);
+  if (match) {
+    const p = findPlayer(match[1]);
+    if (!p || !p.heard) return null;
+    // Aim at their chest, not their feet, so walking up to them reads as level.
+    return { label: p.name + (p.dead ? ' · down' : ''), x: p.x, y: p.y + 1, z: p.z };
+  }
   return null;
 }
+
+function isPlayerKey(key) { return key.startsWith('player:'); }
 
 /**
  * Everything the arrow could follow, in the order the menu lists it: the next
@@ -164,6 +191,9 @@ export function waypointTargets() {
     list.push({ key: 'beacon:' + site.index, kind: 'beacon',
       label: 'Beacon ' + (site.index + 1) + ' · lit' });
   }
+  for (const p of otherPlayers() || []) {
+    list.push({ key: 'player:' + p.id, kind: 'player', label: 'Follow ' + p.name });
+  }
   for (const entry of saved) {
     list.push({ key: 'saved:' + entry.id, kind: 'saved', id: entry.id, label: entry.label,
       x: Math.floor(entry.x), y: Math.round(entry.y), z: Math.floor(entry.z) });
@@ -177,7 +207,9 @@ export function nextWaypointLabel() { return 'Waypoint ' + nextId; }
 
 /** Picks what the arrow follows; 'none' puts it away. */
 export function setActiveWaypoint(key) {
-  if (key !== 'none' && !resolve(key)) return false;
+  // A player just joined and not yet heard from can still be picked.
+  const known = isPlayerKey(key) ? !!findPlayer(key.slice(7)) : !!resolve(key);
+  if (key !== 'none' && !known) return false;
   active = key;
   persist();
   return true;
@@ -187,5 +219,11 @@ export function activeWaypointKey() { return active; }
 
 /** The place the arrow points at now, or null when there is nowhere to point. */
 export function activeWaypoint() {
-  return active === 'none' ? null : resolve(active);
+  if (active === 'none') return null;
+  if (isPlayerKey(active) && !findPlayer(active.slice(7))) {
+    // The player followed has left the room: back to the mission.
+    active = 'next';
+    persist();
+  }
+  return resolve(active);
 }

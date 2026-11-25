@@ -1230,8 +1230,10 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   toward the target, with the target's name, the distance in metres and ▲/▼ when it
   stands more than four blocks above or below. Within a couple of blocks it becomes
   a dot. It follows the next beacon by default and moves on by itself when one is
-  lit; the menu's Waypoints page picks any lit beacon or saved spot instead, or no
-  arrow at all
+  lit; the menu's Waypoints page picks any lit beacon or saved spot instead, another
+  player in the co-op room (followed as they walk, named with · down while dead), or no
+  arrow at all. A followed player who leaves the room hands the arrow back to the next
+  beacon, and so does a reload, since a player is only followable while in the room
 - The position readout (XYZ, chunk, loaded chunks, mobs, triangles) is a debug tool
   and only shows when the page is opened with `?debug`
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table

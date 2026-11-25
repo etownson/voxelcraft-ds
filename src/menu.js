@@ -24,7 +24,8 @@
  *
  * The Start page is also the mission's: how many beacons are lit and what the
  * next one wants, without coordinates. The Waypoints page picks what the HUD
- * arrow follows and saves the spot the walker stands on under a name.
+ * arrow follows (in co-op, another player too) and saves the spot the walker
+ * stands on under a name.
  *
  * Every pick answers with the same neutral click: the menu is allowed no other
  * voice, and a walker browsing it must never hear the world answer back.
@@ -377,6 +378,11 @@ export function paintMenuCoop(view) {
   coopPlayersEl.replaceChildren(...rows);
   coopStatusEl.textContent = coopView.status || '';
   coopStatusEl.classList.toggle('error', !!coopView.error);
+  // Somebody joined or left: the Waypoints page lists who can be followed.
+  if (shownPage === 'waypoints') {
+    const held = waypointListEl.contains(nav.current) && nav.current.dataset ? nav.current.dataset.waypoint : null;
+    paintWaypoints(held || null);
+  }
   if (leavingOff) nav.focus(coopCopyButton.classList.contains('hidden') ? coopLeaveButton : coopCopyButton);
   if (leavingOn) nav.focus(coopHostButton);
 }
