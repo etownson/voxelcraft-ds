@@ -1641,6 +1641,29 @@ export function selectHotbarSlot(index, announce = false) {
   }
 }
 
+/* The line a co-op guest or host sees while somebody else's menu holds the
+   room still. Painted every frame, so it only touches the page on a change. */
+const coopHoldEl = document.getElementById('coop-hold');
+let coopHoldShown = '';
+
+export function paintCoopHold(names) {
+  if (!coopHoldEl) return;
+  const key = names.join('\u0000');
+  if (key === coopHoldShown) return;
+  coopHoldShown = key;
+  coopHoldEl.classList.toggle('hidden', names.length === 0);
+  if (!names.length) return;
+  const who = names.length === 1 ? names[0]
+    : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  coopHoldEl.replaceChildren(
+    document.createTextNode('Paused \u00b7 ' + who + (names.length === 1 ? ' has' : ' have') + ' the menu open'),
+    Object.assign(document.createElement('span'), {
+      className: 'coop-hold-sub',
+      textContent: 'The world carries on when everyone is back'
+    })
+  );
+}
+
 export function showToast(text) {
   toastEl.textContent = text;
   toastEl.classList.add('show');

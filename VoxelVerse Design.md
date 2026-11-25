@@ -1218,8 +1218,14 @@ Up to four players share one world, peer to peer, with no server of the game's o
   (`acceptRemoteBeacon`), transmission and all, without spending anyone else's
   essence. The host's clock is everyone's, and a night slept through by anyone ends
   for all. Crops grow on the host
-- **No pause.** The menu or a screen stops one walker's hands, not the shared world:
-  in a room the world keeps running behind them
+- **The menu pauses the room.** Opening the menu (the start form or the pause panel)
+  stops the world for everyone, so the players can stop and talk tactics: every
+  browser freezes its mobs, arrows, clock, crops, water and furnaces exactly as a
+  single-player pause does, and the others' hands stop too, with a line at the top
+  naming who has the menu open. Each pose carries a `menu` flag, sent at once when it
+  changes, and a player who leaves the room lets go of it. The playtest log does not
+  count the held time. Any other screen (inventory, crafting, a chest or furnace) still
+  stops only that walker's hands: the world keeps running behind it
 
 ## Rendering and performance
 

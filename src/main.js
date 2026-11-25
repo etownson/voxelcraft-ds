@@ -29,7 +29,7 @@ import {
 } from './archery.js';
 import {
   announceArrow, announceBeacon, announceExplosion, announceMobKilled, announceSleep,
-  coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop, isCoopGuest, isCoopHost,
+  coopMenuHolders, coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop, isCoopGuest, isCoopHost,
   isRemoteWalker, joinHostWorld, leaveCoop, sendEssence, sendLoot, setCoopView, startHosting,
   updateCoop
 } from './coop.js';
@@ -91,7 +91,7 @@ import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence,
-  paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
+  paintCoopHold, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, toggleJournal, updateCursorVisual, updateDebug,
@@ -552,6 +552,7 @@ setCoopView({
     showToast('Someone slept through the night');
   },
   swinging: () => isMiningHeld() && !player.dead,
+  menuOpen: () => menuOpen(),
   toast: showToast,
   paintRoom: paintMenuCoop
 });
@@ -648,6 +649,7 @@ setRespawnArrival({
    the page. */
 setInputView({
   screenOpen: () => !!activeScreen || introActive(),
+  held: () => coopMenuHolders().length > 0,
   hint: (show) => controlHintEl.classList.toggle('hidden', !show),
   paintSprint: (on) => {
     if (!sprintStateEl) return;
@@ -2657,11 +2659,15 @@ function animate(now) {
 
   // The pause overlay and the inventory/crafting screens freeze the whole
   // world, Minecraft-style. Rendering, chunk streaming, pad menu navigation,
-  // ambience and autosave keep running. A shared world cannot be paused by
-  // one player, so in co-op it keeps going behind the menu: only this
-  // walker's hands stop.
-  const uiOpen = !!activeScreen || !overlayEl.classList.contains('hidden');
-  if (!uiOpen || inCoop()) {
+  // ambience and autosave keep running. In co-op a screen only stops this
+  // walker's hands, but the menu stops the world for the whole room: anyone
+  // who opens it holds every browser still until they close it, so the
+  // players can stop and talk.
+  const heldBy = coopMenuHolders();
+  paintCoopHold(heldBy);
+  const roomHeld = inCoop() && (menuOpen() || heldBy.length > 0);
+  const uiOpen = !!activeScreen || menuOpen() || heldBy.length > 0;
+  if (!uiOpen || (inCoop() && !roomHeld)) {
     updatePlayer(dt, readPlayerInput());
     // Runs after the walker is walked: the scene pins the fall peak behind
     // the physics layer, so the arrival can never read as a drop.
@@ -2713,7 +2719,7 @@ function animate(now) {
   updateAudio(dt, player);
   updateSaveLoop(dt);
   updatePacing(dt, {
-    playing: overlayEl.classList.contains('hidden') && !introActive(),
+    playing: overlayEl.classList.contains('hidden') && !introActive() && !heldBy.length,
     night: isNight(),
     beacons: beaconsActivatedCount()
   });

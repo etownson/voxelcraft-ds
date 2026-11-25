@@ -61,7 +61,9 @@ const inputView = {
   toggleJournal: () => {},
   screenTick: () => {},
   menuPad: () => {},
-  dismissTransmission: () => false
+  dismissTransmission: () => false,
+  /** Somebody else is holding the world still (a co-op friend's menu). */
+  held: () => false
 };
 
 export function setInputView(verbs) {
@@ -100,7 +102,7 @@ export let sprintLatched = false;
 /** The world is on screen and the controls belong to the player. */
 function controlsOwned() {
   return isPlayable() && !inputView.screenOpen() && !player.dead &&
-    overlayEl.classList.contains('hidden');
+    overlayEl.classList.contains('hidden') && !inputView.held();
 }
 
 /**
@@ -593,7 +595,7 @@ export function spawnPlayer(column) {
 export function readPlayerInput() {
   const canPlay = isPlayable();
   const overlayUp = !overlayEl.classList.contains('hidden');
-  if (inputView.screenOpen() || overlayUp || !canPlay || player.dead) {
+  if (inputView.screenOpen() || overlayUp || !canPlay || player.dead || inputView.held()) {
     dropPadResume();
     clearSprintLatch();
     return { forward: 0, right: 0, jump: false, sprint: false };
@@ -737,6 +739,8 @@ document.addEventListener('mousedown', (event) => {
   // menu button is never a place-at-your-feet, whichever mode the mouse is in.
   if (!canPlay || menuOpen() || player.dead) return;
   ensureAudio();
+  // A friend's menu holds the world still: the hands wait with it.
+  if (inputView.held()) return;
 
   if (event.button === 0) {
     leftMouseDown = true;
@@ -1139,7 +1143,7 @@ function applyGamepadLook(dt) {
 }
 
 function beginPadMining() {
-  if (player.dead || inputView.screenOpen()) return;
+  if (player.dead || inputView.screenOpen() || inputView.held()) return;
   padMiningDown = true;
   triggerHeldSwing();
   updateTarget();
@@ -1173,7 +1177,7 @@ export function handlePadTap(name) {
       inputView.hotbarStep(1);
       break;
     case 'lt':
-      tryUseSelectedItem();
+      if (!inputView.held()) tryUseSelectedItem();
       break;
     case 'rt':
       beginPadMining();
@@ -1250,7 +1254,7 @@ export function updateGamepad(dt) {
   // the panel.
   const padB = gamepadState.pressed[PAD_BUTTON.b];
   const readTransmission = padB && inputView.dismissTransmission();
-  if (!readTransmission && (padB || gamepadState.pressed[PAD_BUTTON.l3])) {
+  if (!readTransmission && (padB || gamepadState.pressed[PAD_BUTTON.l3]) && !inputView.held()) {
     toggleSprintLatch();
   }
   if (gamepadState.pressed[PAD_BUTTON.lb]) {
@@ -1259,6 +1263,6 @@ export function updateGamepad(dt) {
   if (gamepadState.pressed[PAD_BUTTON.rb]) {
     inputView.hotbarStep(1);
   }
-  if (gamepadState.pressed[PAD_BUTTON.lt]) tryUseSelectedItem();
+  if (gamepadState.pressed[PAD_BUTTON.lt] && !inputView.held()) tryUseSelectedItem();
   if (gamepadState.pressed[PAD_BUTTON.rt]) beginPadMining();
 }

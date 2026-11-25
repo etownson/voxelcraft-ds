@@ -22,6 +22,9 @@
  *   they change, and everyone else takes them.
  * - The mission and the clock: a beacon lit anywhere is lit everywhere, the
  *   host's hour is everyone's, and a night slept through by anyone is over.
+ * - The menu: whoever has it open says so with every pose, and while anyone
+ *   in the room has it up the whole world holds still in every browser, so
+ *   the players can stop and talk tactics.
  *
  * Effects on the player's own body and pack arrive through `setCoopView`,
  * so this layer never names the health, drop or screen layers.
@@ -70,6 +73,8 @@ const coopView = {
   daySkipped: () => {},
   /** Whether this walker is swinging, for the arm on their avatar. */
   swinging: () => false,
+  /** Whether this walker has the menu (start form or pause panel) up. */
+  menuOpen: () => false,
   /** One line for the player. */
   toast: () => {},
   /** The menu's co-op page: { mode, code, players, status, error }. */
@@ -100,6 +105,9 @@ const puppets = new Map();
 /** Container key → the contents last sent or heard, as JSON. */
 const containerSeen = new Map();
 let watchedContainer = null;
+/** Peer id → name, for every other player whose menu is up. */
+const menuHolders = new Map();
+let menuSent = false;
 
 export function isCoopHost() { return net.isHost(); }
 export function isCoopGuest() { return net.isGuest(); }
@@ -126,6 +134,7 @@ function install() {
       sendPose(peer.id);
     } else {
       removeAvatar(peer.id);
+      menuHolders.delete(peer.id);
       containerSeen.clear();
       say(peer.name + ' left');
     }
@@ -152,6 +161,12 @@ function install() {
     if (!avatars.has(from)) {
       const peer = net.peers.get(from);
       addAvatar(from, peer ? peer.name : 'Player');
+    }
+    if (d.menu) {
+      const peer = net.peers.get(from);
+      menuHolders.set(from, peer ? peer.name : 'Player');
+    } else {
+      menuHolders.delete(from);
     }
     if (![d.x, d.y, d.z, d.yaw, d.pitch].every(Number.isFinite)) return;
     setAvatarPose(from, d);
@@ -327,6 +342,7 @@ export async function leaveCoop() {
   for (const mob of puppets.values()) removeMobRecord(mob);
   puppets.clear();
   containerSeen.clear();
+  menuHolders.clear();
   setStatus('', false);
   paint();
 }
@@ -585,8 +601,18 @@ function sendPose(target = null) {
     yaw: round2(view.yaw),
     pitch: round2(view.pitch),
     dead: player.dead,
-    swing: !!coopView.swinging()
+    swing: !!coopView.swinging(),
+    menu: menuSent
   }, target);
+}
+
+/**
+ * The names of the other players whose menu is holding the world still, or an
+ * empty list. Outside a room nobody else can hold it.
+ */
+export function coopMenuHolders() {
+  if (!net.inRoom()) return [];
+  return [...menuHolders.values()];
 }
 
 /** One frame of co-op. Does nothing outside a room. */
@@ -594,6 +620,14 @@ export function updateCoop(dt) {
   if (!net.inRoom()) return;
 
   if (outbox.length) net.send('blk', outbox.splice(0));
+
+  // A menu opening or closing goes out at once, not on the next pose tick:
+  // the others stop, or start again, on the same beat as this player.
+  const menuNow = !!coopView.menuOpen();
+  if (menuNow !== menuSent) {
+    menuSent = menuNow;
+    poseTimer = 0;
+  }
 
   poseTimer -= dt;
   if (poseTimer <= 0) {
@@ -634,6 +668,8 @@ export function coopReport() {
       x: round2(a.pos.x), y: round2(a.pos.y), z: round2(a.pos.z)
     })),
     puppets: puppets.size,
+    menu: menuSent,
+    menuHolders: [...menuHolders.values()],
     status: statusLine
   };
 }

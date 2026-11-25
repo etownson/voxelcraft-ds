@@ -264,6 +264,18 @@ html, body {
 }
 #item-toast.show { opacity: 1; }
 
+/* A co-op friend has the menu up and the whole room is holding still. */
+#coop-hold {
+  /* Under the waypoint and the control hint, above the crosshair. */
+  position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+  padding: 8px 16px; border-radius: 4px;
+  background: rgba(10, 16, 22, 0.78);
+  border: 1px solid rgba(127, 227, 239, 0.35);
+  color: #cfeef5; text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  font-size: 14px; text-align: center; white-space: nowrap;
+}
+#coop-hold .coop-hold-sub { display: block; font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
 /* The transmission panel: the transmitter talking above the hotbar. It takes
    no clicks and steals no keys — it reads over the world and then leaves. */
 #transmission {
