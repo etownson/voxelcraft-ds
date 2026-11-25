@@ -274,6 +274,7 @@ html, body {
   color: #cfeef5; text-shadow: 0 1px 0 rgba(0,0,0,0.9);
   font-size: 14px; text-align: center; white-space: nowrap;
 }
+#coop-hold.hidden { display: none; }
 #coop-hold .coop-hold-sub { display: block; font-size: 12px; opacity: 0.75; margin-top: 2px; }
 
 /* The transmission panel: the transmitter talking above the hotbar. It takes
