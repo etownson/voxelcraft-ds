@@ -138,6 +138,24 @@ export const RECIPES = [
     id: 'bow_alt', pattern: ['XS.', 'X.S', 'XS.'], key: { S: 'stick', X: 'string' },
     unlockedBy: 2, result: { id: 'bow', count: 1 }
   },
+  // The iron and diamond bows are the same arc with the sticks swapped for
+  // ingots or diamonds, transmitted with the rest of their tier.
+  {
+    id: 'iron_bow', pattern: ['.SX', 'S.X', '.SX'], key: { S: 'iron_ingot', X: 'string' },
+    unlockedBy: 3, result: { id: 'iron_bow', count: 1 }
+  },
+  {
+    id: 'iron_bow_alt', pattern: ['XS.', 'X.S', 'XS.'], key: { S: 'iron_ingot', X: 'string' },
+    unlockedBy: 3, result: { id: 'iron_bow', count: 1 }
+  },
+  {
+    id: 'diamond_bow', pattern: ['.SX', 'S.X', '.SX'], key: { S: 'diamond', X: 'string' },
+    unlockedBy: 4, result: { id: 'diamond_bow', count: 1 }
+  },
+  {
+    id: 'diamond_bow_alt', pattern: ['XS.', 'X.S', 'XS.'], key: { S: 'diamond', X: 'string' },
+    unlockedBy: 4, result: { id: 'diamond_bow', count: 1 }
+  },
   {
     // Minecraft tips an arrow with flint, and this world has no gravel to
     // knap it from, so a chip of cobblestone stands in: tip, shaft, feather.

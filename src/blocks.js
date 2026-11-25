@@ -518,11 +518,25 @@ defineItem({ id: 'wool', name: 'Wool', kind: 'material', stack: 64 });
 // nothing, and exist to take wool off a sheep without hurting it.
 defineItem({ id: 'shears', name: 'Shears', kind: 'tool', tool: 'shears', stack: 1, durability: 64, damage: 1 });
 // Archery arrives with beacon 2. String is what a spider leaves behind and the
-// bow's only use for it. The bow is a tool with no tier, like the shears: it
-// mines nothing and swings for next to nothing, and its 384 uses are
-// Minecraft's, one spent on every arrow loosed.
+// bow's only use for it. A bow mines nothing and swings for next to nothing,
+// like the shears; one use is spent on every arrow loosed. The wood bow keeps
+// the id `bow` it had before there were three, because saves hold it, and its
+// 384 uses are Minecraft's. Iron (beacon 3) doubles that and diamond (beacon
+// 4) doubles it again. `arrowDamage` is a full draw's hit, the sword ladder's
+// own steps: 10, 14, 18. The bow's tier is for the icon and the enchanted
+// table; it gates no block, so the bows carry no `tierLevel`.
 defineItem({ id: 'string', name: 'String', kind: 'material', stack: 64 });
-defineItem({ id: 'bow', name: 'Bow', kind: 'tool', tool: 'bow', stack: 1, durability: 384, damage: 1 });
+export const BOW_TIERS = {
+  wood: { id: 'bow', name: 'Wood Bow', durability: 384, arrowDamage: 10 },
+  iron: { id: 'iron_bow', name: 'Iron Bow', durability: 768, arrowDamage: 14 },
+  diamond: { id: 'diamond_bow', name: 'Diamond Bow', durability: 1536, arrowDamage: 18 }
+};
+for (const [tier, bow] of Object.entries(BOW_TIERS)) {
+  defineItem({
+    id: bow.id, name: bow.name, kind: 'tool', tool: 'bow', tier, stack: 1,
+    durability: bow.durability, damage: 1, arrowDamage: bow.arrowDamage
+  });
+}
 defineItem({ id: 'arrow', name: 'Arrow', kind: 'material', stack: 64 });
 
 // A bucket is the one item that carries something with it. Minecraft stacks

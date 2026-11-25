@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import { aimAllowed } from './aim.js';
 import { playArrowHit, playBowShot } from './audio.js';
-import { BLOCKS } from './blocks.js';
+import { BLOCKS, ITEMS } from './blocks.js';
 import { world } from './chunks.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH, PLAYER_HEIGHT } from './config.js';
 import { spawnItemDrop } from './drops.js';
@@ -37,10 +37,11 @@ const BOW_MIN_POWER = 0.1;
 /** Blocks per second an arrow leaves a fully drawn bow at. */
 const BOW_ARROW_SPEED = 42;
 /**
- * A full draw's damage. Minecraft's is 6 before its random crit; 7 sits it
- * between a stone and an iron sword, which is where beacon 2 leaves the walker.
+ * A full draw's damage when the bow in hand somehow carries none of its own.
+ * Every bow does: its `arrowDamage` in blocks.js, 10 for wood up to 20 for an
+ * enchanted diamond bow.
  */
-const BOW_DAMAGE = 7;
+const BOW_DAMAGE = 10;
 /** Minecraft's arrow falls at 20 blocks per second squared. */
 const ARROW_GRAVITY = 20;
 const ARROW_DRAG = 0.12;
@@ -280,9 +281,15 @@ function landArrow(arrow) {
 /* Seconds the bow has been drawn for, or -1 while it is not drawn. */
 let drawTime = -1;
 
-function holdingBow() {
+/* The bow in hand, wood, iron or diamond and enchanted or not, or null. */
+function heldBow() {
   const stack = getSelectedStack();
-  return !!stack && stack.id === 'bow';
+  const item = stack ? ITEMS.get(stack.id) : null;
+  return item && item.kind === 'tool' && item.tool === 'bow' ? item : null;
+}
+
+function holdingBow() {
+  return heldBow() !== null;
 }
 
 /** How far the bow is drawn, 0 to 1, for the view model. */
@@ -324,7 +331,9 @@ export function releaseBowDraw(options = {}) {
 }
 
 function loose(power) {
+  const bow = heldBow();
   if (removeInventoryItem('arrow', 1) <= 0) return false;
+  const fullDamage = (bow && bow.arrowDamage) || BOW_DAMAGE;
   const origin = aimOrigin();
   const direction = new THREE.Vector3();
   camera.getWorldDirection(direction);
@@ -332,7 +341,7 @@ function loose(power) {
   launchArrow(
     origin.x + direction.x * 0.4, origin.y + direction.y * 0.4 - 0.08, origin.z + direction.z * 0.4,
     direction.x * speed, direction.y * speed, direction.z * speed,
-    Math.max(1, Math.round(BOW_DAMAGE * power)),
+    Math.max(1, Math.round(fullDamage * power)),
     'walker'
   );
   playBowShot(origin.x, origin.y, origin.z, power, true);

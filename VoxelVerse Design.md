@@ -212,7 +212,7 @@ Crafting table (3×3) recipes:
 | Leather chestplate    |
 | Leather leggings      |
 | Leather boots         |
-| Bow                   |
+| Wood bow              |
 | Arrow ×4              |
 
 The bow is three sticks bent into the arc with three strings down the open side, mirrored
@@ -245,6 +245,9 @@ Crafting table (3×3) recipes:
 | Iron chestplate |
 | Iron leggings   |
 | Iron boots      |
+| Iron bow        |
+
+The iron bow is the wood bow's arc with iron ingots in place of the sticks.
 
 Lighting beacon 3 also arms the night: skeleton archers join the hostiles. See Archery
 and the night's newcomers.
@@ -271,6 +274,9 @@ Crafting table (3×3) recipes:
 | Diamond chestplate |
 | Diamond leggings   |
 | Diamond boots      |
+| Diamond bow        |
+
+The diamond bow is the same arc again with diamonds in place of the sticks.
 
 ### Beacon 5
 
@@ -1091,7 +1097,7 @@ The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 1
 
 **Skeleton archers** (beacon 3). 20 health. Within 24 blocks a skeleton holds its distance instead of closing it: it walks in from beyond 13 blocks, backs away inside 6, and in between circles the walker, changing side every few seconds. With a clear line of sight within 18 blocks it looses an arrow about every 2.2 seconds. The arrow aims high by the drop its flight will take and wobbles a little, and hits for 3 before difficulty scaling. Skeletons burn in sunlight like zombies. A skeleton drops 0–2 arrows, and its arrows that miss stick where they land and are gone after four seconds.
 
-**The bow.** Hold the use button (right click, or the left trigger) to draw, and let go to shoot. A full draw takes a second. A full draw shoots an arrow at 42 blocks a second for 7 damage, and a partial draw shoots slower and weaker in proportion. A draw under a tenth of the way lets go without shooting. Each shot spends one arrow from anywhere in the pack and one of the bow's 384 uses. Without arrows the bow says so. Arrows fall under gravity. The walker's arrows that miss land as an arrow item to pick up again, and one that hits is spent. The bow mines nothing and swings in melee like any tierless tool. Without pointer lock the right button is the look drag, so a right click there shoots a full draw at once.
+**The bow.** Hold the use button (right click, or the left trigger) to draw, and let go to shoot. A full draw takes a second. A full draw shoots an arrow at 42 blocks a second, and a partial draw shoots slower and weaker in proportion. There are three bows: wood (beacon 2) hits for 10 at full draw, iron (beacon 3) for 14 and diamond (beacon 4) for 18, the same steps as the sword ladder from stone up. A draw under a tenth of the way lets go without shooting. Each shot spends one arrow from anywhere in the pack and one of the bow's uses: 384 for wood (Minecraft's), 768 for iron and 1536 for diamond. Without arrows the bow says so. Arrows fall under gravity. The walker's arrows that miss land as an arrow item to pick up again, and one that hits is spent. The bow mines nothing and swings in melee like any tierless tool. Without pointer lock the right button is the look drag, so a right click there shoots a full draw at once.
 
 ## Block changes and persistence
 

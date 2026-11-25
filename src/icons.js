@@ -390,6 +390,25 @@ function makeBlockItemIcon(block) {
   return canvas;
 }
 
+/**
+ * A bow's painter in one material: a limb curved from top right to bottom left
+ * with the string drawn straight across the chord, the way Minecraft holds it
+ * in the hand. `limb` is three shades cycled along the arc, `grip` the two
+ * highlights and `tip` the nocks at either end.
+ */
+function bowPainter(limb, grip, tip) {
+  return (px) => {
+    const arc = [[11, 1], [12, 2], [13, 3], [13, 4], [13, 5], [12, 6], [11, 7],
+      [10, 8], [9, 9], [8, 10], [7, 11], [6, 12], [5, 13], [4, 13], [3, 13], [2, 12], [1, 11]];
+    arc.forEach(([x, y], i) => px(x, y, limb[i % 3]));
+    px(12, 3, grip);
+    px(6, 11, grip);
+    paintIconLine(px, 10, 1, 1, 10, '#d8d4ca');
+    px(10, 1, tip);
+    px(1, 10, tip);
+  };
+}
+
 const MATERIAL_ICON_PAINTERS = {
   coal(px) {
     px(4, 4, '#2b2b31', 3, 3);
@@ -577,19 +596,9 @@ const MATERIAL_ICON_PAINTERS = {
     paintIconLine(px, 6, 6, 10, 8, '#f4f2ec');
     paintIconLine(px, 5, 11, 2, 14, '#c8c4b8');
   },
-  bow(px) {
-    // A wooden limb curved from top right to bottom left with the string drawn
-    // straight across the chord, the way Minecraft holds it in the hand.
-    const wood = ['#5c3d18', '#7a5426', '#9a6c34'];
-    const arc = [[11, 1], [12, 2], [13, 3], [13, 4], [13, 5], [12, 6], [11, 7],
-      [10, 8], [9, 9], [8, 10], [7, 11], [6, 12], [5, 13], [4, 13], [3, 13], [2, 12], [1, 11]];
-    arc.forEach(([x, y], i) => px(x, y, wood[i % 3]));
-    px(12, 3, '#b48446');
-    px(6, 11, '#b48446');
-    paintIconLine(px, 10, 1, 1, 10, '#d8d4ca');
-    px(10, 1, '#4a3012');
-    px(1, 10, '#4a3012');
-  },
+  bow: bowPainter(['#5c3d18', '#7a5426', '#9a6c34'], '#b48446', '#4a3012'),
+  iron_bow: bowPainter(['#8b8b93', '#b9b9c2', '#d8d8de'], '#eeeef2', '#5c5c64'),
+  diamond_bow: bowPainter(['#1d9e94', '#3fd1c4', '#8ef0e6'], '#c8fff8', '#116a64'),
   arrow(px) {
     // Stone tip top right, a straight shaft, grey fletching at the nock.
     paintIconLine(px, 3, 12, 11, 4, '#7a5426');
