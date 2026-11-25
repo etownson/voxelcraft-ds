@@ -544,7 +544,7 @@ Hardnesses, tool gates and drops, each block's correct tool in italics:
 | Block | Hardness | Correct tool | Min tier | Drops |
 | --- | --- | --- | --- | --- |
 | Dirt | 0.5 | *shovel* | — | Dirt |
-| Grass Block | 0.6 | *shovel* | — | Dirt, plus 1 seed at 10% |
+| Grass Block | 0.6 | *shovel* | — | Dirt, plus 1 seed at 2% |
 | Sand | 0.5 | *shovel* | — | Sand |
 | Snow Block | 0.2 | *shovel* | — | Snow |
 | Farmland | 0.6 | *shovel* | — | Dirt |
@@ -765,7 +765,7 @@ cooking while open.
 
 ## Farming: wheat, soil and apples
 
-- Seeds come from breaking grass: 10% for 1. That, plus the apple, is how a player
+- Seeds come from breaking grass: 2% for 1. That, plus the apple, is how a player
   with no farm gets food started. It was 25% for 1–2, but a shovel strips grass so
   fast that a few minutes' digging gave stacks of seeds, and a farm should be grown,
   not dug up
@@ -780,8 +780,8 @@ cooking while open.
   waters them; one below is not, so water under the soil is a swamp, not irrigation.
   A dry furrow simply stops — no slow crawl — and sowing dry soil works but says so:
   *Dry soil — crops wait for water within 4 blocks*
-- Harvest: ripe wheat drops 1 wheat and 1 seed, plus a second seed at 25%, so a
-  field grows by about one plot in four per harvest; an unripe crop gives back its seed
+- Harvest: ripe wheat drops 1 wheat and 1 seed, plus a second seed at 10%, so a
+  field grows by about one plot in ten per harvest; an unripe crop gives back its seed
   and the furrow stays tilled; digging farmland out from under a crop destroys the crop
 - Wetness is a question asked of the world each tick, never a stored value: a field
   wets and dries in the same frame the water moves, and an unloaded furrow just reads
