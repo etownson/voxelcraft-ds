@@ -394,16 +394,17 @@ function makeBlockItemIcon(block) {
  * A bow's painter in one material: a limb curved from top right to bottom left
  * with the string drawn straight across the chord, the way Minecraft holds it
  * in the hand. `limb` is three shades cycled along the arc, `grip` the two
- * highlights and `tip` the nocks at either end.
+ * highlights, `tip` the nocks at either end and `string` the cord. A bright
+ * metal limb wants a dimmer cord, or the two read as one pale line.
  */
-function bowPainter(limb, grip, tip) {
+function bowPainter(limb, grip, tip, string = '#d8d4ca') {
   return (px) => {
     const arc = [[11, 1], [12, 2], [13, 3], [13, 4], [13, 5], [12, 6], [11, 7],
       [10, 8], [9, 9], [8, 10], [7, 11], [6, 12], [5, 13], [4, 13], [3, 13], [2, 12], [1, 11]];
     arc.forEach(([x, y], i) => px(x, y, limb[i % 3]));
     px(12, 3, grip);
     px(6, 11, grip);
-    paintIconLine(px, 10, 1, 1, 10, '#d8d4ca');
+    paintIconLine(px, 10, 1, 1, 10, string);
     px(10, 1, tip);
     px(1, 10, tip);
   };
@@ -597,7 +598,7 @@ const MATERIAL_ICON_PAINTERS = {
     paintIconLine(px, 5, 11, 2, 14, '#c8c4b8');
   },
   bow: bowPainter(['#5c3d18', '#7a5426', '#9a6c34'], '#b48446', '#4a3012'),
-  iron_bow: bowPainter(['#8b8b93', '#b9b9c2', '#d8d8de'], '#eeeef2', '#5c5c64'),
+  iron_bow: bowPainter(['#a8a8b4', '#d0d0da', '#f0f0f6'], '#ffffff', '#5c5c66', '#8a8478'),
   diamond_bow: bowPainter(['#1d9e94', '#3fd1c4', '#8ef0e6'], '#c8fff8', '#116a64'),
   arrow(px) {
     // Stone tip top right, a straight shaft, grey fletching at the nock.
