@@ -134,7 +134,9 @@ export function updateMobTarget() {
 }
 
 /** What each tier of sword takes off a mob per blow. Any other tool does less. */
-export const SWORD_DAMAGE = Object.freeze({ wood: 4, stone: 6, iron: 8, diamond: 10 });
+export const SWORD_DAMAGE = Object.freeze({ wood: 6, stone: 10, iron: 14, diamond: 18 });
+/** The same blow from an enchanted sword. */
+export const ENCHANTED_SWORD_DAMAGE = Object.freeze({ wood: 8, stone: 12, iron: 16, diamond: 20 });
 /** Seconds between swings, whatever is in hand. */
 export const ATTACK_COOLDOWN = 0.38;
 
@@ -143,7 +145,8 @@ function heldAttackDamage() {
   const item = stack ? ITEMS.get(stack.id) : null;
   if (!item || item.kind !== 'tool') return 1;
   if (item.tool === 'sword') {
-    return SWORD_DAMAGE[item.tier] || 3;
+    const table = item.enchanted ? ENCHANTED_SWORD_DAMAGE : SWORD_DAMAGE;
+    return table[item.tier] || 3;
   }
   return Math.max(2, Math.round((item.damage || 2) * 0.7));
 }

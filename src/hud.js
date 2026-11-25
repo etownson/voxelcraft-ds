@@ -27,9 +27,9 @@ import {
   toggleAudioMuted, TRANSMISSION_HANDSHAKE_MS
 } from './audio.js';
 import {
-  ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_MAX_DEFENSE, ARMOR_PIECES, CHEST_SLOTS, ITEMS,
-  isChestBlock, isFurnaceBlock, makeStack, mergeStackInto, packedSlotCount, stackDurability,
-  stacksMergeable
+  ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_PIECES, CHEST_SLOTS, ITEMS,
+  armorDefenseScaled, isChestBlock, isFurnaceBlock, makeStack, mergeStackInto, packedSlotCount,
+  stackDurability, stacksMergeable
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
@@ -171,10 +171,13 @@ export function renderEssence() {
 
 /**
  * Draws the shield row above the hearts. Minecraft spends one shield per two
- * defence points and hides the whole row when nothing is worn.
+ * defence points and hides the whole row when nothing is worn; the points are
+ * scaled onto its 20-point range first, so ten full shields mean a full
+ * enchanted diamond set.
  */
 export function renderArmorBar() {
-  const points = Math.min(ARMOR_MAX_DEFENSE, armorDefense());
+  const worn = armorDefense();
+  const points = worn > 0 ? Math.max(1, Math.round(armorDefenseScaled(worn))) : 0;
   armorEl.classList.toggle('hidden', points <= 0);
   const shields = armorEl.children;
   const full = Math.floor(points / 2);
@@ -224,7 +227,7 @@ for (let i = 0; i < player.maxHealth / 2; i++) {
 }
 renderHealth();
 
-/** Ten shields, one per two defence points, filled from the right. */
+/** Ten shields, one per two scaled defence points, filled from the right. */
 for (let i = 0; i < ARMOR_BAR_SHIELDS; i++) {
   const shield = document.createElement('span');
   shield.className = 'shield';

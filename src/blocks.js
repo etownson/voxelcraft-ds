@@ -699,8 +699,10 @@ for (const [tier, stats] of Object.entries(TOOL_TIERS)) {
 
 /**
  * Armour, in the order the inventory panel draws it: head down to feet. The
- * defence and durability columns are Minecraft's own numbers, listed helmet,
- * chestplate, leggings, boots.
+ * durability columns are Minecraft's own numbers, listed helmet, chestplate,
+ * leggings, boots. The defence columns are this game's own and run about
+ * twice Minecraft's, so that the enchanted sets have room above them; the
+ * absorption formula scales the points back down (see `armorDefenseScaled`).
  */
 export const ARMOR_SLOTS = ['head', 'chest', 'legs', 'feet'];
 export const ARMOR_PIECES = [
@@ -711,21 +713,32 @@ export const ARMOR_PIECES = [
 ];
 /** Hint letter drawn in an empty armour slot, head down to feet. */
 export const ARMOR_GLYPHS = ARMOR_PIECES.map((piece) => piece.glyph);
-/** Minecraft's own limits: 20 defence points, drawn as ten shields. */
-export const ARMOR_MAX_DEFENSE = 20;
+/**
+ * The most defence a body can wear: a full enchanted diamond set. Minecraft's
+ * formula is written for 20 points, so worn points are scaled by 20 / 42
+ * before it reads them, and full enchanted diamond blocks what full diamond
+ * blocks in Minecraft. The bar still draws ten shields across the whole range.
+ */
+export const ARMOR_MAX_DEFENSE = 42;
+/** The defence scale Minecraft's absorption formula was written for. */
+export const ARMOR_FORMULA_POINTS = 20;
+/** Worn points on the 20-point scale the absorption formula and the bar use. */
+export function armorDefenseScaled(points) {
+  return Math.min(ARMOR_MAX_DEFENSE, Math.max(0, points)) * ARMOR_FORMULA_POINTS / ARMOR_MAX_DEFENSE;
+}
 export const ARMOR_BAR_SHIELDS = 10;
 export const ARMOR_MATERIALS = {
   leather: {
     material: 'leather',
-    defense: [1, 3, 2, 1], durability: [55, 80, 75, 65]
+    defense: [2, 6, 4, 2], durability: [55, 80, 75, 65]
   },
   iron: {
     material: 'iron_ingot',
-    defense: [2, 6, 5, 2], durability: [165, 240, 225, 195]
+    defense: [4, 10, 6, 4], durability: [165, 240, 225, 195]
   },
   diamond: {
     material: 'diamond',
-    defense: [3, 8, 6, 3], durability: [363, 528, 495, 429]
+    defense: [6, 14, 10, 6], durability: [363, 528, 495, 429]
   }
 };
 

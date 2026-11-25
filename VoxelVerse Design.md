@@ -555,7 +555,12 @@ Mining with the head underwater, sword swing speeds, and shears-as-tools are del
 not modelled.
 
 Combat: left click while a mob is under the crosshair within reach attacks it, with
-knockback and an attack cooldown; swords hit hardest. `tryShearMob` is the one
+knockback and an attack cooldown. Swords hit hardest, with their own damage table
+(`SWORD_DAMAGE`): wood 6, stone 10, iron 14, diamond 18. Any other tool hits for
+`round(attack damage × 0.7)`, at least 2, and a bare hand for 1. The sword numbers run
+well above Minecraft's so that a sword is the clear answer to a zombie's 20 health
+(two blows of diamond, four of wood), and so that the enchanted swords (see
+Enchanting) have a step above each tier. `tryShearMob` is the one
 interaction wired to both buttons (see Shearing).
 
 ## Held item view
@@ -625,18 +630,27 @@ world.
 
 ## Armour
 
-Leather, iron and diamond sets, one piece per slot, with Minecraft's own numbers:
+Leather, iron and diamond sets, one piece per slot. Durability is Minecraft's; the
+defence numbers are this game's own, about twice Minecraft's, so the enchanted sets
+(see Enchanting) have room above every tier:
 
-| Material | Defence (H/C/L/B) | Durability (H/C/L/B) |
-| --- | --- | --- |
-| Leather | 1 / 3 / 2 / 1 | 55 / 80 / 75 / 65 |
-| Iron | 2 / 6 / 5 / 2 | 165 / 240 / 225 / 195 |
-| Diamond | 3 / 8 / 6 / 3 | 363 / 528 / 495 / 429 |
+| Material | Defence (H/C/L/B) | Full set | Durability (H/C/L/B) |
+| --- | --- | --- | --- |
+| Leather | 2 / 6 / 4 / 2 | 14 | 55 / 80 / 75 / 65 |
+| Iron | 4 / 10 / 6 / 4 | 24 | 165 / 240 / 225 / 195 |
+| Diamond | 6 / 14 / 10 / 6 | 36 | 363 / 528 / 495 / 429 |
 
-Damage absorbed is `amount * min(20, max(defence / 5, defence - amount / 2)) / 25`.
+Worn defence is capped at 42 (`ARMOR_MAX_DEFENSE`, a full enchanted diamond set) and
+scaled onto Minecraft's 20-point range before the formula reads it:
+`p = min(42, defence) × 20 / 42`, then damage absorbed is
+`amount * min(20, max(p / 5, p - amount / 2)) / 25`. Full enchanted diamond therefore
+blocks what full diamond blocks in Minecraft, and each tier and each enchantment below it
+visibly blocks less. Against a 3-damage zombie hit a full set blocks about: leather 21%,
+iron 40%, diamond 63%, enchanted leather 30%, enchanted iron 51%, enchanted diamond 74%.
 Each hit costs one random worn piece four durability per point absorbed, so a set wears
 unevenly, and a piece that runs out un-equips itself. The HUD draws the set as ten
-shields above the hunger bar; the row is hidden while nothing is worn. Starvation
+shields above the hunger bar, one per two scaled points, so ten full shields mean a full
+enchanted diamond set; the row is hidden while nothing is worn. Starvation
 damage goes straight through armour.
 
 ## Hunger and food

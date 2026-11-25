@@ -17,7 +17,7 @@
 
 import { playToolBreakSound } from './audio.js';
 import {
-  ARMOR_MAX_DEFENSE, ARMOR_SLOTS, ITEMS, consumeDurability, makeStack, stacksMergeable
+  ARMOR_SLOTS, ITEMS, armorDefenseScaled, consumeDurability, makeStack, stacksMergeable
 } from './blocks.js';
 import { markWorldDirty } from './chunks.js';
 import { say } from './say.js';
@@ -61,7 +61,7 @@ export function equipSlotFor(stack) {
   return ARMOR_SLOTS.indexOf(item.armorSlot);
 }
 
-/** Defence points worn right now. Minecraft caps the total at 20 points. */
+/** Defence points worn right now, unscaled: up to 42 in full enchanted diamond. */
 export function armorDefense() {
   let total = 0;
   for (const stack of armorSlots) {
@@ -207,12 +207,14 @@ export function countInventoryItem(itemId) {
 }
 
 /**
- * Armour's damage reduction, straight from Minecraft: a set absorbs a share of
- * the incoming hit, and heavy hits get through proportionally more of them.
+ * Armour's damage reduction, Minecraft's formula: a set absorbs a share of the
+ * incoming hit, and heavy hits get through proportionally more of them. The
+ * worn points are scaled onto the formula's 20-point range first, so the
+ * game's larger defence numbers keep Minecraft's balance at the top.
  */
 export function armorAbsorbed(defense, amount) {
   if (defense <= 0) return 0;
-  const points = Math.min(ARMOR_MAX_DEFENSE, defense);
+  const points = armorDefenseScaled(defense);
   const factor = Math.min(20, Math.max(points / 5, points - amount / 2)) / 25;
   return amount * factor;
 }
