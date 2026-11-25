@@ -58,6 +58,8 @@ const inputView = {
   screenTap: () => {},
   hotbarStep: () => {},
   togglePack: () => {},
+  /** Throw one of the held item along the crosshair. */
+  toss: () => {},
   toggleJournal: () => {},
   screenTick: () => {},
   menuPad: () => {},
@@ -853,6 +855,11 @@ window.addEventListener('keydown', (event) => {
   }
   if (event.code === 'Space') event.preventDefault();
   if (fallbackControls && event.code.startsWith('Arrow')) event.preventDefault();
+  // Q throws one of the held item; held down it keeps throwing, one a repeat.
+  if (event.code === 'KeyQ' && !event.metaKey && !event.altKey && controlsOwned()) {
+    event.preventDefault();
+    inputView.toss();
+  }
 });
 window.addEventListener('keyup', (event) => {
   pressedKeys.delete(event.code);
@@ -1257,6 +1264,8 @@ export function updateGamepad(dt) {
   if (!readTransmission && (padB || gamepadState.pressed[PAD_BUTTON.l3]) && !inputView.held()) {
     toggleSprintLatch();
   }
+  // X throws one of the held item, to hand it to a friend or be rid of it.
+  if (gamepadState.pressed[PAD_BUTTON.x] && !inputView.held()) inputView.toss();
   if (gamepadState.pressed[PAD_BUTTON.lb]) {
     inputView.hotbarStep(-1);
   }

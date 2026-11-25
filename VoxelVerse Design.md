@@ -493,7 +493,7 @@ A first-person controller:
 - Gamepad support via the Web Gamepad API: left stick moves, right stick looks
   (configurable sensitivity), A/Cross jumps, right trigger mines/attacks, left trigger
   places/interacts, shoulder buttons scroll the hotbar, B/L3 latches sprint,
-  Y opens the inventory, View/Back opens the journal, and Start/Menu opens the main
+  X drops one of the held item, Y opens the inventory, View/Back opens the journal, and Start/Menu opens the main
   menu. Menu grids are walked with the D-pad or stick: A picks up and places whole
   stacks, X takes half a stack and places one item, Y/Triangle quick-moves, B or
   View/Back closes
@@ -610,6 +610,14 @@ empty hand shows nothing.
   shift-click quick-moves between pack rows, and into or out of an open container —
   from the pack into a chest it tops up matching stacks, then claims free rows;
   armour shift-clicked from a container goes onto the body
+- **Dropping.** Q (gamepad X) throws one of the held item along the crosshair; held
+  down it keeps throwing, one per key repeat. With a screen open, clicking outside the
+  panel throws the stack on the cursor: left click the whole stack, right click one.
+  A thrown stack leaves the eyes at 6 blocks a second with a little lift, lands about
+  three blocks ahead, stops at walls, and is out of the thrower's own reach for 2
+  seconds (`TOSS_PICKUP_DELAY`) so it does not fly straight back. It lies where it
+  landed however far the thrower walks, and goes after five minutes (Minecraft's
+  despawn time). Its main use is handing things to a co-op friend (see Co-op)
 - Number keys 1–9 and the mouse wheel select the hotbar; the hotbar is always visible
   with the selected slot highlighted and the item's name shown briefly on switch
 - Drops go into the inventory automatically, stacking first; if the pack is full they
@@ -1228,6 +1236,17 @@ Up to four players share one world, peer to peer, with no server of the game's o
 - **Loot** exists in one browser only: a broken block drops into the breaker's world,
   and a mob a guest killed sends its loot and essence bubbles to that guest. Nothing
   can be picked up twice
+- **Thrown items are shared**, so players can hand each other things. A stack a player
+  throws (Q, or a click outside the inventory) stays in the thrower's browser, and
+  everyone else is sent it (`toss`) and draws a picture of it; a player who joins
+  later is sent every stack still lying about. Touching a picture with room in the
+  pack asks the thrower for it (`claim`). The thrower hands it to whoever asked first
+  (`grant`), as long as they stand within 8 blocks of it, and tells the room it has
+  gone (`gone`); anyone too late is told so too. Taking part of it, burning it in
+  lava or its timing out is told the same way (`recount`, `gone`). What a grant
+  cannot fit, because the pack filled while the answer came, is thrown back down at
+  the taker's feet, still shared. When a player leaves, the pictures of what they
+  threw go with them
 - **Essence is shared.** The room has one purse, and the host keeps it: it is the
   host's save's `essence`. Whatever anyone collects goes into it and whatever anyone
   spends comes out of it. A guest's change happens at once in their own browser and
@@ -1536,7 +1555,8 @@ repository and the page:
     src/crafting.js     recipes and the two grids
     src/cursor.js       the stack on the pointer, and crafting with it
     src/containers.js   furnaces and chests as block entities
-    src/drops.js        item entities
+    src/drops.js        item entities, and the shared ones a player threw
+    src/toss.js         throwing an item from the hand or the cursor
     src/farming.js      farmland and crops
     src/aim.js          the crosshair's block ray and crack
     src/interaction.js  mining, placing, doors, beds, buckets, hoes, seeds
@@ -1612,6 +1632,7 @@ the shelf (`screen`, `openGive`, `giveList`), the mission tour (`visitBeacon(sto
 `beaconTour(direction)`, `tourStop()`), the main menu (`menuState()` — open, page,
 the rail-or-page zone, the highlighted control and the hand that moved it; drive it
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
+`toss(all)` throws one of the held item, or the whole stack, as Q does.
 `waypoints()` lists what the arrow can follow and where it points now. `world()` names
 the world this page is (id, name, seed, whether it is a visit) and lists every world
 the browser keeps; `seed` is that world's seed. `migrateSave(record)` walks a stored

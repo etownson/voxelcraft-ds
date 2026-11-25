@@ -66,6 +66,7 @@ import { debugEnabled, noteDebugUse } from './debug.js';
 import { fpsShown, onSettingsChanged } from './settings.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { createNav } from './menu-nav.js';
+import { tossStack } from './toss.js';
 
 const fpsEl = document.getElementById('fps');
 const dayDialEl = document.getElementById('day-dial');
@@ -1560,6 +1561,25 @@ screenBody.addEventListener('mousedown', (event) => {
   handleScreenSlotClick(container, index, event.button, event.shiftKey);
 });
 screenLayer.addEventListener('contextmenu', (event) => event.preventDefault());
+
+/* A click outside the panel throws what the cursor carries: the whole stack
+   with the left button, one of it with the right. That is how a stack too big
+   to throw one at a time with Q goes to a friend. */
+screenLayer.addEventListener('mousedown', (event) => {
+  if (event.target.closest('#screen-panel')) return;
+  const held = cursorCarried();
+  if (!held) return;
+  event.preventDefault();
+  if (event.button === 2) {
+    tossStack(makeStack(held.id, 1, held.dur, held.contents));
+    held.count -= 1;
+    dropEmptyCursorStack();
+  } else if (event.button === 0) {
+    tossStack(held);
+    clearCursorStack();
+  }
+  updateCursorVisual();
+});
 
 window.addEventListener('mousemove', (event) => {
   cursorX = event.clientX;

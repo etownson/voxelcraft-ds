@@ -28,15 +28,15 @@ import {
   setArcheryWorld, updateArchery
 } from './archery.js';
 import {
-  announceArrow, announceBeacon, announceExplosion, announceMobKilled, announceSleep,
-  coopMenuHolders, coopPlayerSpot, coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop,
+  announceArrow, announceBeacon, announceDropCount, announceDropGone, announceExplosion,
+  announceMobKilled, announceSleep, announceToss, claimDrop, coopMenuHolders, coopPlayerSpot, coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop,
   isCoopGuest, isCoopHost, isRemoteWalker, joinHostWorld, leaveCoop, sendEssence, sendLoot, setCoopView,
   shareEssence, startHosting,
   updateCoop
 } from './coop.js';
 import { atlasCanvas } from './atlas.js';
 import {
-  audioCtx, audioStatus, playMissionCompleteSong, playSound, playSpawnSong,
+  audioCtx, audioStatus, playMissionCompleteSong, playPickupSound, playSound, playSpawnSong,
   resumeAudioIfUnpaused, setArrivalHold, setAudioMenuPause, setAudioMusicVolume,
   setAudioMuted, setAudioSfxVolume, setAudioVolume, toggleAudioMuted
 } from './audio.js';
@@ -68,7 +68,11 @@ import {
 } from './crafting.js';
 import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } from './cursor.js';
 import { setDebugWitness } from './debug.js';
-import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
+import {
+  forgetSharedDrop, forgetSharedDrops, itemEntities, ownSharedDrops, placeSharedDrop,
+  recountSharedDrop, setDropShare, setItemPickup, spawnItemDrop, takeSharedDrop, tossItemDrop,
+  updateItemEntities
+} from './drops.js';
 import { enchantCost, enchantOffer, enchantSlot } from './enchanting.js';
 import {
   essenceCount, essenceEntities, grantEssence as addEssence, setEssence, setEssenceLedger,
@@ -114,7 +118,7 @@ import { introActive, primeIntroBlack, skipIntro, startIntro, updateIntro } from
 import {
   HOTBAR_SIZE, INVENTORY_SIZE, addItemToInventory, armorAbsorbed, armorDefense, armorSlots,
   countInventoryItem, currentSlot, equipSlotFor, equipStack, getSelectedStack, inventory,
-  selectSlot, setArmorPainter, setPackPainter, unequipSlot
+  inventoryHasRoom, selectSlot, setArmorPainter, setPackPainter, unequipSlot
 } from './inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
@@ -143,6 +147,7 @@ import {
   saveTargetKey, stopAutosave, updateSaveLoop
 } from './save.js';
 import { registerSpeaker } from './say.js';
+import { tossFromHand } from './toss.js';
 import { coopName } from './settings.js';
 import {
   advanceDayTime, applyDayNight, clockHours, dayTime, daylight, formatClock, isNight,
@@ -475,6 +480,16 @@ setBlockEntityView({
 setItemPickup((itemId, count, dur, contents) =>
   addItemToInventory(itemId, count, dur, contents));
 
+/* A thrown stack is shared with the co-op room, and touching another
+   player's asks them for it; with no room around, nobody is told. A full
+   pack does not ask, so the stack stays for somebody with room. */
+setDropShare({
+  tossed: (entity) => announceToss(entity),
+  changed: (entity) => announceDropCount(entity),
+  gone: (entity) => announceDropGone(entity),
+  claim: (entity) => inventoryHasRoom(entity.itemId, 1) && claimDrop(entity)
+});
+
 /* And the crosshair stops pointing whenever something else has the controls. */
 setAimBlocked(() => !!activeScreen || player.dead || introActive());
 
@@ -562,6 +577,22 @@ setInteractionView({
 setCoopView({
   hurt: (amount, cause) => damagePlayer(amount, cause),
   drop: (itemId, count, x, y, z) => spawnItemDrop(itemId, count, x, y, z),
+  placeDrop: (owner, serial, stack, p) => placeSharedDrop(owner, serial, stack, ...p),
+  forgetDrop: forgetSharedDrop,
+  recountDrop: recountSharedDrop,
+  forgetDrops: forgetSharedDrops,
+  takeDrop: takeSharedDrop,
+  ownDrops: ownSharedDrops,
+  // What does not fit goes back on the ground at this walker's feet, still
+  // shared, so it is not lost to a pack that filled while the answer came.
+  grantDrop: (stack) => {
+    const leftover = addItemToInventory(stack.id, stack.count, stack.dur, stack.contents);
+    if (leftover < stack.count) playPickupSound();
+    if (leftover > 0) {
+      tossItemDrop(stack.id, leftover, stack.dur, stack.contents,
+        player.pos.x, player.pos.y + 0.5, player.pos.z, 0, 0, 0);
+    }
+  },
   essence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
   openContainer: () => ((activeScreen === 'furnace' || activeScreen === 'chest' ||
       activeScreen === 'enchanter') && activeScreenAt
@@ -692,6 +723,7 @@ setInputView({
   screenTap: handlePadScreenTap,
   hotbarStep: (delta) => selectHotbarSlot(currentSlot() + delta, true),
   togglePack: toggleInventory,
+  toss: () => tossFromHand(),
   toggleJournal,
   screenTick: updateGamepadScreen,
   menuPad: padMenuTick,
@@ -1049,6 +1081,10 @@ window.__voxelcraft = {
   start() {
     if (!isPlayable()) enableFallbackControls();
     return { playable: isPlayable(), screen: activeScreen, dead: player.dead };
+  },
+  /** Throws one of the held item, or the whole stack, along the crosshair. */
+  toss(all = false) {
+    return tossFromHand(all);
   },
   save() {
     // Asking for a write also re-arms autosave, which wipeSave() turns off.

@@ -18,6 +18,11 @@
  * - Loot: every drop exists in one browser only. A block breaks into the
  *   breaker's world, and a mob a guest killed drops into that guest's world,
  *   so nothing is ever picked up twice.
+ * - Thrown items: the one exception, so players can hand each other things.
+ *   A stack a player throws stays in the thrower's browser, and everyone
+ *   else draws a picture of it. Touching a picture asks the thrower for it;
+ *   the thrower gives it to whoever asked first and tells the room it has
+ *   gone, so it is still only ever picked up once.
  * - Containers: whoever has a chest or furnace open sends its contents when
  *   they change, and everyone else takes them.
  * - Essence: the room has one purse, and the host keeps it. A guest's gains
@@ -69,6 +74,19 @@ const coopView = {
   hurt: (amount, cause) => {},
   /** Loot the host says this walker earned. */
   drop: (itemId, count, x, y, z) => {},
+  /** Another player threw a stack: draw it here. */
+  placeDrop: (owner, serial, stack, p) => {},
+  /** Another player's thrown stack was taken, or shrank to `count`. */
+  forgetDrop: (owner, serial) => {},
+  recountDrop: (owner, serial, count) => {},
+  /** Let go of the pictures of one player's thrown stacks, or of everyone's. */
+  forgetDrops: (owner) => {},
+  /** Somebody standing at `near` asked for a stack thrown here: hand it over. */
+  takeDrop: (serial, near) => null,
+  /** The stacks thrown here that are still lying about. */
+  ownDrops: () => [],
+  /** A thrown stack this walker asked for is theirs. */
+  grantDrop: (stack) => {},
   /** Essence the host says this walker earned. */
   essence: (amount, x, y, z) => {},
   /** The "x,y,z" of the chest or furnace whose screen is open, or null. */
@@ -131,6 +149,8 @@ function install() {
   net.onPeers((kind, peer) => {
     if (kind === 'join') {
       addAvatar(peer.id, peer.name);
+      // Whatever this peer threw before a reload is numbered afresh now.
+      coopView.forgetDrops(peer.id);
       if (peer.role === 'host' && net.isGuest()) {
         // The host is back after a reload: their mobs are numbered afresh.
         for (const mob of puppets.values()) removeMobRecord(mob);
@@ -142,8 +162,10 @@ function install() {
       // and a guest (or a guest whose host just came back) the room's purse.
       sendPose(peer.id);
       if (net.isHost()) sendPurse(peer.id);
+      for (const entity of coopView.ownDrops()) announceToss(entity, peer.id);
     } else {
       removeAvatar(peer.id);
+      coopView.forgetDrops(peer.id);
       menuHolders.delete(peer.id);
       containerSeen.clear();
       say(peer.name + ' left');
@@ -232,6 +254,35 @@ function install() {
     const [id, count, x, y, z] = d;
     if (typeof id !== 'string' || ![count, x, y, z].every(Number.isFinite)) return;
     coopView.drop(id, Math.trunc(count), x, y, z);
+  });
+  on('toss', (d, from) => {
+    if (!d || !Number.isInteger(d.s) || !Array.isArray(d.p) || d.p.length !== 6 ||
+        !d.p.every(Number.isFinite)) return;
+    const stack = stackFromRecord(d.r);
+    if (stack) coopView.placeDrop(from, d.s, stack, d.p);
+  });
+  on('claim', (d, from) => {
+    if (!d || !Number.isInteger(d.s)) return;
+    const avatar = avatars.get(from);
+    const stack = avatar && avatar.heard && !avatar.dead
+      ? coopView.takeDrop(d.s, avatar.pos)
+      : null;
+    // Taking it already told the room it is gone; somebody too late, or too
+    // far away, is told so too, so their picture lets go.
+    if (stack) net.send('grant', { r: stackToRecord(stack) }, from);
+    else net.send('gone', { s: d.s }, from);
+  });
+  on('grant', (d) => {
+    const stack = d && stackFromRecord(d.r);
+    if (stack) coopView.grantDrop(stack);
+  });
+  on('gone', (d, from) => {
+    if (d && Number.isInteger(d.s)) coopView.forgetDrop(from, d.s);
+  });
+  on('recount', (d, from) => {
+    if (d && Number.isInteger(d.s) && Number.isFinite(d.n)) {
+      coopView.recountDrop(from, d.s, Math.trunc(d.n));
+    }
   });
   on('ess', (d, from) => {
     if (from !== net.hostId() || !Array.isArray(d) || !d.every(Number.isFinite)) return;
@@ -368,6 +419,7 @@ export async function leaveCoop() {
   puppets.clear();
   containerSeen.clear();
   menuHolders.clear();
+  coopView.forgetDrops(null);
   setStatus('', false);
   paint();
 }
@@ -612,6 +664,36 @@ export function announceArrow(x, y, z, vx, vy, vz, damage, byWalker) {
 
 export function announceBeacon(index) {
   if (net.inRoom()) net.send('beacon', { i: index });
+}
+
+/* ---------- Thrown items ---------- */
+
+/** A stack was thrown here: everyone else, or one newcomer, draws it. */
+export function announceToss(entity, target = null) {
+  if (!net.inRoom()) return;
+  const { pos, vel } = entity;
+  net.send('toss', {
+    s: entity.serial,
+    r: stackToRecord({ id: entity.itemId, count: entity.count, dur: entity.dur, contents: entity.contents }),
+    p: [pos.x, pos.y, pos.z, vel.x, vel.y, vel.z].map(round2)
+  }, target);
+}
+
+/** A stack thrown here was picked up, burnt or timed out. */
+export function announceDropGone(entity) {
+  if (net.inRoom()) net.send('gone', { s: entity.serial });
+}
+
+/** Part of a stack thrown here was picked up. */
+export function announceDropCount(entity) {
+  if (net.inRoom()) net.send('recount', { s: entity.serial, n: entity.count });
+}
+
+/** This walker touched another player's thrown stack: ask them for it. */
+export function claimDrop(entity) {
+  if (!net.inRoom() || !net.peers.has(entity.owner)) return false;
+  net.send('claim', { s: entity.ownerSerial }, entity.owner);
+  return true;
 }
 
 /* ---------- The shared purse ---------- */
