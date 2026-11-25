@@ -931,9 +931,9 @@ Right-clicking either half claims the bed, whatever else is held:
   untouched
 - Night (the same test the sky uses, sun below −0.04): the spawn point moves, the
   screen fades to black over 0.7 s, and the world wakes 1.4 s later at `DAY_START`
-  (0.22, 11:16) with a `Good morning` toast. It is a blackout, not a fast-forward —
+  (0, sunrise, 06:00) with a `Good morning` toast. It is a blackout, not a fast-forward —
   nothing else is paused, so mobs that were close when you lay down are close when you
-  get up
+  get up, and for the first few seconds the sun is too low to burn them
 - The respawn point outlives the bed: the save carries a `spawn: { x, z }` beside the
   player's own position; a world without one keeps the world spawn. Because the bed is
   solid, waking and dying both put the player standing on top of it
@@ -1175,7 +1175,9 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 ## Day/night cycle
 
 - One full cycle is 20 real minutes, Minecraft's length: about 10 up, 10 down, half a
-  minute of dusk and dawn at each end. `DAY_START` is 0.22 (11:16 on the in-game clock)
+  minute of dusk and dawn at each end. `DAY_START` is 0, sunrise (06:00 on the in-game
+  clock): a new world starts there, and sleeping wakes you there, so each day is a whole
+  day to build before nightfall
 - Sky, fog and ambient light transition through sunset colours to dark navy; the sun
   and moon cross the sky
 - Night triggers hostile spawning; dawn burns exposed hostiles away

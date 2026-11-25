@@ -247,7 +247,13 @@ export function lavaFlowBlockDefs() {
 }
 /** A full day is 20 real minutes, the same length Minecraft runs on. */
 export const DAY_LENGTH_SECONDS = 1200;
-export const DAY_START = 0.22;
+/**
+ * Sunrise (06:00, the sun on the horizon): where a brand-new world's clock
+ * starts and where sleeping through the night wakes everyone, so each day is a
+ * whole day to gather and build before dusk. A saved world and a guest joining
+ * a host keep the time they carry.
+ */
+export const DAY_START = 0;
 
 export const B = Object.freeze({
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, COBBLESTONE: 4,
