@@ -245,10 +245,10 @@
       "activated": 0,
       "sites": [
         "0@-43,74,30/hop46/46blocks/31essence/dark",
-        "1@-194,80,-102/hop201/234blocks/129essence/dark",
-        "2@-396,51,-324/hop300/529blocks/167essence/dark",
-        "3@-687,67,-599/hop400/930blocks/226essence/dark",
-        "4@-1118,71,-1016/hop600/1529blocks/306essence/dark"
+        "1@-2763,57,-436/hop2760/2804blocks/129essence/dark",
+        "2@-5413,54,-1207/hop2760/5554blocks/180essence/dark",
+        "3@-8120,72,-1743/hop2760/8313blocks/240essence/dark",
+        "4@-10806,52,-1108/hop2760/10868blocks/315essence/dark"
       ],
       "next": "-43,74,30/31"
     },
@@ -325,7 +325,7 @@
     "save": {
       "key": "voxelcraft:world:v7",
       "schema": 7,
-      "bytes": 1847,
+      "bytes": 1853,
       "edits": 93,
       "error": null
     }
