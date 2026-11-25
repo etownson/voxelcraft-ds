@@ -614,6 +614,9 @@ kbd {
   border-left: 2px solid var(--accent);
 }
 #overlay .mission-status li.dark { color: #66788a; }
+#overlay .mission-status li.coop-player {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
 
 /* Waypoints: one row a target, the followed one marked. */
 #overlay .waypoint-list { display: flex; flex-direction: column; gap: 2px; max-width: 520px; }

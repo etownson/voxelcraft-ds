@@ -20,8 +20,15 @@
  *   so nothing is ever picked up twice.
  * - Containers: whoever has a chest or furnace open sends its contents when
  *   they change, and everyone else takes them.
- * - The mission and the clock: a beacon lit anywhere is lit everywhere, the
- *   host's hour is everyone's, and a night slept through by anyone is over.
+ * - Essence: the room has one purse, and the host keeps it. A guest's gains
+ *   and spends happen at once in their own browser and are told to the host
+ *   as amounts; whenever the host's total moves it goes out to everyone, who
+ *   take it as theirs. Anyone may spend it at an enchanting table.
+ * - The mission and the clock: only the host lights beacons, and a beacon
+ *   the host lights is lit everywhere, transmission and all. The host's hour
+ *   is everyone's, and a night slept through by anyone is over.
+ * - Teleporting: a player may jump to where another player stands. Each body
+ *   is its own browser's, so a jump is only this walker moving.
  * - The menu: whoever has it open says so with every pose, and while anyone
  *   in the room has it up the whole world holds still in every browser, so
  *   the players can stop and talk tactics.
@@ -36,6 +43,7 @@ import { BLOCKS, createBlockEntity } from './blocks.js';
 import { acceptRemoteBeacon } from './beacons.js';
 import { markWorldDirty, setBlockEditListener, withEditsSilenced, world } from './chunks.js';
 import { DAY_START, WORLD_HEIGHT, clamp } from './config.js';
+import { essenceCount, setEssence } from './essence.js';
 import {
   animateMobPuppet, damageMob, explosionEffectsAt, mobDeathBurst, mobs, refitMobModel,
   removeMobRecord, setMobAuthority, setMobSpawning, spawnMob
@@ -130,8 +138,10 @@ function install() {
         setStatus('The host is back. Playing in ' + net.roomCode() + '.', false);
       }
       say(peer.name + ' joined');
-      // Somebody new sees this walker straight away, not on the next tick.
+      // Somebody new sees this walker straight away, not on the next tick,
+      // and a guest (or a guest whose host just came back) the room's purse.
       sendPose(peer.id);
+      if (net.isHost()) sendPurse(peer.id);
     } else {
       removeAvatar(peer.id);
       menuHolders.delete(peer.id);
@@ -236,7 +246,22 @@ function install() {
     launchArrow(x, y, z, vx, vy, vz, Number(d.d) || 0,
       fromMob ? REMOTE_MOB_ARROW : REMOTE_PLAYER_ARROW);
   });
-  on('beacon', (d) => acceptRemoteBeacon(d.i));
+  // Only the host lights beacons; anyone else's word for one is not taken.
+  on('beacon', (d, from) => {
+    if (from === net.hostId()) acceptRemoteBeacon(d.i);
+  });
+  on('purse+', (d) => {
+    if (!net.isHost()) return;
+    const delta = Math.trunc(Number(d && d.d));
+    if (!Number.isFinite(delta) || delta === 0) return;
+    // setEssence tells the share listener, which sends the new total round.
+    setEssence(essenceCount() + delta);
+    markWorldDirty();
+  });
+  on('purse', (d, from) => {
+    if (!net.isGuest() || from !== net.hostId() || !Number.isFinite(d && d.t)) return;
+    setEssence(d.t);
+  });
   on('time', (d, from) => {
     if (net.isGuest() && from === net.hostId() && Number.isFinite(d.t)) setDayTime(d.t);
   });
@@ -361,8 +386,10 @@ function paint() {
   const mode = net.netMode();
   const players = [];
   if (net.inRoom()) {
-    players.push({ name: net.selfName(), role: net.isHost() ? 'host' : 'guest', self: true });
-    for (const peer of net.peers.values()) players.push({ name: peer.name, role: peer.role, self: false });
+    players.push({ id: net.selfId(), name: net.selfName(), role: net.isHost() ? 'host' : 'guest', self: true });
+    for (const peer of net.peers.values()) {
+      players.push({ id: peer.id, name: peer.name, role: peer.role, self: false });
+    }
   }
   coopView.paintRoom({ mode, code: net.roomCode(), players, status: statusLine, error: statusError });
 }
@@ -585,6 +612,40 @@ export function announceArrow(x, y, z, vx, vy, vz, damage, byWalker) {
 
 export function announceBeacon(index) {
   if (net.inRoom()) net.send('beacon', { i: index });
+}
+
+/* ---------- The shared purse ---------- */
+
+function sendPurse(target = null) {
+  net.send('purse', { t: essenceCount() }, target);
+}
+
+/**
+ * The purse moved in this browser, by `delta` (null when it was set
+ * outright). The host's total is everyone's, so the host sends it round; a
+ * guest sends the host what it gained or spent, and takes the total back.
+ */
+export function shareEssence(delta) {
+  if (!net.inRoom()) return;
+  if (net.isHost()) {
+    if (net.peers.size) sendPurse();
+  } else if (delta) {
+    net.sendToHost('purse+', { d: delta });
+  }
+}
+
+/* ---------- Teleporting ---------- */
+
+/**
+ * Where another player in the room stands, for this walker to jump to, or
+ * the reason it cannot: they have not been heard from yet, or they are dead.
+ */
+export function coopPlayerSpot(id) {
+  const avatar = avatars.get(id);
+  if (!net.inRoom() || !avatar) return { refused: 'That player is not in the room.' };
+  if (!avatar.heard) return { refused: avatar.name + ' has not been seen yet.' };
+  if (avatar.dead) return { refused: avatar.name + ' is respawning. Try again in a moment.' };
+  return { name: avatar.name, x: avatar.pos.x, y: avatar.pos.y, z: avatar.pos.z };
 }
 
 export function announceSleep() {

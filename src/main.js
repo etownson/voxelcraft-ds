@@ -29,8 +29,9 @@ import {
 } from './archery.js';
 import {
   announceArrow, announceBeacon, announceExplosion, announceMobKilled, announceSleep,
-  coopMenuHolders, coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop, isCoopGuest, isCoopHost,
-  isRemoteWalker, joinHostWorld, leaveCoop, sendEssence, sendLoot, setCoopView, startHosting,
+  coopMenuHolders, coopPlayerSpot, coopReport, coopWalkers, coopWorldReady, hurtRemoteWalker, inCoop,
+  isCoopGuest, isCoopHost, isRemoteWalker, joinHostWorld, leaveCoop, sendEssence, sendLoot, setCoopView,
+  shareEssence, startHosting,
   updateCoop
 } from './coop.js';
 import { atlasCanvas } from './atlas.js';
@@ -47,7 +48,7 @@ import {
 import {
   SPAWN_TRANSMISSION, beaconReport, beaconSites, beaconsActivatedCount, clearBeaconBeams,
   frontierZone, threatZoneAt, threatZoneCount,
-  nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconLitListener, setBeaconPainter,
+  nextBeacon, plantBeaconMonuments, restoreBeaconProgress, setBeaconGate, setBeaconLitListener, setBeaconPainter,
   setSpawnPoint0, setTransmissionDeliverer, spawnPoint, startingEssence
 } from './beacons.js';
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
@@ -71,7 +72,7 @@ import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from '
 import { enchantCost, enchantOffer, enchantSlot } from './enchanting.js';
 import {
   essenceCount, essenceEntities, grantEssence as addEssence, setEssence, setEssenceLedger,
-  setEssencePainter,
+  setEssencePainter, setEssenceShare,
   spawnEssenceBurst, updateEssenceBubbles
 } from './essence.js';
 import { isFarmlandWet, updateCrops } from './farming.js';
@@ -347,6 +348,21 @@ function leaveTheRoom() {
   leaveCoop();
 }
 
+/**
+ * Jumps this walker to where another player in the room stands. The ground
+ * there is made on arrival, and someone is standing on it, so the walker
+ * lands on solid footing. Answers { ok, line } for the co-op page.
+ */
+function teleportToPlayer(id) {
+  const spot = coopPlayerSpot(id);
+  if (spot.refused) return { ok: false, line: spot.refused };
+  if (player.dead) return { ok: false, line: 'You cannot teleport while you are dead.' };
+  if (activeScreen) closeScreen();
+  moveWalker(spot.x, spot.y + 0.05, spot.z);
+  playSound('teleport');
+  return { ok: true, line: 'Teleported to ' + spot.name + '. Resume to play.' };
+}
+
 function initSaveUi(hasSavedWorld) {
   setMenuActions({
     newWorld: eraseWorld,
@@ -356,6 +372,7 @@ function initSaveUi(hasSavedWorld) {
     joinCoop: joinSomeoneElse,
     leaveCoop: leaveTheRoom,
     coopLink: () => (roomCode() ? coopLinkFor(roomCode(), WORLD_SEED) : null),
+    goToPlayer: teleportToPlayer,
     switchWorld: goToWorld,
     createWorld: makeWorld,
     downloadWorld,
@@ -481,6 +498,8 @@ setEssencePainter(() => {
 /* The playtest log keeps the books on the essence bubbles and hears when a
    debug tool bends the run. Neither changes what the player sees. */
 setEssenceLedger({ claimed: notePacingEssence, faded: notePacingEssenceFaded });
+/* In co-op the purse is the room's: every move it makes goes to co-op. */
+setEssenceShare(shareEssence);
 setDebugWitness(markPacingAssisted);
 
 /* The beacon layer speaks through the page too: the mission page in the menu,
@@ -492,6 +511,10 @@ setDebugWitness(markPacingAssisted);
 let finaleSongWaiting = false;
 setBeaconPainter(paintMenuMission);
 setBeaconLitListener(announceBeacon);
+/* A guest's essence is the room's, but the mission is the host's to move. */
+setBeaconGate(() => (isCoopGuest()
+  ? 'Only the host can light a beacon. Your essence is in the shared pool for them.'
+  : null));
 setTransmissionDeliverer((lines) => {
   finaleSongWaiting = nextBeacon() === null;
   showTransmission(lines);
@@ -738,7 +761,6 @@ const loadedSave = hostWorld
     ...(ownCoopRecord ? {
       player: ownCoopRecord.player,
       slot: ownCoopRecord.slot,
-      essence: ownCoopRecord.essence,
       inventory: ownCoopRecord.inventory,
       armour: ownCoopRecord.armour,
       spawn: ownCoopRecord.spawn || hostWorld.spawn
@@ -807,6 +829,8 @@ if (loadedSave && restoreSavedPlayer(loadedSave)) {
   spawnPlayer(spawnColumn);
 }
 if (hostWorld && Number.isFinite(hostWorld.time)) setDayTime(hostWorld.time);
+// The room has one purse, the host's, whatever this guest carried before.
+if (hostWorld) restoreSavedEssence(hostWorld);
 world.updateStreaming(player.pos.x, player.pos.z);
 selectHotbarSlot(loadedSave ? clamp(Math.trunc(Number(loadedSave.slot) || 0), 0, HOTBAR_SIZE - 1) : 0);
 renderHotbar();

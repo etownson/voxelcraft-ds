@@ -86,7 +86,10 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * writes SAVE_KEY: its own walk, pack, purse and spawn go under a key of their
  * own, `voxelcraft:coop:<room code>`, in the same record shape minus the world
  * (no `edits`, no `entities`), because the world is the host's to keep. That
- * record is read only by a guest rejoining the same room.
+ * record is read only by a guest rejoining the same room. The room shares one
+ * essence purse, the host's: the guest's record still writes `essence`, but a
+ * guest arriving takes the host's total instead, so the field is never read
+ * back.
  *
  * Worlds add no field either. The first world a browser had, `default`, keeps
  * its record under SAVE_KEY exactly as before; every other world keeps the
@@ -262,6 +265,8 @@ export function serializeSharedWorld() {
     time: dayTime,
     sp0: spawnPoint(),
     beacons: beaconsActivatedCount(),
+    // The room's one purse, which the host keeps.
+    essence: essenceCount(),
     spawn: { x: saveSpawn.x, z: saveSpawn.z },
     host: { x: player.pos.x, y: player.pos.y, z: player.pos.z },
     entities: serializeBlockEntities(),

@@ -1203,10 +1203,12 @@ Up to four players share one world, peer to peer, with no server of the game's o
   host's turns out different the page reloads once with the host's seed in the link.
   The boot waits for the host's world
   (`serializeSharedWorld`: the block diff, block entities, SP0, the beacon count,
-  the clock, the respawn and where the host stands) before it builds any ground, and
-  a first visit arrives a step beside the host. A guest never writes `SAVE_KEY`: its
-  own body, pack, armour, purse and respawn go under `voxelcraft:coop:<code>` in the
-  save's own shape without the world, and come back when it rejoins that room. A
+  the shared essence, the clock, the respawn and where the host stands) before it
+  builds any ground, and a first visit arrives a step beside the host. A guest never
+  writes `SAVE_KEY`: its own body, pack, armour and respawn go under
+  `voxelcraft:coop:<code>` in the save's own shape without the world, and come back
+  when it rejoins that room. The essence that record also writes is never read back,
+  because the room's purse is the host's. A
   join that fails reloads into the guest's own world and says why. Reset world is
   refused to a guest, and leaving the room goes home to the guest's own world
 - **Blocks.** Every `setBlock` and `setBlocksBatch` made in one browser is sent to the
@@ -1224,15 +1226,32 @@ Up to four players share one world, peer to peer, with no server of the game's o
   sent to that guest, with the shove, to feel. Mobs exist only where the host's
   chunks are loaded, so a guest who wanders far from the host walks an empty world
 - **Loot** exists in one browser only: a broken block drops into the breaker's world,
-  and a mob a guest killed sends its loot and essence to that guest. Nothing can be
-  picked up twice
+  and a mob a guest killed sends its loot and essence bubbles to that guest. Nothing
+  can be picked up twice
+- **Essence is shared.** The room has one purse, and the host keeps it: it is the
+  host's save's `essence`. Whatever anyone collects goes into it and whatever anyone
+  spends comes out of it. A guest's change happens at once in their own browser and
+  is sent to the host as an amount (`purse+`); every time the host's total moves it
+  goes out to everyone (`purse`), and a guest takes it as theirs, so a guest's own
+  essence from before the visit is set aside while they play here. Every player can
+  enchant or mend at any enchanting table at its usual price, paid from the shared
+  purse. Two spends in the same instant can both pass; the host's total never goes
+  below zero
 - **Containers.** Whoever has a chest or furnace open sends its contents whenever they
   change, and everyone else takes them; a container broken under an open screen
   closes it. Every browser near a furnace keeps it smelting
-- **The mission and the clock.** A beacon lit anywhere is lit everywhere
-  (`acceptRemoteBeacon`), transmission and all, without spending anyone else's
-  essence. The host's clock is everyone's, and a night slept through by anyone ends
-  for all. Crops grow on the host
+- **The mission and the clock.** Only the host lights beacons: a guest's right-click
+  on the next monument says so and spends nothing (`setBeaconGate`), so the shared
+  purse is the beacon fund the whole room fills. A beacon the host lights is lit in
+  every browser (`acceptRemoteBeacon`, taken from the host alone), and every player
+  gets the transmission, the beam and the journal's new recipes. The host's clock is
+  everyone's, and a night slept through by anyone ends for all. Crops grow on the host
+- **Teleporting.** The Co-op page lists every player in the room with a Go to button
+  beside everyone else; it moves this walker to where that player stands, once they
+  have been heard from and while they are alive. Each body is its own browser's, so
+  a jump sends nothing; the others see the avatar snap, as any pose too far from the
+  last does. It is a game verb, not a debug one, so the playtest log does not mark
+  the run assisted
 - **The menu pauses the room.** Opening the menu (the start form or the pause panel)
   stops the world for everyone, so the players can stop and talk tactics: every
   browser freezes its mobs, arrows, clock, crops, water and furnaces exactly as a
@@ -1324,7 +1343,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   left holds Start (Resume once the world has been entered), Worlds, Journal, Waypoints,
   Co-op, Settings and Controls, and the page for whichever has the highlight fills the
   right. The Co-op page takes a name, hosts this world or joins a room by code, and
-  once in a room shows the code, a copy-link button, the players and a status line. Start sits at the top of the rail and never moves; only the page scrolls.
+  once in a room shows the code, a copy-link button, the players (each other player
+  with a Go to button that teleports to them) and a status line. Start sits at the top of the rail and never moves; only the page scrolls.
   The Start page is the mission: two lines of what the walker was sent for, then one
   line a beacon (lit, the next one with its price and the essence carried, or not
   found yet; never coordinates), and the save line. Waypoints lists what the HUD

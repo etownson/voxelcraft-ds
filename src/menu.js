@@ -117,6 +117,8 @@ const menuActions = {
   leaveCoop: () => {},
   /** The link a friend opens to join this room, or null outside one. */
   coopLink: () => null,
+  /** Jump to another player in the room by peer id; answers { ok, line } for the page. */
+  goToPlayer: () => null,
   /** Save this world and boot world `id`. */
   switchWorld: () => {},
   /** Make a world from a name and a typed seed and go there; answers an error line or null. */
@@ -355,7 +357,7 @@ function paintCoopName() {
 
 /**
  * Paints the co-op page: `mode` is 'off', 'connecting', 'host' or 'guest',
- * `players` is a list of { name, role, self }, and `status` is one line of
+ * `players` is a list of { id, name, role, self }, and `status` is one line of
  * what is going on, an error when `error` says so.
  */
 export function paintMenuCoop(view) {
@@ -369,13 +371,15 @@ export function paintMenuCoop(view) {
   coopRoomEl.textContent = coopView.code ? 'Room ' + coopView.code : 'Room ------';
   coopCopyButton.classList.toggle('hidden', !coopView.code);
   coopLeaveButton.textContent = coopView.mode === 'guest' ? 'Leave and go home' : 'Leave';
-  const rows = coopView.players.map((p) => {
-    const li = document.createElement('li');
-    li.className = p.self ? 'next' : 'lit';
-    li.textContent = p.name + (p.role === 'host' ? ' \u00b7 host' : '') + (p.self ? ' \u00b7 you' : '');
-    return li;
-  });
+  // A repaint replaces the rows, so a focused Go to button is found again by its player.
+  const heldGoTo = coopPlayersEl.contains(nav.current) && nav.current.dataset
+    ? nav.current.dataset.goto : null;
+  const rows = coopView.players.map(coopPlayerRow);
   coopPlayersEl.replaceChildren(...rows);
+  if (heldGoTo) {
+    const again = coopPlayersEl.querySelector('[data-goto="' + heldGoTo + '"]');
+    if (again) nav.focus(again);
+  }
   coopStatusEl.textContent = coopView.status || '';
   coopStatusEl.classList.toggle('error', !!coopView.error);
   // Somebody joined or left: the Waypoints page lists who can be followed.
@@ -385,6 +389,31 @@ export function paintMenuCoop(view) {
   }
   if (leavingOff) nav.focus(coopCopyButton.classList.contains('hidden') ? coopLeaveButton : coopCopyButton);
   if (leavingOn) nav.focus(coopHostButton);
+}
+
+/** One player's row: their name and role, and for anyone else a way to them. */
+function coopPlayerRow(p) {
+  const li = document.createElement('li');
+  li.className = 'coop-player ' + (p.self ? 'next' : 'lit');
+  const name = document.createElement('span');
+  name.textContent = p.name + (p.role === 'host' ? ' \u00b7 host' : '') + (p.self ? ' \u00b7 you' : '');
+  li.append(name);
+  if (!p.self && p.id) {
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'menu-button';
+    go.dataset.nav = '';
+    go.dataset.goto = p.id;
+    go.textContent = 'Go to';
+    go.setAttribute('aria-label', 'Teleport to ' + p.name);
+    go.addEventListener('click', () => {
+      if (!freshPick(go)) return;
+      const went = menuActions.goToPlayer(p.id);
+      if (went) paintMenuCoop({ status: went.line, error: !went.ok });
+    });
+    li.append(go);
+  }
+  return li;
 }
 
 function chosenName() {

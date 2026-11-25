@@ -16,7 +16,7 @@
  */
 
 /** Bumped whenever a message changes shape, so mismatched builds refuse each other. */
-export const NET_PROTOCOL = 1;
+export const NET_PROTOCOL = 2;
 
 /** Scopes the relays' topics to this game, so another app's room "ABC123" is not ours. */
 const APP_ID = 'voxelverse-coop';

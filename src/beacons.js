@@ -135,6 +135,13 @@ export function setTransmissionDeliverer(deliver) { deliverTransmission = delive
 let beaconLit = () => {};
 export function setBeaconLitListener(listener) { beaconLit = listener; }
 
+/* Who may light a monument in this browser. Co-op says a guest may not: the
+   mission is the host's world's, so the host lights each beacon and every
+   player hears the transmission. The gate answers null to let the walker try,
+   or the line to say instead. Without one, anyone may. */
+let beaconRefusal = () => null;
+export function setBeaconGate(gate) { beaconRefusal = gate; }
+
 /** Whether a column can hold a monument: dry, flat, treeless and cave-tight. */
 function monumentGround(x, z) {
   const column = sampleColumn(x, z);
@@ -434,6 +441,11 @@ export function tryLightBeacon(x, y, z) {
     say('Dark and quiet. The transmission wants a different beacon.');
     return true;
   }
+  const refusal = beaconRefusal(index);
+  if (refusal) {
+    say(refusal);
+    return true;
+  }
 
   const carried = essenceCount();
   if (carried < site.cost) {
@@ -464,7 +476,7 @@ export function tryLightBeacon(x, y, z) {
 }
 
 /**
- * Another player lit beacon `index`. The machine's block arrives with the
+ * The host lit beacon `index`. The machine's block arrives with the
  * shared edits; this moves the mission along here as if it had been lit in
  * front of this walker, words and all, without spending anyone's essence.
  */

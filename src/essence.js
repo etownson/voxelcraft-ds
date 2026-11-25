@@ -16,6 +16,11 @@
  * hands over at bootstrap, and the debug shelf grants it the way it grants
  * items. What it is spent on is the beacon layer's story: a monument takes
  * its price out of this purse, through the one door below.
+ *
+ * In co-op the purse is the room's, not the walker's. Every move it makes here
+ * is told to whoever registered with `setEssenceShare`: the co-op layer, which
+ * passes a guest's gains and spends to the host and the host's total to
+ * everyone. Outside a room nobody is listening and the purse is the walker's.
  */
 
 import * as THREE from 'three';
@@ -69,6 +74,12 @@ export function setEssencePainter(paint) { paintEssence = paint; }
 const essenceLedger = { claimed: () => {}, faded: () => {} };
 export function setEssenceLedger(books) { Object.assign(essenceLedger, books); }
 
+/* Who else keeps this purse: `moved(delta)` after every change, with the
+   amount gained (positive) or spent (negative), or null when the total was set
+   outright. Without a listener the purse is nobody's but this browser's. */
+let essenceMoved = () => {};
+export function setEssenceShare(moved) { essenceMoved = moved; }
+
 /** What the walker carries right now. */
 export function essenceCount() { return essenceTotal; }
 
@@ -79,6 +90,7 @@ export function grantEssence(amount) {
   essenceTotal += added;
   markWorldDirty();
   paintEssence();
+  essenceMoved(added);
   return essenceTotal;
 }
 
@@ -86,6 +98,7 @@ export function grantEssence(amount) {
 export function setEssence(value) {
   essenceTotal = Math.max(0, Math.trunc(Number(value) || 0));
   paintEssence();
+  essenceMoved(null);
   return essenceTotal;
 }
 
@@ -101,6 +114,7 @@ export function spendEssence(amount) {
   essenceTotal -= wanted;
   markWorldDirty();
   paintEssence();
+  essenceMoved(-wanted);
   return true;
 }
 
