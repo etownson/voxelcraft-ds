@@ -870,6 +870,29 @@ body.screen-open #crosshair, body.screen-open #bottom-hud { opacity: 0; }
   background: #000; opacity: 0;
 }
 
+/* The rest of the first-spawn scene, all painted a step each frame by
+   src/intro.js. The haze sits just under the black and blurs, drains and
+   overexposes whatever is behind it — the world and the HUD both — while the
+   walker's eyes adjust. The flash is the beam letting go, over the black. The
+   letterbox bars sit on top of both and draw back as the scene ends; --bars
+   runs from 1 (up) to 0 (gone). All of it stays under the start menu. */
+#arrival-haze {
+  position: fixed; inset: 0; z-index: 11; pointer-events: none;
+}
+#arrival-flash {
+  position: fixed; inset: 0; z-index: 13; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 50% 55%, #ffffff 0%, #e4fbff 35%, #8fe0ff 100%);
+}
+#arrival-bars {
+  --bars: 0;
+  position: fixed; inset: 0; z-index: 14; pointer-events: none;
+}
+#arrival-bars::before, #arrival-bars::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 12vh; background: #000;
+}
+#arrival-bars::before { top: 0; transform: translateY(calc((var(--bars) - 1) * 100%)); }
+#arrival-bars::after { bottom: 0; transform: translateY(calc((1 - var(--bars)) * 100%)); }
+
 #death-screen {
   position: fixed; inset: 0; z-index: 35;
   display: flex; align-items: center; justify-content: center;

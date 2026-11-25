@@ -101,6 +101,11 @@ const healthBarEl = document.getElementById('health');
 const damageFlashEl = document.getElementById('damage-flash');
 export const sleepFadeEl = document.getElementById('sleep-fade');
 export const arrivalFadeEl = document.getElementById('arrival-fade');
+export const arrivalFlashEl = document.getElementById('arrival-flash');
+export const arrivalHazeEl = document.getElementById('arrival-haze');
+export const arrivalBarsEl = document.getElementById('arrival-bars');
+/** The world's canvas holder, which the first-spawn scene jolts on landing. */
+export const viewportEl = document.getElementById('viewport');
 export const deathScreenEl = document.getElementById('death-screen');
 export const deathCauseEl = document.getElementById('death-cause');
 const respawnButton = document.getElementById('respawn-button');

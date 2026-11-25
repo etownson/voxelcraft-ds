@@ -69,7 +69,7 @@ four takes about an hour to an hour and a half. The playtest log and the pace es
 ### Arrival
 
 You spawn into a new world. The first spawn is a scene told with graphics and sound to
-mark the importance of the event (see Audio for the fade and the teleport heard).
+mark the importance of the event (see Audio for the scene and the teleport heard).
 
 A chat bubble appears that is a transmission from a distant place. All transmissions are
 understandable but a bit spotty in places. The following comes through:
@@ -1382,12 +1382,17 @@ world back when it ends. Only one mission song is on the bus at a time — the f
 takes the slot off anything still playing — and a world loaded with all five already
 lit hears nothing, because the song belongs to the moment, not to the state.
 
-The arrival has nothing on screen but a fade lifting off black, so the teleport is told
-by ear alone: three synthesised gestures hung across the fade as shares of it — a
-carrier climbing out of the transmitter's range, three detuned pulses of beam held
-mid-air, and a carrier falling back down its own way into a held fifth with one bright
-tick on top. Each is asked for again the frame after it fails, because the audio clock
-only wakes on the click that lifts the menu.
+The arrival is a six-second scene that never moves the walker: it is all paint over the
+world, letterboxed top and bottom. The teleport plays as three synthesised gestures, each
+with its own picture. First a carrier climbs out of the transmitter's range in the black.
+At 1.3 s come three detuned pulses of beam held mid-air, each throwing a brighter cyan
+glimmer of the world through the black. At 2.5 s a carrier falls back down its own way
+into a held fifth with one bright tick on top. That is the flash: the black is gone, a
+white-cyan burst burns off over a second, and the screen jolts (not under
+reduced-motion). The world shows overexposed, blurred and drained of colour, the walker
+disoriented, and comes into focus over three seconds while the bars draw back. Each sound
+is asked for again the frame after it fails, because the audio clock only wakes on the
+click that lifts the menu.
 
 Animal and hostile calls are quiet on purpose: each passive idles 15–35 s with a shared
 4–8 s gap at 0.22 gain; hostiles roll 11–24 s with a shared 6–11 s gap; pain is scaled
@@ -1431,7 +1436,7 @@ repository and the page:
     src/farming.js      farmland and crops
     src/aim.js          the crosshair's block ray and crack
     src/interaction.js  mining, placing, doors, beds, buckets, hoes, seeds
-    src/intro.js        the first-spawn scene: a slow fade from black, the teleport heard
+    src/intro.js        the first-spawn scene: black, beam glimmers, flash, focus, bars
     src/combat.js       the crosshair's mob ray, swings and shearing
     src/mob.js          animals, hostiles, spawning, explosions
     src/fx.js           particles, embers, ambient sound
