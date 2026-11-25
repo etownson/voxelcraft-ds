@@ -16,7 +16,8 @@
  * Focus is the real DOM focus, so Tab and Shift-Tab and a screen reader keep
  * working, and the highlight is a class the panel paints, so a pad user sees it
  * even when the browser decides the focus ring is not for them. Hovering a
- * control focuses it, so the mouse and the highlight can never disagree.
+ * control focuses it, so the mouse and the highlight can never disagree; the
+ * owner is told it was a hover, so a hover never opens anything a press would.
  *
  * A slider keeps its sideways keys: left and right step its value, up and down
  * leave it. Everything else on a slider is the same as anywhere.
@@ -141,7 +142,8 @@ const STICK_SCROLL_SPEED = 900;
  * A walker for everything marked `data-nav` under `root`.
  *
  * Hooks, all optional:
- * - `onFocus(el)` — the highlight landed on `el`.
+ * - `onFocus(el, { hover })` — the highlight landed on `el`; `hover` is true
+ *   when the mouse only passed over it.
  * - `onEdge(dx, dy, el)` — a move found nothing in `el`'s zone.
  * - `onBack(el)` — Esc, Backspace or B. Returns true if it was spent.
  * - `onTab(step)` — Q/E or LB/RB: the previous or next tab.
@@ -149,6 +151,8 @@ const STICK_SCROLL_SPEED = 900;
  */
 export function createNav(root, hooks = {}) {
   let current = null;
+  // True while a hover is moving the highlight, so adopt can tell the owner.
+  let hovering = false;
 
   function all(scope = root) {
     return Array.from(scope.querySelectorAll('[data-nav]')).filter(reachable);
@@ -186,7 +190,7 @@ export function createNav(root, hooks = {}) {
     // What the highlight lands on hears about it even when the window has no
     // focus to give, so a pane that follows the highlight never falls behind.
     if (el) el.dispatchEvent(new CustomEvent('navfocus', { bubbles: true }));
-    if (hooks.onFocus) hooks.onFocus(el);
+    if (hooks.onFocus) hooks.onFocus(el, { hover: hovering });
   }
 
   /** The first reachable thing in `scope`, or under the root. */
@@ -247,7 +251,10 @@ export function createNav(root, hooks = {}) {
     if (!event.movementX && !event.movementY) return;
     setDevice('mouse');
     const el = event.target && event.target.closest && event.target.closest('[data-nav]');
-    if (el && root.contains(el) && el !== current && reachable(el)) focus(el, false);
+    if (el && root.contains(el) && el !== current && reachable(el)) {
+      hovering = true;
+      try { focus(el, false); } finally { hovering = false; }
+    }
   });
 
   /* A button pressed with Space clicks on the key's release, which would be a

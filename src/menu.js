@@ -654,9 +654,10 @@ function closeConfirm() {
 /* ---------- The walker ---------- */
 
 const nav = createNav(card, {
-  onFocus(el) {
+  onFocus(el, { hover } = {}) {
     if (zoneOf(el) === 'rail') {
-      showPage(el.dataset.page);
+      // Passing the mouse over a tab only lights it; a click opens the page.
+      if (!hover) showPage(el.dataset.page);
     } else {
       lastFocus[shownPage] = el;
       paintHints();

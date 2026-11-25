@@ -1266,7 +1266,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   walk the rail's pages elsewhere. Left and right step a highlighted slider; up and
   down leave it. In a text field every key types except up, down and Esc, which
   leave it, and Enter, which saves. The right stick scrolls the page. Hovering a control highlights it,
-  so the mouse and the highlight never disagree. A hint line along the bottom is
+  so the mouse and the highlight never disagree, but a hover only lights a rail tab:
+  its page opens on a click, so sweeping the mouse across the rail never flips pages. A hint line along the bottom is
   written for the hand that last moved
 - Start is the only way in: the button, Enter or A on it, or the pad's Start from
   anywhere in the menu. A click on the dark around the card does nothing (it used to
