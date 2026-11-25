@@ -17,11 +17,12 @@ export const BLOCKS = [
     id: B.GRASS, key: 'grass', name: 'Grass Block',
     tiles: { top: 'grass_top', bottom: 'dirt', side: 'grass_side' },
     solid: true, opaque: true, hardness: 0.6, tool: 'shovel',
-    // A quarter of grass blocks dug up by hand hide a couple of seeds, which is
-    // how a player with no farm at all gets the first crop planted.
+    // One grass block in ten hides a seed, which is how a player with no farm
+    // at all gets the first crop planted. It is kept rare on purpose: a shovel
+    // strips grass fast, and a richer roll filled the pack with seeds.
     drops: [
       { item: 'dirt', min: 1, max: 1 },
-      { item: 'wheat_seeds', min: 1, max: 2, chance: 0.25 }
+      { item: 'wheat_seeds', min: 1, max: 1, chance: 0.1 }
     ],
     placeable: true
   },
@@ -192,7 +193,13 @@ for (let stage = 0; stage < 8; stage++) {
     solid: false, opaque: false, cutout: true, hardness: 0,
     crop: stage,
     drops: ripe
-      ? [{ item: 'wheat', min: 1, max: 1 }, { item: 'wheat_seeds', min: 1, max: 2 }]
+      // A ripe crop gives back its own seed and, one time in four, a second:
+      // a field grows slowly from what it yields rather than flooding the pack.
+      ? [
+          { item: 'wheat', min: 1, max: 1 },
+          { item: 'wheat_seeds', min: 1, max: 1 },
+          { item: 'wheat_seeds', min: 1, max: 1, chance: 0.25 }
+        ]
       : [{ item: 'wheat_seeds', min: 1, max: 1 }],
     placeable: false
   });
