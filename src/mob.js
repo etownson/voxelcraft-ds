@@ -209,7 +209,7 @@ const HOSTILE_SOUND_GAP_MIN = 6;
 const HOSTILE_SOUND_GAP_MAX = 11;
 let hostileSoundCooldown = 0;
 
-const MOB_DEFS = {
+export const MOB_DEFS = {
   cow: {
     hostile: false, health: 10, speed: 1.15, width: 0.82, height: 1.42,
     drops: [{ id: 'raw_beef', min: 1, max: 2 }, { id: 'leather', min: 0, max: 2 }]
@@ -1578,12 +1578,27 @@ export function trySpawnHostile() {
  * once beacon 3 is. Each newcomer takes its share out of the zombies'.
  */
 function pickHostileType() {
-  const lit = beaconsActivatedCount();
   const roll = Math.random();
-  if (roll < 0.16) return 'creeper';
-  if (lit >= 2 && roll < 0.44) return 'spider';
-  if (lit >= 3 && roll < 0.64) return 'skeleton';
+  for (const [type, , below] of hostileMix(beaconsActivatedCount())) {
+    if (roll < below) return type;
+  }
   return 'zombie';
+}
+
+/**
+ * The night's mix with `lit` beacons running, as [type, share, below] rows:
+ * creepers a steady 16%, spiders 28% from beacon 2, skeletons 20% from beacon
+ * 3, and zombies whatever is left. `below` is where the row's slice of the roll
+ * ends, written out rather than summed so a float never moves a boundary. The
+ * pace estimate reads the shares.
+ */
+export function hostileMix(lit) {
+  const mix = [['creeper', 0.16, 0.16]];
+  if (lit >= 2) mix.push(['spider', 0.28, 0.44]);
+  if (lit >= 3) mix.push(['skeleton', 0.2, 0.64]);
+  const taken = mix[mix.length - 1][2];
+  mix.push(['zombie', Number((1 - taken).toFixed(2)), 1]);
+  return mix;
 }
 
 /**

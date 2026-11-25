@@ -66,9 +66,10 @@ import {
   recipeReceived
 } from './crafting.js';
 import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } from './cursor.js';
+import { setDebugWitness } from './debug.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
 import {
-  essenceCount, essenceEntities, grantEssence as addEssence, setEssencePainter,
+  essenceCount, essenceEntities, grantEssence as addEssence, setEssenceLedger, setEssencePainter,
   spawnEssenceBurst, updateEssenceBubbles
 } from './essence.js';
 import { isFarmlandWet, updateCrops } from './farming.js';
@@ -119,6 +120,11 @@ import {
 } from './mob.js';
 import { menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
 import { makeRoomCode, normalizeRoomCode, roomCode } from './net.js';
+import {
+  PACING_BASE, flushPacing, forgetPacing, loadPacing, markPacingAssisted, notePacingDeath,
+  notePacingEssence, notePacingEssenceFaded, notePacingHostileDeath, notePacingSleep, pacingReport,
+  resetPacing, updatePacing
+} from './pacing.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
@@ -179,6 +185,7 @@ function eraseWorld() {
   // Stop the unload-triggered saves from resurrecting the wiped world.
   stopAutosave();
   removeActiveSave();
+  forgetPacing();
   // The saved spots belong to the world that is going.
   forgetWaypoints();
   window.location.reload();
@@ -357,10 +364,14 @@ function initSaveUi(hasSavedWorld) {
   }
 }
 
-window.addEventListener('pagehide', () => saveWorld());
+window.addEventListener('pagehide', () => {
+  saveWorld();
+  flushPacing();
+});
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     saveWorld();
+    flushPacing();
     // A background tab should not keep wind and music running.
     if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
   } else {
@@ -406,7 +417,10 @@ setMobWorld({
   spill: (x, y, z) => spillBlockEntityContents(x, y, z),
   shoot: (mob, speed, damage, walker) =>
     mobShootsWalker(mob, speed, damage, undefined, walker || player),
-  killed: announceMobKilled,
+  killed: (mob) => {
+    if (mob.def.hostile) notePacingHostileDeath();
+    announceMobKilled(mob);
+  },
   exploded: announceExplosion
 });
 
@@ -459,6 +473,11 @@ setEssencePainter(() => {
   paintMenuMission();
 });
 
+/* The playtest log keeps the books on the essence bubbles and hears when a
+   debug tool bends the run. Neither changes what the player sees. */
+setEssenceLedger({ claimed: notePacingEssence, faded: notePacingEssenceFaded });
+setDebugWitness(markPacingAssisted);
+
 /* The beacon layer speaks through the page too: the mission page in the menu,
    and the panel the transmissions arrive in. The HUD arrow needs no word of
    it: it asks the waypoint layer every frame, and that reads the beacons live. The page also keeps
@@ -504,7 +523,10 @@ setInteractionView({
   showSleepFade: () => sleepFadeEl.classList.add('active'),
   hideSleepFade: () => sleepFadeEl.classList.remove('active'),
   paintReadout: updateDebug,
-  slept: announceSleep
+  slept: () => {
+    notePacingSleep();
+    announceSleep();
+  }
 });
 
 /* Co-op's view of this page: the walker's body and pack, the screen a chest
@@ -555,6 +577,7 @@ setDeathView({
     if (activeScreen) closeScreen();
   },
   show(cause) {
+    notePacingDeath();
     const messages = {
       fall: 'You fell too far.',
       zombie: 'A zombie got you.',
@@ -702,6 +725,10 @@ const loadedSave = hostWorld
     time: hostWorld.time
   }
   : readSavedWorld();
+/* The playtest log sits beside the save, never in it: a guest keeps theirs
+   beside their own record for the room, everyone else per world. */
+registerWorldKey(PACING_BASE);
+loadPacing(hostWorld ? coopGuestKey(coopJoinCode) + ':pacing' : worldKey(PACING_BASE));
 if (loadedSave) {
   applySavedEdits(world, loadedSave);
   applySavedBlockEntities(world, loadedSave);
@@ -907,6 +934,7 @@ let debugTourStop = 0;
  * blocks out there is no streaming behind them to fall back on.
  */
 function standAtDebugStop(index) {
+  markPacingAssisted('monument tour');
   const stops = debugTourStops();
   const wanted = clamp(Math.trunc(Number(index) || 0), 0, stops.length - 1);
   const stop = stops[wanted];
@@ -1014,6 +1042,7 @@ window.__voxelcraft = {
   },
   wipeSave() {
     removeActiveSave();
+    forgetPacing();
     // Same guard the "New world" button uses: pagehide also writes a save, so
     // without this the wiped world comes straight back on the next load.
     forgetSavedWorld();
@@ -1100,6 +1129,18 @@ window.__voxelcraft = {
   /** The mission: SP0, the five monuments, their prices, and how many run. */
   beacons() {
     return beaconReport();
+  },
+  /**
+   * The playtest log: real minutes played per beacon, nights, sleeps, deaths,
+   * hostile deaths and essence (kills, ore, faded), and whether a debug verb
+   * bent the run. `tools/pace-estimate.js` sets it beside the model.
+   */
+  pacing() {
+    return pacingReport();
+  },
+  /** Starts the playtest log over from this moment, for a clean timed run. */
+  resetPacing() {
+    return resetPacing();
   },
   /**
    * Debug fast-forward of the mission: put `count` monuments down as running
@@ -2438,6 +2479,25 @@ window.__voxelcraft = {
   }
 };
 
+/* The verbs that bend a run (handing out things, moving the walker or the
+   clock, putting mobs down or taking them away) mark the playtest log
+   assisted, under their own names. The verbs that only read leave it alone. */
+const PACING_ASSISTS = [
+  'give', 'grantEssence', 'advanceBeacons', 'teleport', 'setTime', 'setDay', 'advanceTime',
+  'setTimeScale', 'tick', 'simulate', 'heal', 'setHealth', 'setHunger', 'setSaturation',
+  'respawn', 'addMob', 'spawnHostile', 'spawnPassive', 'clearMobs', 'hurtMob',
+  'clearInventory', 'setFurnaceSlots', 'setChestSlots', 'setCraftingGrid', 'growCrops',
+  'setBlock'
+];
+for (const name of PACING_ASSISTS) {
+  const verb = window.__voxelcraft[name];
+  if (typeof verb !== 'function') continue;
+  window.__voxelcraft[name] = function (...args) {
+    markPacingAssisted(name);
+    return verb.apply(this, args);
+  };
+}
+
 renderer.info.autoReset = false;
 
 function renderGame() {
@@ -2545,6 +2605,11 @@ function animate(now) {
   updateCoop(dt);
   updateAudio(dt, player);
   updateSaveLoop(dt);
+  updatePacing(dt, {
+    playing: overlayEl.classList.contains('hidden') && !introActive(),
+    night: isNight(),
+    beacons: beaconsActivatedCount()
+  });
   skyDome.position.copy(camera.position);
   renderGame();
 

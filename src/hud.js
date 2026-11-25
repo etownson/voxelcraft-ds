@@ -60,7 +60,7 @@ import { mobs } from './mob.js';
 import { player } from './player.js';
 import { camera, renderer } from './render.js';
 import { applyDayNight, clockHours, formatClock, isNight, nudgeDayTime } from './sky.js';
-import { debugEnabled } from './debug.js';
+import { debugEnabled, noteDebugUse } from './debug.js';
 import { fpsShown, onSettingsChanged } from './settings.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { createNav } from './menu-nav.js';
@@ -373,6 +373,7 @@ export const GIVE_ITEMS = [...ITEMS.keys()];
 function giveFromShelf(index, button) {
   const itemId = GIVE_ITEMS[Number(index)];
   if (!itemId) return;
+  noteDebugUse('give shelf');
   const def = ITEMS.get(itemId);
   const wanted = button === 2 ? 1 : (def ? def.stack : 1);
   const leftover = addItemToInventory(itemId, wanted);
@@ -1182,6 +1183,7 @@ const DEBUG_ESSENCE_GRANT = 100;
  * out lives.
  */
 function grantDebugEssence() {
+  noteDebugUse('essence grant');
   const total = grantEssence(DEBUG_ESSENCE_GRANT);
   showToast('+' + DEBUG_ESSENCE_GRANT + ' Essence \u00b7 ' + total);
 }
@@ -1731,6 +1733,7 @@ window.addEventListener('keydown', (event) => {
   // about are a debug tool.
   if (debugEnabled && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
     const delta = event.code === 'BracketLeft' ? -0.02 : 0.02;
+    noteDebugUse('time nudge');
     nudgeDayTime(delta);
     applyDayNight();
     updateDebug();

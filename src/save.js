@@ -86,6 +86,10 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * and reads exactly as it did. A world downloaded as a file is this same
  * record, wrapped with the world's name.
  *
+ * The playtest log adds no field either. `src/pacing.js` keeps its own record
+ * beside this one, under `voxelcraft:pacing` per world, so the save's bytes
+ * (which the snapshot guard compares) never carry it.
+ *
  * From schema 7 on, a save is never thrown away. SAVE_KEY is frozen: it keeps
  * the name it had at schema 7 for good, and the record's own `v` says which
  * schema wrote it. A change that only adds fields needs nothing. Any other

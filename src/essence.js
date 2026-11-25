@@ -62,6 +62,13 @@ let paintEssence = () => {};
 /** The page says where the total is shown. */
 export function setEssencePainter(paint) { paintEssence = paint; }
 
+/* Who keeps the books on the bubbles: `claimed(amount, source)` when one is run
+   over, with source 'kill' or 'mined', and `faded(amount)` when one is lost.
+   The playtest log is the only listener; without one the bubbles go
+   unrecorded and behave exactly the same. */
+const essenceLedger = { claimed: () => {}, faded: () => {} };
+export function setEssenceLedger(books) { Object.assign(essenceLedger, books); }
+
 /** What the walker carries right now. */
 export function essenceCount() { return essenceTotal; }
 
@@ -169,6 +176,8 @@ function spawnEssenceBubble(amount, x, y, z, scatter = true) {
       scatter ? (Math.random() - 0.5) * 1.6 : 0
     ),
     age: 0,
+    // A scattered burst is a kill's; one dropped in place is a broken ore's.
+    source: scatter ? 'kill' : 'mined',
     settled: false,
     phase: Math.random() * Math.PI * 2,
     mesh: sprite
@@ -233,6 +242,7 @@ export function updateEssenceBubbles(dt) {
     entity.age += dt;
 
     if (entity.age >= BUBBLE_LIFETIME) {
+      essenceLedger.faded(entity.amount);
       removeEssenceEntity(i);
       continue;
     }
@@ -243,6 +253,7 @@ export function updateEssenceBubbles(dt) {
 
     if (arrived && !player.dead && bodyOverlaps(entity)) {
       grantEssence(entity.amount);
+      essenceLedger.claimed(entity.amount, entity.source);
       playEssenceSound();
       spawnBurstParticles(entity.pos.x, entity.pos.y + 0.3, entity.pos.z, 0x78d8eb, 8, 3.2);
       removeEssenceEntity(i);

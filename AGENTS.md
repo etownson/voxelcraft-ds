@@ -155,6 +155,25 @@ When a change is *supposed* to change `strict` output (a new item, a world
 change), confirm the diff is only what you meant, rebaseline in its own
 deliberate commit, and say so in the commit message.
 
+## Pacing
+
+The mission is meant to take four to six hours: beacon 1 at once, then about an
+hour to an hour and a half for each of the other four. `src/pacing.js` logs
+real play per beacon in every world (`window.__voxelcraft.pacing()`) and marks
+a run assisted when a debug verb or key bent it. `tools/pace-estimate.js` works
+out what each beacon should take from the game's own numbers (prices, hostile
+mix, health and essence scaling, sword damage, night length) and sets the log
+beside it:
+
+```js
+fetch('tools/pace-estimate.js').then(r => r.text()).then(eval)
+```
+
+The model leaves out everything but the walk and the hunt, so the gap between
+its night-bound column and a measured row is what that beacon spent on mining,
+building and getting lost. Tune with the constants it reads, chiefly
+`BEACON_KILLS_TO_LIGHT`, and say in the design doc why.
+
 ## Running the game
 
 ```bash

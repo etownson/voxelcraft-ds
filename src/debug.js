@@ -16,3 +16,10 @@ export const debugEnabled = (() => {
     return false;
   }
 })();
+
+/* Whoever wants to know that a debug tool bent the run: the give shelf, the
+   essence grant and the time nudges say so here, by name. The playtest log is
+   the listener; with nobody registered the tools work the same. */
+let debugWitness = () => {};
+export function setDebugWitness(witness) { debugWitness = witness; }
+export function noteDebugUse(what) { debugWitness(what); }

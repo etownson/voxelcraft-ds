@@ -47,7 +47,7 @@ export function clearMobTarget() {
  */
 export function swingAtMob() {
   if (tryShearMob('swing')) {
-    player.attackCooldown = 0.38;
+    player.attackCooldown = ATTACK_COOLDOWN;
     return true;
   }
   if (!currentMobTarget) return false;
@@ -133,12 +133,17 @@ export function updateMobTarget() {
   return currentMobTarget;
 }
 
+/** What each tier of sword takes off a mob per blow. Any other tool does less. */
+export const SWORD_DAMAGE = Object.freeze({ wood: 4, stone: 6, iron: 8, diamond: 10 });
+/** Seconds between swings, whatever is in hand. */
+export const ATTACK_COOLDOWN = 0.38;
+
 function heldAttackDamage() {
   const stack = getSelectedStack();
   const item = stack ? ITEMS.get(stack.id) : null;
   if (!item || item.kind !== 'tool') return 1;
   if (item.tool === 'sword') {
-    return { wood: 4, stone: 6, iron: 8, diamond: 10 }[item.tier] || 3;
+    return SWORD_DAMAGE[item.tier] || 3;
   }
   return Math.max(2, Math.round((item.damage || 2) * 0.7));
 }
@@ -147,7 +152,7 @@ export function attackMob(mob) {
   if (!mob || mob.dead || player.dead) return false;
   if (player.attackCooldown > 0) return false;
 
-  player.attackCooldown = 0.38;
+  player.attackCooldown = ATTACK_COOLDOWN;
   triggerHeldSwing();
   const dx = mob.pos.x - player.pos.x;
   const dz = mob.pos.z - player.pos.z;
@@ -266,7 +271,7 @@ export function updateCombat(dt, held) {
   // 'held', so holding the button on a sheep already shorn costs nothing but a
   // swing rather than filling the screen with the same refusal.
   if (tryShearMob('held')) {
-    player.attackCooldown = 0.38;
+    player.attackCooldown = ATTACK_COOLDOWN;
     return;
   }
   if (currentMobTarget) attackMob(currentMobTarget);

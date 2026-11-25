@@ -61,6 +61,11 @@ into this world to relight the five beacons placed in it long ago, and the world
 crafting stays locked until they do. Each beacon lit sends a transmission with more of
 the story, a new set of recipes and the way to the next beacon.
 
+The mission is meant to be short, because this is a hobby game few people will play for
+long: four to six hours in all. Beacon 1 is lit almost at once, and each of the other
+four takes about an hour to an hour and a half. The playtest log and the pace estimate
+(see Debug surface) measure a world against that.
+
 ### Arrival
 
 You spawn into a new world. The first spawn is a scene told with graphics and sound to
@@ -1489,6 +1494,12 @@ the world this page is (id, name, seed, whether it is a visit) and lists every w
 the browser keeps; `seed` is that world's seed. `migrateSave(record)` walks a stored
 save record forward to the current schema, or answers null. `coop()`
 reports the co-op room: mode, code, this peer and the host, the peers, the avatars
-heard, how many mob pictures a guest is drawing, and the status line. The API is
+heard, how many mob pictures a guest is drawing, and the status line. `pacing()` is
+the playtest log (`src/pacing.js`): real minutes played for each beacon, measured
+from the one before it, with the nights begun and slept through, deaths, hostile
+deaths and essence from kills, from ore and lost to fading. It also says whether a
+debug verb, the give shelf, the essence grant, the time keys or the tour bent the
+run; `resetPacing()` starts it over. The log keeps its own record beside the save,
+never in it. The API is
 always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
 human-facing halves of the same door, and only those need the flag.
