@@ -25,7 +25,8 @@
  *
  * A world that was already under way when pacing first saw it starts its
  * record at the beacon count it found. The rows before that are unknown, and
- * the report says so instead of inventing them.
+ * the report says so instead of inventing them. A run a tester started from
+ * a stage preset says `preset` for those rows instead.
  */
 
 import { BEACON_COUNT } from './config.js';
@@ -65,7 +66,9 @@ function freshRecord() {
     counters: zeroCounters(),
     // One snapshot of `counters` per beacon lit since `fromBeacon`, in order.
     marks: [],
-    assisted: {}
+    assisted: {},
+    // The stage preset the run started from, if it did not start at the arrival.
+    preset: null
   };
 }
 
@@ -111,9 +114,14 @@ export function forgetPacing() {
   try { localStorage.removeItem(storageKey); } catch (unavailable) {}
 }
 
-/** Starts the record over, here and in storage: a clean run from this moment. */
-export function resetPacing() {
+/**
+ * Starts the record over, here and in storage: a clean run from this moment.
+ * `preset` names the stage a tester was put at, so the report can say the
+ * beacons before it were skipped rather than unknown.
+ */
+export function resetPacing(preset = null) {
   record = freshRecord();
+  record.preset = preset == null ? null : Math.trunc(Number(preset)) || 0;
   wasNight = null;
   changed = true;
   flushPacing();
@@ -222,7 +230,7 @@ export function pacingReport() {
   for (let beacon = 1; beacon <= BEACON_COUNT; beacon++) {
     const row = { beacon };
     if (beacon <= from) {
-      row.status = 'unknown';
+      row.status = record.preset != null ? 'preset' : 'unknown';
     } else {
       const endIndex = beacon - from - 1;
       const start = endIndex === 0 ? zeroCounters() : record.marks[endIndex - 1];
@@ -241,6 +249,7 @@ export function pacingReport() {
   return {
     startedAt: new Date(record.startedAt).toISOString(),
     fromBeacon: from,
+    preset: record.preset ?? null,
     beaconsLit: record.beacons,
     totalMinutes: minutes(record.counters.played),
     assisted: reasons.length ? { ...record.assisted } : false,

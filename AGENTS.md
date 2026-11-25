@@ -169,6 +169,11 @@ beside it:
 fetch('tools/pace-estimate.js').then(r => r.text()).then(eval)
 ```
 
+To time one beacon without playing the hours before it, a tester opens a new
+world with `?start=N` (or calls `startAtBeacon(N)`): beacon N lit, that
+stage's kit from `src/presets.js`, and a fresh log marked with the preset.
+Keep the kits to what the recipes lit so far could have made.
+
 The model leaves out everything but the walk and the hunt, so the gap between
 its night-bound column and a measured row is what that beacon spent on mining,
 building and getting lost. Tune with the constants it reads, chiefly

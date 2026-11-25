@@ -1500,6 +1500,13 @@ from the one before it, with the nights begun and slept through, deaths, hostile
 deaths and essence from kills, from ore and lost to fading. It also says whether a
 debug verb, the give shelf, the essence grant, the time keys or the tour bent the
 run; `resetPacing()` starts it over. The log keeps its own record beside the save,
-never in it. The API is
+never in it. `startAtBeacon(n)` is the stage preset for testers: the world becomes
+one where beacon n (1 to 5) has just been lit, with every beacon before it running,
+the kit a player would carry at that point (`src/presets.js`: wood tools at beacon
+2, stone and leather at 3, iron at 4, diamond at 5, with the stations, food, light
+and stone of a base), full bars, no essence, sunrise, and the respawn beside the
+monument. The log starts over there, marked with the preset. A tester reaches it
+without the console through `?start=n`, which applies only to a world with no save
+yet and then drops out of the address. The API is
 always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the
 human-facing halves of the same door, and only those need the flag.

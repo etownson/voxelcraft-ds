@@ -53,9 +53,9 @@ import {
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
 import { attackMob, clearMobTarget, mobTarget, updateCombat, updateMobTarget } from './combat.js';
 import {
-  B, CHUNK_SIZE, DAY_LENGTH_SECONDS, EXHAUSTION_THRESHOLD, EYE_HEIGHT, HUNGER_MAX,
-  HUNGER_REGEN_MIN, WATER_NEIGHBORS, WATER_TICK_SECONDS, WORLD_HEIGHT, WORLD_SEED, blockIndex,
-  clamp
+  B, CHUNK_SIZE, DAY_LENGTH_SECONDS, DAY_START, EXHAUSTION_THRESHOLD, EYE_HEIGHT, HUNGER_MAX,
+  HUNGER_REGEN_MIN, SATURATION_ON_RESPAWN, WATER_NEIGHBORS, WATER_TICK_SECONDS, WORLD_HEIGHT,
+  WORLD_SEED, blockIndex, clamp
 } from './config.js';
 import {
   BLOCK_ENTITY_NONE, FURNACE_FUEL, FURNACE_FUELS, FURNACE_INPUT, FURNACE_OUTPUT,
@@ -69,7 +69,8 @@ import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } f
 import { setDebugWitness } from './debug.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
 import {
-  essenceCount, essenceEntities, grantEssence as addEssence, setEssenceLedger, setEssencePainter,
+  essenceCount, essenceEntities, grantEssence as addEssence, setEssence, setEssenceLedger,
+  setEssencePainter,
   spawnEssenceBurst, updateEssenceBubbles
 } from './essence.js';
 import { isFarmlandWet, updateCrops } from './farming.js';
@@ -125,6 +126,7 @@ import {
   notePacingEssence, notePacingEssenceFaded, notePacingHostileDeath, notePacingSleep, pacingReport,
   resetPacing, updatePacing
 } from './pacing.js';
+import { PRESET_STAGES, stageKit } from './presets.js';
 import {
   aimPlayer, applyLook, player, setDamageFlash, setHealthPainter, setHungerPainter, view
 } from './player.js';
@@ -1141,6 +1143,48 @@ window.__voxelcraft = {
   /** Starts the playtest log over from this moment, for a clean timed run. */
   resetPacing() {
     return resetPacing();
+  },
+  /**
+   * The stage preset for testers: this world becomes one where beacon `stage`
+   * (1 to 5) has just been lit. The pack and the worn row are swapped for that
+   * stage's kit (src/presets.js), every beacon up to it runs, the walker stands
+   * at it at sunrise with full bars, no essence and their respawn beside it, and
+   * the playtest log starts over from there, marked with the preset. It rewrites
+   * the world it runs in, so a tester uses a new world or the `?start=N` link.
+   */
+  startAtBeacon(stage = 1) {
+    if (isCoopGuest()) return { refused: 'a guest cannot reset the host\u2019s world' };
+    const n = clamp(Math.trunc(Number(stage) || 0), 1, PRESET_STAGES);
+    const kit = stageKit(n);
+    if (activeScreen) closeScreen();
+    this.clearInventory();
+    for (const [id, count] of kit.pack) addItemToInventory(id, count);
+    for (const id of kit.armour) equipStack(freshStack(id));
+    this.advanceBeacons(n);
+    this.clearMobs();
+    standAtDebugStop(n);
+    spawnColumn.x = Math.floor(player.pos.x);
+    spawnColumn.z = Math.floor(player.pos.z);
+    setEssence(0);
+    player.health = player.maxHealth;
+    player.hunger = HUNGER_MAX;
+    player.saturation = SATURATION_ON_RESPAWN;
+    player.exhaustion = 0;
+    player.fireTime = 0;
+    setDayTime(DAY_START);
+    applyDayNight();
+    // The arrival's words send the walker to beacon 1; a preset is past that.
+    arrivalWaiting = false;
+    setArrivalHold(false);
+    selectHotbarSlot(0);
+    renderHealth();
+    renderHunger();
+    renderArmorBar();
+    renderHotbar();
+    paintMenuMission();
+    markWorldDirty();
+    resetPacing(n);
+    return { stage: n, beacons: beaconsActivatedCount(), feet: [player.pos.x, player.pos.y, player.pos.z] };
   },
   /**
    * Debug fast-forward of the mission: put `count` monuments down as running
@@ -2496,6 +2540,19 @@ for (const name of PACING_ASSISTS) {
     markPacingAssisted(name);
     return verb.apply(this, args);
   };
+}
+
+/* A tester's link: `?start=N` puts a brand-new world at beacon N. It never
+   touches a world that already has a save, and it leaves the address once it
+   has run, so "New world" afterwards is an ordinary new world. */
+const startStage = Number(new URLSearchParams(window.location.search).get('start'));
+if (startStage >= 1 && !loadedSave && !hostWorld) {
+  window.__voxelcraft.startAtBeacon(startStage);
+}
+if (new URLSearchParams(window.location.search).has('start')) {
+  const address = new URL(window.location.href);
+  address.searchParams.delete('start');
+  window.history.replaceState(null, '', address.pathname + address.search + address.hash);
 }
 
 renderer.info.autoReset = false;
