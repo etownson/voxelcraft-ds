@@ -22,14 +22,15 @@
 
 import { clearTarget, updateTarget } from './aim.js';
 import {
-  playChestCloseSound, playChestOpenSound, playKeyClickSound, playTransmissionHandshakeSound,
+  playChestCloseSound, playChestOpenSound, playEssenceSound, playKeyClickSound,
+  playTransmissionHandshakeSound,
   playUiClickSound, playUiCloseSound, playUiOpenSound,
   toggleAudioMuted, TRANSMISSION_HANDSHAKE_MS
 } from './audio.js';
 import {
   ARMOR_BAR_SHIELDS, ARMOR_GLYPHS, ARMOR_PIECES, CHEST_SLOTS, ITEMS,
-  armorDefenseScaled, isChestBlock, isFurnaceBlock, makeStack, mergeStackInto, packedSlotCount,
-  stackDurability, stacksMergeable
+  armorDefenseScaled, isChestBlock, isEnchantable, isEnchanterBlock, isFurnaceBlock, makeStack,
+  mergeStackInto, packedSlotCount, stackDurability, stacksMergeable
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { CHUNK_SIZE, HUNGER_MAX, clamp } from './config.js';
@@ -43,6 +44,7 @@ import {
   clearCursorStack, craftCurrent, cursorCarried, dropEmptyCursorStack, returnCursorStack,
   setCursorStack
 } from './cursor.js';
+import { enchantOffer, enchantSlot } from './enchanting.js';
 import { essenceCount, grantEssence } from './essence.js';
 import { respawnPlayer } from './health.js';
 import { ITEM_ICONS } from './icons.js';
@@ -437,6 +439,19 @@ function activeChest() {
   return world.blockEntityAt(at.x, at.y, at.z, 'chest');
 }
 
+/** Enchanting table state behind the open enchanting screen, creating one if need be. */
+function activeEnchanter() {
+  if (activeScreen !== 'enchanter' || !activeScreenAt) return null;
+  const at = activeScreenAt;
+  if (!isEnchanterBlock(world.getBlock(at.x, at.y, at.z))) return null;
+  return world.blockEntityAt(at.x, at.y, at.z, 'enchanter');
+}
+
+/** The screen kinds that stand at a block and show its block entity. */
+function screenAtBlock(kind) {
+  return kind === 'furnace' || kind === 'chest' || kind === 'enchanter';
+}
+
 /** Gauge elements of the open furnace, refreshed without a full re-render. */
 let furnaceGauges = null;
 
@@ -678,6 +693,63 @@ function buildFurnaceColumn() {
   return column;
 }
 
+/**
+ * The enchanting table's column: the one slot, and under it the button that
+ * enchants or mends what is in it, saying what that costs or why it cannot.
+ * The button is a slot-shaped target so the mouse and the pad both reach it
+ * the way they reach the crafting result.
+ */
+function buildEnchanterColumn() {
+  const state = activeEnchanter();
+  const offer = enchantOffer(state);
+
+  const column = document.createElement('div');
+  column.className = 'craft-column';
+
+  const label = document.createElement('div');
+  label.className = 'inv-section-label';
+  label.textContent = 'Enchanting';
+
+  const body = document.createElement('div');
+  body.className = 'enchant-body';
+  const slotEl = createScreenSlot('enchanter', 0, state.slots[0], { extraClass: 'enchant-slot' });
+  if (!state.slots[0]) slotEl.title = 'A sword, tool, bow or piece of armour';
+
+  const button = document.createElement('div');
+  button.className = 'slot inv-slot enchant-button';
+  button.dataset.container = 'enchant';
+  button.dataset.index = '0';
+  button.classList.toggle('disabled', !offer.ready);
+  button.textContent = offer.action === 'repair' ? 'Repair' : 'Enchant';
+  body.append(slotEl, button);
+
+  const status = document.createElement('div');
+  status.className = 'craft-output-name';
+  status.textContent = offer.reason ||
+    (offer.action === 'repair' ? 'Mend fully' : 'Enchant') + ' for ' + offer.cost + ' essence';
+
+  column.append(label, body, status);
+  return column;
+}
+
+/* Spends the essence and enchants or mends the table's item, then redraws. */
+function pressEnchantButton() {
+  const state = activeEnchanter();
+  if (!state) return;
+  const result = enchantSlot(state);
+  if (result.done) {
+    playEssenceSound();
+    const item = ITEMS.get(state.slots[0].id);
+    showToast((result.action === 'repair' ? 'Mended ' : '') + (item ? item.name : state.slots[0].id) +
+      ' \u00b7 \u2212' + result.cost + ' Essence');
+  } else {
+    playUiClickSound();
+    if (result.reason && state.slots[0]) showToast(result.reason);
+  }
+  renderScreen();
+  renderHotbar();
+}
+
 /* The journal is its own book now (journal.js): the screen only gives it the
    panel, a title that follows its page, and a walker so the pad, the keys and
    the mouse all move one highlight across its cards. */
@@ -736,7 +808,12 @@ export function renderScreen() {
 
   const isFurnace = activeScreen === 'furnace';
   const isChest = activeScreen === 'chest';
+  const isEnchanter = activeScreen === 'enchanter';
   furnaceGauges = null;
+  if (isEnchanter && !activeEnchanter()) {
+    closeScreen();
+    return;
+  }
   if (isFurnace && !activeFurnace()) {
     closeScreen();
     return;
@@ -753,7 +830,9 @@ export function renderScreen() {
     ? 'Furnace'
     : isChest
       ? 'Chest'
-      : (activeScreen === 'crafting' ? 'Crafting Table' : 'Inventory');
+      : isEnchanter
+        ? 'Enchanting Table'
+        : (activeScreen === 'crafting' ? 'Crafting Table' : 'Inventory');
   screenBody.innerHTML = '';
 
   const layout = document.createElement('div');
@@ -761,7 +840,7 @@ export function renderScreen() {
   layout.append(
     buildStorageColumn(isChest),
     buildArmorColumn(),
-    isFurnace ? buildFurnaceColumn() : buildCraftingColumn()
+    isFurnace ? buildFurnaceColumn() : isEnchanter ? buildEnchanterColumn() : buildCraftingColumn()
   );
   screenBody.append(layout);
   renderArmorBar();
@@ -824,6 +903,13 @@ function padSections() {
         container: 'furnace', start: FURNACE_OUTPUT,
         count: 1, cols: 1, column: 3
       }
+    ]);
+  }
+
+  if (activeScreen === 'enchanter') {
+    return storage.concat(armour).concat([
+      { container: 'enchanter', start: 0, count: 1, cols: 1, column: 2 },
+      { container: 'enchant', start: 0, count: 1, cols: 1, column: 3 }
     ]);
   }
 
@@ -986,7 +1072,9 @@ function padActivateSlot(mode) {
     return;
   }
 
-  if (section.container === 'result') {
+  if (section.container === 'enchant') {
+    if (mode === 'primary' || mode === 'quick') pressEnchantButton();
+  } else if (section.container === 'result') {
     // The result pad answers with the crafting chime, not a pick click: it is
     // a confirmation, and the two together would double every craft.
     if (mode === 'quick') craftCurrent(true);
@@ -1067,7 +1155,7 @@ let screenHadPointerLock = false;
 
 export function openScreen(kind, at = null) {
   if (kind !== 'inventory' && kind !== 'crafting' && kind !== 'furnace' &&
-      kind !== 'chest' && kind !== 'give' && kind !== 'journal') return;
+      kind !== 'chest' && kind !== 'enchanter' && kind !== 'give' && kind !== 'journal') return;
 
   // A furnace screen only makes sense at a real furnace, so anything pointing
   // at air or a block that has since been broken is turned away here. The
@@ -1078,12 +1166,15 @@ export function openScreen(kind, at = null) {
   if (kind === 'chest') {
     if (!at || !isChestBlock(world.getBlock(at.x, at.y, at.z))) return;
   }
+  if (kind === 'enchanter') {
+    if (!at || !isEnchanterBlock(world.getBlock(at.x, at.y, at.z))) return;
+  }
 
   screenHadPointerLock = document.pointerLockElement === canvas;
   if (screenHadPointerLock) document.exitPointerLock();
 
   activeScreen = kind;
-  activeScreenAt = (kind === 'furnace' || kind === 'chest') && at
+  activeScreenAt = screenAtBlock(kind) && at
     ? { x: at.x, y: at.y, z: at.z }
     : null;
   pressedKeys.clear();
@@ -1209,6 +1300,10 @@ function screenGridFor(container) {
     const state = activeChest();
     return state ? state.slots : null;
   }
+  if (container === 'enchanter') {
+    const state = activeEnchanter();
+    return state ? state.slots : null;
+  }
   return null;
 }
 
@@ -1253,7 +1348,7 @@ function quickMoveStack(container, index) {
       armorSlots[wearInto] = source;
       sourceGrid[index] = null;
     }
-    if (container === 'furnace' || container === 'chest') markWorldDirty();
+    if (screenAtBlock(container)) markWorldDirty();
     return;
   }
 
@@ -1262,7 +1357,7 @@ function quickMoveStack(container, index) {
   let targetEnd;
   let wantedFurnaceSlot = -1;
 
-  if (container === 'furnace' || container === 'chest') {
+  if (screenAtBlock(container)) {
     targetArray = inventory;
     targetStart = 0;
     targetEnd = INVENTORY_SIZE;
@@ -1276,6 +1371,18 @@ function quickMoveStack(container, index) {
         const rest = mergeStackInto(source, state.slots, 0, CHEST_SLOTS);
         if (rest <= 0) sourceGrid[index] = null;
         else source.count = rest;
+        markWorldDirty();
+        return;
+      }
+    }
+    // Shift-clicking gear while the enchanting table is open lays it in the
+    // table's empty slot, one item of it.
+    if (activeScreen === 'enchanter') {
+      const state = activeEnchanter();
+      if (state && !state.slots[0] && isEnchantable(source.id)) {
+        state.slots[0] = makeStack(source.id, 1, source.dur, source.contents);
+        source.count -= 1;
+        if (source.count <= 0) sourceGrid[index] = null;
         markWorldDirty();
         return;
       }
@@ -1307,14 +1414,13 @@ function quickMoveStack(container, index) {
   const remaining = mergeStackInto(source, targetArray, targetStart, targetEnd);
   if (remaining <= 0) sourceGrid[index] = null;
   else source.count = remaining;
-  if (container === 'furnace' || container === 'chest') markWorldDirty();
+  if (screenAtBlock(container)) markWorldDirty();
 }
 
 function handleScreenSlotClick(container, index, button, shift) {
   const grid = screenGridFor(container);
   if (!grid) return;
-  if (container === 'furnace') markWorldDirty();
-  if (container === 'chest') markWorldDirty();
+  if (screenAtBlock(container)) markWorldDirty();
   if (container === 'armor') markWorldDirty();
 
   // Shift always quick-moves first, including out of the furnace result slot.
@@ -1354,6 +1460,11 @@ function handleScreenSlotClick(container, index, button, shift) {
   // An armour slot only takes the matching kind of armour. Dropping a pickaxe
   // on the chestplate slot should do nothing rather than hide it.
   if (container === 'armor' && held && equipSlotFor(held) !== index) {
+    return;
+  }
+  // The enchanting table's slot only takes what the table can work on.
+  if (container === 'enchanter' && held && !isEnchantable(held.id)) {
+    showToast('Cannot be enchanted');
     return;
   }
 
@@ -1432,6 +1543,10 @@ screenBody.addEventListener('mousedown', (event) => {
 
   if (container === 'result') {
     craftCurrent(event.shiftKey && event.button === 0);
+    return;
+  }
+  if (container === 'enchant') {
+    if (event.button === 0) pressEnchantButton();
     return;
   }
 

@@ -41,7 +41,7 @@ import {
 } from './audio.js';
 import {
   ARMOR_SLOTS, BLOCKS, BLOCK_BY_KEY, CHEST_SLOTS, ITEMS, freshStack, isChestBlock,
-  isFallingWater, isFlowWater, isFurnaceBlock, isLava, makeStack, slotInfo, stackDurability,
+  isEnchanterBlock, isFallingWater, isFlowWater, isFurnaceBlock, isLava, makeStack, slotInfo, stackDurability,
   waterLevel
 } from './blocks.js';
 import {
@@ -68,6 +68,7 @@ import {
 import { currentCraftRecipe, cursorCarried, returnCursorStack, setCursorView } from './cursor.js';
 import { setDebugWitness } from './debug.js';
 import { itemEntities, setItemPickup, spawnItemDrop, updateItemEntities } from './drops.js';
+import { enchantCost, enchantOffer, enchantSlot } from './enchanting.js';
 import {
   essenceCount, essenceEntities, grantEssence as addEssence, setEssence, setEssenceLedger,
   setEssencePainter,
@@ -539,7 +540,8 @@ setCoopView({
   hurt: (amount, cause) => damagePlayer(amount, cause),
   drop: (itemId, count, x, y, z) => spawnItemDrop(itemId, count, x, y, z),
   essence: (amount, x, y, z) => spawnEssenceBurst(amount, x, y, z),
-  openContainer: () => ((activeScreen === 'furnace' || activeScreen === 'chest') && activeScreenAt
+  openContainer: () => ((activeScreen === 'furnace' || activeScreen === 'chest' ||
+      activeScreen === 'enchanter') && activeScreenAt
     ? activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z
     : null),
   redrawContainer: () => renderScreen(),
@@ -1676,6 +1678,39 @@ window.__voxelcraft = {
     }
     if (activeScreen === 'chest') renderScreen();
     return this.chest(x, y, z);
+  },
+  /** Opens the enchanting table screen for the table at a position, or under the crosshair. */
+  openEnchanter(x = null, y = null, z = null) {
+    let at = null;
+    if (x !== null && y !== null && z !== null) at = { x, y, z };
+    else if (currentTarget && isEnchanterBlock(currentTarget.id)) {
+      at = { x: currentTarget.x, y: currentTarget.y, z: currentTarget.z };
+    }
+    if (!at) return null;
+    openScreen('enchanter', at);
+    return activeScreen;
+  },
+  /** An enchanting table's slot and what its button would do, at a position or the open one. */
+  enchanter(x = null, y = null, z = null) {
+    let key = null;
+    if (x !== null && y !== null && z !== null) key = x + ',' + y + ',' + z;
+    else if (activeScreen === 'enchanter' && activeScreenAt) {
+      key = activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z;
+    }
+    if (!key) return { cost: enchantCost() };
+    const state = world.blockEntities.get(key);
+    if (!state || state.kind !== 'enchanter') return null;
+    return { at: key.split(',').map(Number), slot: slotInfo(state.slots[0]), ...enchantOffer(state) };
+  },
+  /** Presses the open enchanting table's button: enchants or mends its item for essence. */
+  enchant() {
+    if (activeScreen !== 'enchanter' || !activeScreenAt) return null;
+    const at = activeScreenAt;
+    const state = world.blockEntityAt(at.x, at.y, at.z, 'enchanter');
+    if (!state) return null;
+    const result = enchantSlot(state);
+    renderScreen();
+    return { ...result, slot: slotInfo(state.slots[0]), essence: essenceCount() };
   },
   closeScreen() {
     closeScreen();

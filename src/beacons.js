@@ -234,11 +234,24 @@ function monumentSite(index, from, x, z, height) {
   if (index === 0) {
     cost = Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK));
   } else {
-    const perKill = HOSTILE_ESSENCE_AVERAGE *
-      (1 + DIFFICULTY_ESSENCE_SCALE * difficultyAt(from.x, SEA_LEVEL, from.z));
-    cost = Math.round(BEACON_KILLS_TO_LIGHT * perKill);
+    cost = Math.round(BEACON_KILLS_TO_LIGHT * killEssenceAt(from.x, from.z));
   }
   return { index, x, z, y: height, hop, distance, cost };
+}
+
+/* An average hostile kill's essence on the surface at a column. */
+function killEssenceAt(x, z) {
+  return HOSTILE_ESSENCE_AVERAGE *
+    (1 + DIFFICULTY_ESSENCE_SCALE * difficultyAt(x, SEA_LEVEL, z));
+}
+
+/**
+ * About `kills` hostile kills' essence on the ground of the most recently lit
+ * beacon, or on SP0's while none is lit. The enchanting table's price.
+ */
+export function frontierKillEssence(kills) {
+  const lit = beaconsActivated > 0 ? beaconSites()[beaconsActivated - 1] : spawnPoint0;
+  return Math.max(1, Math.round(kills * killEssenceAt(lit.x, lit.z)));
 }
 
 /** The five monument columns, computed once per world. */

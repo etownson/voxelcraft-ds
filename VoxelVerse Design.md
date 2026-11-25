@@ -170,6 +170,7 @@ Crafting table (3×3) recipes:
 | Item           |
 | -------------- |
 | Furnace        |
+| Enchanting Table |
 | Wooden Door ×3 |
 | Chest          |
 | Wood Pickaxe   |
@@ -181,6 +182,9 @@ Crafting table (3×3) recipes:
 The furnace also arrives with this beacon: it makes iron ingots, steak, glass, stone and
 charcoal from raw iron, raw beef, sand, cobblestone and logs. Its fuels and timings are
 under Furnace and smelting.
+
+So does the enchanting table: cobblestone at the four corners, planks on the four edges
+and coal in the middle. It enchants and mends gear for essence; see Enchanting.
 
 ### Beacon 2
 
@@ -423,6 +427,7 @@ and a runtime assertion enforces that each block sits at its own id.
 | 55 | Lava | A source; see Fluids: water and lava. Light 15, no collision |
 | 56–61 | Lava flow/fall levels 1–3 each | Every rank glows at 15 like the source |
 | 62 | Obsidian | What a lava source hardens into; hardness 50, needs a diamond pickaxe |
+| 63 | Enchanting Table | One-slot block entity that enchants and mends gear; hardness 2.5, needs a pickaxe |
 
 Grass grows on surface terrain in grassy biomes; dirt underlies the surface layers;
 stone fills the deep rock and mountains. Water and bedrock are never placed or mined by
@@ -943,6 +948,41 @@ its wear and contents intact, and then the box — the explosion path owes the s
 a pickaxe. A chest never ticks beyond a stale-state sweep that clears a box whose block
 is gone; opening a chest pauses the world the way the inventory does. There are no loot
 chests, because there are still no structures.
+
+**Enchanting Table** (id 63): see Enchanting. Its one slot is a block entity like the
+chest's, saved and synced in co-op the same way, swept when its block is gone, and spilled
+when it is broken.
+
+## Enchanting
+
+The enchanting table (beacon 1) turns a sword, a tool (pickaxe, axe, shovel, hoe), a bow
+or a piece of armour into its enchanted version, for essence. Shears cannot be enchanted.
+The screen has one slot and a button; shift-clicking gear from the pack lays it in the
+slot, and the slot refuses anything the table cannot work on.
+
+- **Price**: about `ENCHANT_KILLS` (10) hostile kills' essence on the ground of the most
+  recently lit beacon: `round(10 × 4 × (1 + 0.5 × difficulty there))`. That is a third
+  of what the next beacon asks, so enchanting is a real choice against the mission's own
+  price, and it grows as the walker moves out.
+- **Once only**: an enchanted item is a separate item id (`enchanted_<base id>`) and cannot
+  be enchanted again. Putting one back in the slot offers a **repair** instead, for the
+  same price, and only while it has worn at all.
+- **Mends**: enchanting and repairing both hand the item back at full durability, which is
+  1.5 × the base item's.
+- **Icons**: an enchanted item is drawn as its base with a violet shimmer over it.
+
+Enchanted numbers:
+
+| Item | Wood | Stone | Iron | Diamond | Leather |
+| --- | --- | --- | --- | --- | --- |
+| Sword damage | 8 | 12 | 16 | 20 | — |
+| Bow damage (full draw) | 12 | — | 16 | 20 | — |
+| Tool mining speed | 3.0 | 5.0 | 7.0 | 10.0 | — |
+| Tool attack damage field | 3.0 | 4.0 | 6.0 | 8.0 | — |
+| Defence (H/C/L/B) | — | — | 5 / 12 / 8 / 5 | 7 / 16 / 12 / 7 | 3 / 8 / 5 / 3 |
+
+A full enchanted diamond set is the 42 points the armour formula is scaled to, so it
+blocks what full diamond blocks in Minecraft.
 
 ## Doors and beds
 
@@ -1519,9 +1559,10 @@ modern Chrome and Firefox.
 `screenshot`-grade hooks for the world (`getBlock`, `setBlocksBatch`, `sampleColumn`),
 the player (`stats()`, `teleport`, `look`, `hunger`, `eat`, `armour`, `equip`,
 `sprintState`), mining (`breakTime`, `mine`, `give`, `durability`), containers
-(`openFurnace`, `furnace`, `chest`, `chestList`, `setChestSlots`), farming (`tillDirt`,
-`plantSeed`, `crops`, `soilWet`), water (`waterFlowCheck` — six rigs replayed in a
-shadow map, which fails if the settlement rule is broken), mobs (`mobs`, `mobInfo`,
+(`openFurnace`, `furnace`, `chest`, `chestList`, `setChestSlots`, `openEnchanter`,
+`enchanter`, `enchant`), farming (`tillDirt`, `plantSeed`, `crops`, `soilWet`),
+water (`waterFlowCheck` — six rigs replayed in a shadow map, which fails if the
+settlement rule is broken), mobs (`mobs`, `mobInfo`,
 `spawnPassive`, `spawnHostile`, `spawnReport` with caps and refusal tallies), archery
 (`loose(seconds)` draws the bow in hand that long and lets go, `arrows()` lists what is
 in the air or stuck), time and

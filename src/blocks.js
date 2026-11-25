@@ -372,6 +372,18 @@ BLOCKS.push(
   }
 );
 
+// The enchanting table joins last, same rule as above. It is cobblestone and
+// planks round a lump of coal, so it breaks like cobblestone does and wants a
+// pickaxe to come away. Its one slot lives in a block entity; what it does to
+// the item in that slot is enchanting.js's business.
+BLOCKS.push({
+  id: B.ENCHANTING_TABLE, key: 'enchanting_table', name: 'Enchanting Table',
+  tiles: { top: 'enchanting_top', bottom: 'cobblestone', side: 'enchanting_side' },
+  solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', tier: 1,
+  blockEntity: 'enchanter',
+  drops: [{ item: 'enchanting_table', min: 1, max: 1 }], placeable: true
+});
+
 export const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -670,6 +682,9 @@ export function createBlockEntity(kind) {
   if (kind === 'chest') {
     return { kind, slots: new Array(CHEST_SLOTS).fill(null) };
   }
+  if (kind === 'enchanter') {
+    return { kind, slots: [null] };
+  }
   return { kind, slots: [null, null, null] };
 }
 
@@ -683,6 +698,11 @@ export function isChestBlock(blockId) {
   return !!block && block.blockEntity === 'chest';
 }
 
+export function isEnchanterBlock(blockId) {
+  const block = BLOCKS[blockId];
+  return !!block && block.blockEntity === 'enchanter';
+}
+
 /** Either state of a beacon monument, lit or waiting. */
 export function isBeaconBlock(blockId) {
   return !!BLOCKS[blockId] && BLOCKS[blockId].beacon !== null;
@@ -693,6 +713,13 @@ const TOOL_TIERS = {
   stone: { level: 2, speed: 4.0, durability: 132, damage: 3.5 },
   iron:  { level: 3, speed: 6.0, durability: 251, damage: 5.0 },
   diamond: { level: 4, speed: 8.0, durability: 1561, damage: 7.0 }
+};
+/** The same tiers enchanted: faster to mine with and harder to be hit by. */
+const ENCHANTED_TOOL_TIERS = {
+  wood:  { speed: 3.0, damage: 3.0 },
+  stone: { speed: 5.0, damage: 4.0 },
+  iron:  { speed: 7.0, damage: 6.0 },
+  diamond: { speed: 10.0, damage: 8.0 }
 };
 const TOOL_KINDS = {
   pickaxe: 'Pickaxe', sword: 'Sword', axe: 'Axe', shovel: 'Shovel', hoe: 'Hoe'
@@ -766,4 +793,68 @@ for (const [tier, stats] of Object.entries(ARMOR_MATERIALS)) {
       defense: stats.defense[index]
     });
   });
+}
+
+/* ---------- Enchanted gear ---------- */
+
+/**
+ * Every enchanted item is an item of its own, `enchanted_<base id>`, for the
+ * reason a full bucket is: merge rules, saves and dropped items know a stack
+ * by its id and its wear and by nothing else. An enchanted item is its base
+ * with better numbers and half as many uses again; the swords' and bows'
+ * blows come from combat.js and the `arrowDamage` here, the tools' from their
+ * tier's enchanted row, the armour's from these columns (helmet, chestplate,
+ * leggings, boots). Shears are not enchantable.
+ */
+export const ENCHANTED_DURABILITY_SCALE = 1.5;
+const ENCHANTED_ARMOR_DEFENSE = {
+  leather: [3, 8, 5, 3],
+  iron: [5, 12, 8, 5],
+  diamond: [7, 16, 12, 7]
+};
+const ENCHANTED_ARROW_DAMAGE = { wood: 12, iron: 16, diamond: 20 };
+const ENCHANTED_PREFIX = 'enchanted_';
+
+/** The enchanted twin of an item id, whether or not it exists. */
+export function enchantedIdFor(itemId) {
+  return ENCHANTED_PREFIX + itemId;
+}
+
+function defineEnchanted(base, stats) {
+  defineItem({
+    ...base,
+    ...stats,
+    id: enchantedIdFor(base.id),
+    name: 'Enchanted ' + base.name,
+    durability: Math.round(base.durability * ENCHANTED_DURABILITY_SCALE),
+    enchanted: true,
+    base: base.id
+  });
+}
+
+for (const tier of Object.keys(TOOL_TIERS)) {
+  for (const tool of Object.keys(TOOL_KINDS)) {
+    const enchanted = ENCHANTED_TOOL_TIERS[tier];
+    defineEnchanted(ITEMS.get(tier + '_' + tool), {
+      damage: enchanted.damage, miningSpeed: enchanted.speed
+    });
+  }
+}
+for (const [tier, bow] of Object.entries(BOW_TIERS)) {
+  defineEnchanted(ITEMS.get(bow.id), { arrowDamage: ENCHANTED_ARROW_DAMAGE[tier] });
+}
+for (const tier of Object.keys(ARMOR_MATERIALS)) {
+  ARMOR_PIECES.forEach((piece, index) => {
+    defineEnchanted(ITEMS.get(tier + '_' + piece.piece), {
+      defense: ENCHANTED_ARMOR_DEFENSE[tier][index]
+    });
+  });
+}
+
+/** True for an item the enchanting table can work on: enchant it, or repair it. */
+export function isEnchantable(itemId) {
+  const item = ITEMS.get(itemId);
+  if (!item) return false;
+  if (item.enchanted) return true;
+  return ITEMS.has(enchantedIdFor(itemId));
 }

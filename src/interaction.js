@@ -22,7 +22,8 @@ import {
   playPlaceSound, playPourBucketSound, playToolBreakSound
 } from './audio.js';
 import {
-  BLOCKS, ITEMS, consumeDurability, freshStack, isChestBlock, isFluid, isFurnaceBlock, isWater
+  BLOCKS, ITEMS, consumeDurability, freshStack, isChestBlock, isEnchanterBlock, isFluid,
+  isFurnaceBlock, isWater
 } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import {
@@ -360,6 +361,12 @@ export function tryPlaceSelectedBlock() {
   // And a chest, which opens its box of stored things under the crosshair.
   if (isChestBlock(currentTarget.id)) {
     interactionView.openScreen('chest', currentTarget);
+    return false;
+  }
+
+  // And an enchanting table, which opens its one slot and its button.
+  if (isEnchanterBlock(currentTarget.id)) {
+    interactionView.openScreen('enchanter', currentTarget);
     return false;
   }
 

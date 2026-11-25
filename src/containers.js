@@ -15,7 +15,7 @@
  */
 
 import { playFurnaceFinishSound, playFurnaceIgniteSound } from './audio.js';
-import { ITEMS, isChestBlock, isFurnaceBlock, makeStack } from './blocks.js';
+import { ITEMS, isChestBlock, isEnchanterBlock, isFurnaceBlock, makeStack } from './blocks.js';
 import { markWorldDirty, world } from './chunks.js';
 import { BLOCK_ENTITY_TICK_RANGE, B, CHUNK_SIZE, LAVA_BUCKET_BURN } from './config.js';
 import { player } from './player.js';
@@ -154,7 +154,7 @@ export function updateBlockEntities(dt) {
 
   for (const [key, state] of world.blockEntities) {
     const isFurnace = state.kind === 'furnace';
-    if (!isFurnace && state.kind !== 'chest') continue;
+    if (!isFurnace && state.kind !== 'chest' && state.kind !== 'enchanter') continue;
     const parts = key.split(',');
     const x = Number(parts[0]);
     const y = Number(parts[1]);
@@ -170,7 +170,9 @@ export function updateBlockEntities(dt) {
       // save; while we are close enough to see that, clear it out.
       const stillThere = isFurnace
         ? furnaceEntityValid(x, y, z)
-        : chestEntityValid(x, y, z);
+        : state.kind === 'chest'
+          ? chestEntityValid(x, y, z)
+          : enchanterEntityValid(x, y, z);
       if (!stillThere) {
         world.blockEntities.delete(key);
         world.facings.delete(key);
@@ -242,6 +244,14 @@ function chestEntityValid(x, y, z) {
   const cz = Math.floor(z / CHUNK_SIZE);
   if (!world.getChunk(cx, cz)) return true;
   return isChestBlock(world.getBlock(x, y, z));
+}
+
+/** The same rule again for an enchanting table's one slot. */
+function enchanterEntityValid(x, y, z) {
+  const cx = Math.floor(x / CHUNK_SIZE);
+  const cz = Math.floor(z / CHUNK_SIZE);
+  if (!world.getChunk(cx, cz)) return true;
+  return isEnchanterBlock(world.getBlock(x, y, z));
 }
 
 /** Handed once, at bootstrap, the way the camera and the mobs are handed their

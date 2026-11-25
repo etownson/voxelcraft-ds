@@ -303,7 +303,10 @@ export const B = Object.freeze({
   LAVA: 55,
   LAVA_FLOW_1: 56, LAVA_FLOW_2: 57, LAVA_FLOW_3: 58,
   LAVA_FALL_1: 59, LAVA_FALL_2: 60, LAVA_FALL_3: 61,
-  OBSIDIAN: 62
+  OBSIDIAN: 62,
+  // The enchanting table rides a one-slot block entity, the way the furnace
+  // and the chest ride theirs.
+  ENCHANTING_TABLE: 63
 });
 
 /* ---------- Beacons and the walk out from SP0 ---------- */
@@ -340,6 +343,13 @@ export const BEACON_ESSENCE_PER_BLOCK = 1.5;
  * before the next monument will answer.
  */
 export const BEACON_KILLS_TO_LIGHT = 30;
+/**
+ * Enchanting an item, or repairing an enchanted one, costs about this many
+ * hostile kills' essence on the ground of the most recently lit beacon: a
+ * third of what the next beacon asks, so it is a real choice against the
+ * mission's own price and grows with it.
+ */
+export const ENCHANT_KILLS = 10;
 /**
  * The middle of a hostile's base essence roll (zombie and creeper both pay
  * 3–5 in `src/mob.js`), before the ground's difficulty scales it. Keep it in

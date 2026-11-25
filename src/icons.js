@@ -664,16 +664,44 @@ function makeMaterialIcon(itemId) {
   return makePixelIcon(painter);
 }
 
+/**
+ * Lays the enchanted shimmer over an icon: violet bands running corner to
+ * corner, drawn only over the item's own pixels, so an enchanted sword reads
+ * as the same sword with a glow on it. Icons are drawn once, so it is still.
+ */
+function addEnchantGlint(canvas) {
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = 'rgba(150, 90, 255, 0.28)';
+  ctx.fillRect(0, 0, size, size);
+  const band = size / 8;
+  ctx.fillStyle = 'rgba(214, 180, 255, 0.42)';
+  for (let offset = -size; offset < size * 2; offset += band * 3) {
+    ctx.beginPath();
+    ctx.moveTo(offset, 0);
+    ctx.lineTo(offset + band, 0);
+    ctx.lineTo(offset + band - size, size);
+    ctx.lineTo(offset - size, size);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export const ITEM_ICONS = new Map();
 
 for (const [itemId, item] of ITEMS) {
   let canvas;
+  // An enchanted item is drawn as its base and then made to shimmer.
+  const drawnAs = item.base || itemId;
   if (item.kind === 'block') {
     canvas = makeBlockItemIcon(BLOCKS[item.blockId]);
-  } else if (item.kind === 'tool' && MATERIAL_ICON_PAINTERS[itemId]) {
-    // Tierless tools like shears carry their own painter instead of a
-    // sprite wearing a tier palette.
-    canvas = makePixelIcon(MATERIAL_ICON_PAINTERS[itemId]);
+  } else if (item.kind === 'tool' && MATERIAL_ICON_PAINTERS[drawnAs]) {
+    // Tierless tools like shears, and the bows, carry their own painter
+    // instead of a sprite wearing a tier palette.
+    canvas = makePixelIcon(MATERIAL_ICON_PAINTERS[drawnAs]);
   } else if (item.kind === 'tool') {
     canvas = makeToolIcon(item);
   } else if (item.kind === 'armor') {
@@ -681,6 +709,7 @@ for (const [itemId, item] of ITEMS) {
   } else {
     canvas = makeMaterialIcon(itemId);
   }
+  if (item.enchanted) addEnchantGlint(canvas);
   ITEM_ICONS.set(itemId, { canvas, url: canvas.toDataURL() });
 }
 

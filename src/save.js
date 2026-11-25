@@ -21,7 +21,8 @@
  */
 
 import {
-  ARMOR_SLOTS, BLOCKS, CHEST_SLOTS, ITEMS, createBlockEntity, isChestBlock, isFurnaceBlock,
+  ARMOR_SLOTS, BLOCKS, CHEST_SLOTS, ITEMS, createBlockEntity, isChestBlock, isEnchanterBlock,
+  isFurnaceBlock,
   makeStack
 } from './blocks.js';
 import { clearWorldDirty, world } from './chunks.js';
@@ -72,6 +73,14 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * it did. The lava bucket is a new item id on the same terms, and the player's
  * `fire`, the seconds left to burn, is written only while it is above zero, so
  * a save without it is a player who is not on fire.
+ *
+ * Enchanting rides schema 7 as well. The enchanting table is a new block id
+ * (63), the iron and diamond bows and every `enchanted_` item are new item
+ * ids, and a table's one slot is a new `entities.enchanters` list written
+ * only when a table stands somewhere, so a save from before holds none of
+ * them and reads exactly as it did. The new sword, bow and armour numbers
+ * live on the item definitions, not in the save: a stored iron chestplate
+ * is still an iron chestplate, worth whatever the build says it is.
  *
  * Co-op adds no field to this schema. A guest in someone else's world never
  * writes SAVE_KEY: its own walk, pack, purse and spawn go under a key of their
@@ -302,14 +311,23 @@ function serializeWorldSave() {
  * diff, as flat records: [x, y, z, input id, input count, fuel id, fuel count,
  * output id, output count, burn, burn total, cook], [x, y, z, then twenty-seven
  * id and count pairs, then, only when some slot wears or packs, a map from slot
- * index to that slot's full stack record] and [x, y, z, dx, dz].
+ * index to that slot's full stack record] and [x, y, z, dx, dz]. An enchanting
+ * table is [x, y, z, its one slot's full stack record or null], and the list
+ * is only written when there is one, so a world without a table saves exactly
+ * as it did before tables existed.
  */
 function serializeBlockEntities() {
   const furnaces = [];
   const chests = [];
+  const enchanters = [];
   const facings = [];
 
   for (const [key, state] of world.blockEntities) {
+    if (state.kind === 'enchanter') {
+      const at = key.split(',');
+      enchanters.push([Number(at[0]), Number(at[1]), Number(at[2]), stackRecord(state.slots[0])]);
+      continue;
+    }
     if (state.kind !== 'furnace' && state.kind !== 'chest') continue;
     const at = key.split(',');
     const row = [Number(at[0]), Number(at[1]), Number(at[2])];
@@ -340,8 +358,10 @@ function serializeBlockEntities() {
     facings.push(Number(at[0]), Number(at[1]), Number(at[2]), normal[0], normal[1]);
   }
 
-  if (!furnaces.length && !chests.length && !facings.length) return null;
-  return { furnaces, chests, facings };
+  if (!furnaces.length && !chests.length && !enchanters.length && !facings.length) return null;
+  const entities = { furnaces, chests, facings };
+  if (enchanters.length) entities.enchanters = enchanters;
+  return entities;
 }
 
 export function saveWorld() {
@@ -484,6 +504,22 @@ export function applySavedBlockEntities(world, save) {
           if (restored) state.slots[slot] = restored;
         }
       }
+      world.blockEntities.set(x + ',' + y + ',' + z, state);
+    }
+  }
+
+  if (Array.isArray(entities.enchanters)) {
+    for (const row of entities.enchanters) {
+      if (!Array.isArray(row) || row.length < 4) continue;
+      const x = Math.trunc(Number(row[0]));
+      const y = Math.trunc(Number(row[1]));
+      const z = Math.trunc(Number(row[2]));
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (y < 0 || y >= WORLD_HEIGHT) continue;
+      const savedId = world.overrides.get(x + ',' + y + ',' + z);
+      if (savedId === undefined || !isEnchanterBlock(savedId)) continue;
+      const state = createBlockEntity('enchanter');
+      state.slots[0] = stackFromRecord(row[3]);
       world.blockEntities.set(x + ',' + y + ',' + z, state);
     }
   }

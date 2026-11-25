@@ -64,6 +64,13 @@ export const RECIPES = [
     result: { id: 'furnace', count: 1 }
   },
   {
+    // Cobblestone at the corners, planks on the edges and a lump of coal in
+    // the middle: the table that enchants and mends gear for essence.
+    id: 'enchanting_table', pattern: ['CPC', 'PXP', 'CPC'],
+    key: { C: 'cobblestone', P: 'planks', X: 'coal' }, unlockedBy: 1,
+    result: { id: 'enchanting_table', count: 1 }
+  },
+  {
     // Three ears laid side by side: bread needs the crafting table, not the
     // 2x2 grid carried in the inventory.
     id: 'bread', pattern: ['WWW'], key: { W: 'wheat' }, unlockedBy: 2,

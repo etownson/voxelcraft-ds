@@ -378,6 +378,9 @@ function applyRemoteEdits(edits) {
 
 /* ---------- Containers ---------- */
 
+/* The block entities whose slots go over the wire while someone has one open. */
+const SYNCED_CONTAINERS = new Set(['chest', 'furnace', 'enchanter']);
+
 function containerRecord(state) {
   const record = { kind: state.kind, s: state.slots.map((slot) => stackToRecord(slot)) };
   if (state.kind === 'furnace') {
@@ -390,7 +393,7 @@ function containerRecord(state) {
 
 function sendContainerIfChanged(key) {
   const state = world.blockEntities.get(key);
-  if (!state || (state.kind !== 'chest' && state.kind !== 'furnace')) return;
+  if (!state || !SYNCED_CONTAINERS.has(state.kind)) return;
   const record = containerRecord(state);
   const json = JSON.stringify(record);
   if (containerSeen.get(key) === json) return;
@@ -403,7 +406,7 @@ function applyRemoteContainer(d) {
   const parts = d.k.split(',').map(Number);
   if (parts.length !== 3 || !parts.every(Number.isInteger)) return;
   const record = d.r;
-  if (record.kind !== 'chest' && record.kind !== 'furnace') return;
+  if (!SYNCED_CONTAINERS.has(record.kind)) return;
   let state = world.blockEntities.get(d.k);
   if (!state) {
     state = createBlockEntity(record.kind);

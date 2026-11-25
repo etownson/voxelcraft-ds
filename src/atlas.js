@@ -28,6 +28,8 @@ for (let stage = 0; stage < 8; stage++) TILE_ORDER.push('wheat_' + stage);
 TILE_ORDER.push('beacon_side', 'beacon_top', 'beacon_side_lit', 'beacon_top_lit');
 // Lava and the obsidian it hardens into join at the end, so no tile moves.
 TILE_ORDER.push('lava', 'obsidian');
+// The enchanting table's top and sides, after everything else for the same reason.
+TILE_ORDER.push('enchanting_top', 'enchanting_side');
 
 export const TILES = Object.create(null);
 TILE_ORDER.forEach((name, index) => { TILES[name] = index; });
@@ -916,6 +918,34 @@ function generateAtlas() {
     for (let i = 0; i < 6; i++) {
       paint((rand() * 16) | 0, (rand() * 16) | 0, vary(rand, [104, 82, 150], 8));
     }
+  };
+
+  // The enchanting table: a planked top framed in cobblestone round a lump of
+  // coal that glints violet, and sides of cobblestone under a band of planks.
+  const ENCHANT_GLINT = [[150, 96, 220], [196, 150, 255], [112, 64, 176]];
+  painters.enchanting_top = (paint, rand) => {
+    painters.cobblestone(paint, rand);
+    for (let y = 3; y < 13; y++) {
+      for (let x = 3; x < 13; x++) {
+        const tone = ((y - 3) >> 2) % 2 === 0 ? 4 : -5;
+        paint(x, y, vary(rand, [176 + tone, 138 + tone, 86 + tone], 6));
+      }
+    }
+    for (let y = 6; y < 10; y++) {
+      for (let x = 6; x < 10; x++) paint(x, y, vary(rand, [34, 32, 38], 6));
+    }
+    for (const [x, y] of [[6, 6], [9, 7], [7, 9], [8, 6]]) {
+      paint(x, y, ENCHANT_GLINT[(rand() * 3) | 0]);
+    }
+  };
+  painters.enchanting_side = (paint, rand) => {
+    painters.cobblestone(paint, rand);
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < 16; x++) {
+        paint(x, y, vary(rand, y === 4 ? [124, 94, 56] : [176, 138, 86], 6));
+      }
+    }
+    for (let x = 1; x < 16; x += 3) paint(x, 2, ENCHANT_GLINT[(rand() * 3) | 0]);
   };
 
   for (const name of TILE_ORDER) {
