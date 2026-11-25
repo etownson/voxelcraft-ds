@@ -224,7 +224,9 @@ export const MOB_DEFS = {
   },
   chicken: {
     hostile: false, health: 4, speed: 1.5, width: 0.46, height: 0.82,
-    drops: [{ id: 'feather', min: 1, max: 2 }]
+    // A chicken is a mouthful next to a cow: half the time it gives one raw
+    // beef, against the bigger animals' one or two every time.
+    drops: [{ id: 'feather', min: 0, max: 2 }, { id: 'raw_beef', min: 0, max: 1 }]
   },
   zombie: {
     hostile: true, health: 20, speed: 1.85, width: 0.62, height: 1.94,

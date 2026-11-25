@@ -1129,8 +1129,9 @@ Population is a budget:
   budget. Everything despawns at 96 blocks in three dimensions
 
 Drops: cows, pigs and sheep drop Raw Beef (and Leather from cows); a woolly sheep
-drops one wool on top of its meat, a shorn one meat only; chickens drop feathers;
-spiders drop string and skeletons arrows.
+drops one wool on top of its meat, a shorn one meat only; chickens drop 0–2
+feathers and, being small, only sometimes meat: one Raw Beef half the time, against
+the 1–2 every larger animal gives; spiders drop string and skeletons arrows.
 Raw beef must be cooked. Shearing is the other way to take wool — see Shearing.
 
 ## Shearing
