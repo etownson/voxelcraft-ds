@@ -16,12 +16,12 @@ import {
 } from './audio.js';
 import { BLOCKS, isLava, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
-import { cellCollidesAt, inLavaAt, isSolid, submergedAt } from './collision.js';
+import { cellCollidesAt, inLavaAt, submergedAt } from './collision.js';
 import {
   B, CHUNK_SIZE, COLLISION_EPSILON, DIFFICULTY_DAMAGE_SCALE, DIFFICULTY_ESSENCE_SCALE,
   DIFFICULTY_HEALTH_SCALE, DIFFICULTY_SPAWN_SCALE, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP,
   BURN_DAMAGE, BURN_INTERVAL, BURN_SECONDS, LAVA_DAMAGE, LAVA_DAMAGE_INTERVAL,
-  TERMINAL_VELOCITY, chunkKey, clamp
+  JUMP_SPEED, PLAYER_HALF_WIDTH, PLAYER_HEIGHT, TERMINAL_VELOCITY, chunkKey, clamp
 } from './config.js';
 import { beaconsActivatedCount, difficultyAt } from './beacons.js';
 import { spawnBurstParticles, triggerExplosionPunch } from './fx.js';
@@ -712,6 +712,11 @@ export function spawnMob(type, x, y, z, options = {}) {
     strafeTimer: 1.5 + Math.random() * 2,
     fuse: -1,
     attackCooldown: 0,
+    stuckTime: 0,
+    detourTime: 0,
+    detourSide: 1,
+    detourMemory: 0,
+    detourSpent: 0,
     burnTimer: 0,
     audioCooldown: 0,
     soundTimer: def.hostile
@@ -895,28 +900,122 @@ function moveMobAxis(mob, axis, delta) {
   return false;
 }
 
-/** Move horizontally, hopping up a single block when the path is blocked. */
+/**
+ * Move horizontally, sliding along whatever stops one axis. Each axis is
+ * tried on its own, so a mob that meets a wall at an angle keeps the part of
+ * its stride that runs along the wall. It used to be all or nothing: a blocked
+ * axis put the mob back where it started on both, and a zombie that came at a
+ * cliff diagonally stood against it and marched on the spot.
+ */
 function moveMobHorizontal(mob, dx, dz) {
-  const startX = mob.pos.x;
-  const startY = mob.pos.y;
-  const startZ = mob.pos.z;
-  const hitX = moveMobAxis(mob, 'x', dx);
-  const hitZ = moveMobAxis(mob, 'z', dz);
+  return { hitX: moveMobAxis(mob, 'x', dx), hitZ: moveMobAxis(mob, 'z', dz) };
+}
 
-  if (!hitX && !hitZ) return false;
+/**
+ * True when the obstacle a mob just walked into is one block it can jump:
+ * there is room over its head where it stands, and its whole body fits a
+ * block up, a short stride ahead. A wall two high, or a ledge under a low
+ * ceiling, is not worth the jump, and the mob does not bounce against it.
+ */
+function canHopToward(mob, dirX, dirZ) {
+  const length = Math.hypot(dirX, dirZ);
+  if (length < 1e-5) return false;
+  const up = mob.pos.y + 1.05;
+  if (mobCollidesAt(mob, mob.pos.x, up, mob.pos.z)) return false;
+  const stride = mob.def.width * 0.5 + 0.3;
+  const aheadX = mob.pos.x + (dirX / length) * stride;
+  const aheadZ = mob.pos.z + (dirZ / length) * stride;
+  return !mobCollidesAt(mob, aheadX, up, aheadZ);
+}
 
-  if (mob.onGround && !mobCollidesAt(mob, startX, startY + 1.02, startZ)) {
-    mob.pos.set(startX, startY + 1.02, startZ);
-    const stepHitX = moveMobAxis(mob, 'x', dx);
-    const stepHitZ = moveMobAxis(mob, 'z', dz);
-    if (!stepHitX && !stepHitZ) {
-      mob.vel.y = 0;
-      return false;
+/**
+ * Hunters that walk straight at the walker meet walls they cannot jump. One
+ * that has made no headway for a moment picks a side and works along the wall
+ * that way for a little while, which finds the way round a corner, a tree or a
+ * pillar far more often than standing there does.
+ */
+const STUCK_BEFORE_DETOUR = 0.6;
+const DETOUR_SECONDS = 2.6;
+/** A mob stuck again this soon after a detour keeps the side it chose. */
+const DETOUR_MEMORY = 6;
+/** Seconds of one detour hugging a wall before the mob tries the other way. */
+const DETOUR_GIVE_UP = 8;
+
+/**
+ * Mobs keep their distance from one another. Two bodies closer than the sum
+ * of their half widths are pushed apart, each by its half of the overlap, and
+ * the push goes through the same collision as walking, so a crowd spreads into
+ * a ring round the walker instead of folding into one blob or into a wall.
+ */
+const SEPARATION_RATE = 20;
+
+/** How far beyond its own half width a melee mob stops from the walker. */
+const MELEE_STANDOFF = 0.5;
+
+function separateMob(mob, dt) {
+  let pushX = 0;
+  let pushZ = 0;
+  for (const other of mobs) {
+    if (other === mob || other.dead) continue;
+    if (other.pos.y >= mob.pos.y + mob.def.height || mob.pos.y >= other.pos.y + other.def.height) continue;
+    const ox = mob.pos.x - other.pos.x;
+    const oz = mob.pos.z - other.pos.z;
+    const minDistance = (mob.def.width + other.def.width) * 0.5;
+    if (Math.abs(ox) >= minDistance || Math.abs(oz) >= minDistance) continue;
+    let d = Math.hypot(ox, oz);
+    if (d >= minDistance) continue;
+    let nx;
+    let nz;
+    if (d < 1e-4) {
+      // Exactly on top of each other: part them along a direction that the
+      // pair agrees on, so they do not both step the same way.
+      const angle = ((mob.serial * 2654435761) % 6283) / 1000;
+      nx = Math.cos(angle);
+      nz = Math.sin(angle);
+      d = 0;
+    } else {
+      nx = ox / d;
+      nz = oz / d;
     }
+    const overlap = (minDistance - d) * 0.5;
+    pushX += nx * overlap;
+    pushZ += nz * overlap;
   }
+  // The walkers' bodies are kept clear too, and the mob takes the whole of
+  // that push: the walker is not shoved about by what it is fighting.
+  let solidX = 0;
+  let solidZ = 0;
+  for (const walker of walkerList()) {
+    if (!walker || walker.dead) continue;
+    const w = walker.pos;
+    if (w.y >= mob.pos.y + mob.def.height || mob.pos.y >= w.y + PLAYER_HEIGHT) continue;
+    const ox = mob.pos.x - w.x;
+    const oz = mob.pos.z - w.z;
+    const minDistance = mob.def.width * 0.5 + PLAYER_HALF_WIDTH;
+    const d = Math.hypot(ox, oz);
+    if (d >= minDistance || d < 1e-4) continue;
+    solidX += (ox / d) * (minDistance - d);
+    solidZ += (oz / d) * (minDistance - d);
+  }
+  if (pushX === 0 && pushZ === 0 && solidX === 0 && solidZ === 0) return;
+  const share = Math.min(1, SEPARATION_RATE * dt);
+  pushX = pushX * share + solidX;
+  pushZ = pushZ * share + solidZ;
+  moveMobAxis(mob, 'x', pushX);
+  moveMobAxis(mob, 'z', pushZ);
+}
 
-  mob.pos.set(startX, startY, startZ);
-  return true;
+/**
+ * Whether a mob's blow can land: a clear line from its chest to the walker's
+ * chest or eyes. Leaves and water do not stop it; a roof, a wall or a closed
+ * door does, so a zombie standing on the dirt over your head cannot hit you
+ * through it however close it is.
+ */
+function mobReachesWalker(mob) {
+  const walker = walkerNow().pos;
+  const fromY = mob.pos.y + mob.def.height * 0.6;
+  return clearLine(mob.pos.x, fromY, mob.pos.z, walker.x, walker.y + EYE_HEIGHT, walker.z) ||
+    clearLine(mob.pos.x, fromY, mob.pos.z, walker.x, walker.y + EYE_HEIGHT * 0.55, walker.z);
 }
 
 function mobLookToward(mob, dirX, dirZ, dt, speed = 8) {
@@ -969,21 +1068,46 @@ function pickWanderTarget(mob) {
  * a closed door or a wall does, so shelter now means what it looks like.
  */
 function mobSeesWalker(mob) {
-  const fromX = mob.pos.x;
-  const fromY = mob.pos.y + mob.def.height * 0.8;
-  const fromZ = mob.pos.z;
-  const toX = walkerNow().pos.x;
-  const toY = walkerNow().pos.y + EYE_HEIGHT;
-  const toZ = walkerNow().pos.z;
-  const length = Math.hypot(toX - fromX, toY - fromY, toZ - fromZ);
-  const steps = Math.max(2, Math.ceil(length / 0.35));
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    const id = world.getBlock(
-      Math.floor(fromX + (toX - fromX) * t),
-      Math.floor(fromY + (toY - fromY) * t),
-      Math.floor(fromZ + (toZ - fromZ) * t)
-    );
+  const walker = walkerNow().pos;
+  return clearLine(
+    mob.pos.x, mob.pos.y + mob.def.height * 0.8, mob.pos.z,
+    walker.x, walker.y + EYE_HEIGHT, walker.z
+  );
+}
+
+/**
+ * True when nothing solid but leaves or water lies between the two points.
+ * It walks the line cell by cell, every cell it passes through, so it cannot
+ * slip between samples across the corner of a roof edge or a wall.
+ */
+function clearLine(fromX, fromY, fromZ, toX, toY, toZ) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const dz = toZ - fromZ;
+  let x = Math.floor(fromX);
+  let y = Math.floor(fromY);
+  let z = Math.floor(fromZ);
+  const endX = Math.floor(toX);
+  const endY = Math.floor(toY);
+  const endZ = Math.floor(toZ);
+  const stepX = Math.sign(dx);
+  const stepY = Math.sign(dy);
+  const stepZ = Math.sign(dz);
+  const deltaX = stepX ? Math.abs(1 / dx) : Infinity;
+  const deltaY = stepY ? Math.abs(1 / dy) : Infinity;
+  const deltaZ = stepZ ? Math.abs(1 / dz) : Infinity;
+  let maxX = stepX ? (stepX > 0 ? x + 1 - fromX : fromX - x) * deltaX : Infinity;
+  let maxY = stepY ? (stepY > 0 ? y + 1 - fromY : fromY - y) * deltaY : Infinity;
+  let maxZ = stepZ ? (stepZ > 0 ? z + 1 - fromZ : fromZ - z) * deltaZ : Infinity;
+  // The cells the line starts and ends in hold the two bodies, not a wall.
+  for (let guard = 0; guard < 256; guard++) {
+    // The next cell boundary lies past the end of the line: nothing between.
+    if (Math.min(maxX, maxY, maxZ) >= 1) return true;
+    if (maxX < maxY && maxX < maxZ) { x += stepX; maxX += deltaX; }
+    else if (maxY < maxZ) { y += stepY; maxY += deltaY; }
+    else { z += stepZ; maxZ += deltaZ; }
+    if (x === endX && y === endY && z === endZ) return true;
+    const id = world.getBlock(x, y, z);
     if (id === B.AIR || isWater(id) || id === B.LEAVES) continue;
     const block = BLOCKS[id];
     if (block && block.solid) return false;
@@ -1294,9 +1418,16 @@ function updateMobAI(mob, dt) {
           moveSpeed = def.speed * 1.05;
         }
       } else {
-        moveX = dx;
-        moveZ = dz;
-        if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0) {
+        // Close in to arm's length and no closer: walking on into the walker
+        // stacked every zombie of a night on the one spot they all wanted.
+        if (distance > def.width * 0.5 + MELEE_STANDOFF) {
+          moveX = dx;
+          moveZ = dz;
+        } else {
+          face = { x: dx, z: dz };
+        }
+        if (distance < def.reach && Math.abs(dy) < 2.1 && mob.attackCooldown <= 0 &&
+            mobReachesWalker(mob)) {
           mob.attackCooldown = def.attackInterval;
           hurtWalker(mob.attack ?? def.damage, mob.type, walkerNow());
         }
@@ -1332,6 +1463,18 @@ function updateMobAI(mob, dt) {
     }
   }
 
+  // A hunter stuck against a wall it cannot jump works along it for a while.
+  if (mob.detourMemory > 0) mob.detourMemory -= dt;
+  if (mob.detourTime > 0) {
+    mob.detourTime -= dt;
+    if (moveX || moveZ) {
+      const side = mob.detourSide;
+      const along = { x: -moveZ * side, z: moveX * side };
+      moveX = along.x + moveX * 0.25;
+      moveZ = along.z + moveZ * 0.25;
+    }
+  }
+
   // Nothing walks into lava of its own accord. A wanderer turns to somewhere
   // else, and a hunter stops at the edge rather than following the player in.
   if (lavaAhead(mob, moveX, moveZ)) {
@@ -1342,37 +1485,70 @@ function updateMobAI(mob, dt) {
 
   steerMob(mob, moveX, moveZ, moveSpeed, dt, face);
 
-  // Gravity and vertical collision.
-  const wasDescending = mob.vel.y < 0;
+  // Gravity and vertical collision. Whether it is falling is read after
+  // gravity: read before, a mob that came into the world standing still on
+  // the ground never counted as standing, and could never jump.
   mob.vel.y = Math.max(mob.vel.y - GRAVITY * dt, -TERMINAL_VELOCITY);
+  const descending = mob.vel.y < 0;
   const hitY = moveMobAxis(mob, 'y', mob.vel.y * dt);
   if (hitY) {
-    if (wasDescending) mob.onGround = true;
+    mob.onGround = descending;
     mob.vel.y = 0;
   } else {
     mob.onGround = mob.vel.y <= 0 &&
       mobCollidesAt(mob, mob.pos.x, mob.pos.y - 0.02, mob.pos.z);
   }
 
-  // Step up one block when running into terrain.
-  const hitHorizontal = moveMobHorizontal(mob, mob.vel.x * dt, mob.vel.z * dt);
-  if (hitHorizontal) {
-    mob.vel.x = 0;
-    mob.vel.z = 0;
-    // A climber that walks into a wall goes up it instead of stopping.
-    if (def.climbs && (moveX || moveZ) && !mob.inLava) {
+  // Walk, sliding along walls. What stops an axis zeroes only that axis, and
+  // a one-block rise in the way is jumped like the player jumps it.
+  const { hitX, hitZ } = moveMobHorizontal(mob, mob.vel.x * dt, mob.vel.z * dt);
+  const walking = (moveX || moveZ) && !mob.inLava;
+  const pushX = hitX ? mob.vel.x : 0;
+  const pushZ = hitZ ? mob.vel.z : 0;
+  if (hitX) mob.vel.x = 0;
+  if (hitZ) mob.vel.z = 0;
+  let blocked = false;
+  if ((hitX || hitZ) && walking) {
+    if (def.climbs) {
+      // A climber that walks into a wall goes up it instead of stopping.
       mob.vel.y = Math.max(mob.vel.y, 2.6);
       mob.onGround = false;
+    } else if ((mob.onGround || (mob.inWater && mob.vel.y <= 0)) && canHopToward(mob, pushX, pushZ)) {
+      // In water the same kick is a stroke towards the bank.
+      mob.vel.y = JUMP_SPEED;
+      mob.onGround = false;
+    } else if (mob.onGround) {
+      blocked = true;
     }
   }
 
-  // Settle feet on top of the block when standing.
-  if (mob.onGround) {
-    const below = Math.floor(mob.pos.y - 0.05);
-    if (!isSolid(world.getBlock(Math.floor(mob.pos.x), below, Math.floor(mob.pos.z)))) {
-      mob.onGround = false;
+  // No headway against something it cannot jump: try going round. Still
+  // against the wall partway through a detour, it keeps following the wall
+  // rather than turning back at the walker and losing the ground it made; a
+  // wall that goes on and on is tried the other way after a while.
+  if (def.hostile && blocked) {
+    if (mob.detourTime > 0) {
+      mob.detourTime = Math.max(mob.detourTime, 0.5);
+      mob.detourSpent += dt;
+      if (mob.detourSpent > DETOUR_GIVE_UP) {
+        mob.detourSide = -mob.detourSide;
+        mob.detourSpent = 0;
+      }
+    } else if (Math.hypot(mob.vel.x, mob.vel.z) < def.speed * 0.35) {
+      mob.stuckTime += dt;
+      if (mob.stuckTime > STUCK_BEFORE_DETOUR) {
+        if (mob.detourMemory <= 0) mob.detourSide = Math.random() < 0.5 ? -1 : 1;
+        mob.detourTime = DETOUR_SECONDS;
+        mob.detourMemory = DETOUR_MEMORY;
+        mob.detourSpent = 0;
+        mob.stuckTime = 0;
+      }
     }
+  } else {
+    mob.stuckTime = 0;
   }
+
+  separateMob(mob, dt);
 
   // Water slows mobs down, and lava far more.
   mob.inWater = submergedAt(mob.pos.x, mob.pos.y + 0.25, mob.pos.z);

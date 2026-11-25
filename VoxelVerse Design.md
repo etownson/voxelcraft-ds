@@ -993,9 +993,13 @@ sticks make three ladders.
 
 Mobs are entities separate from the voxel grid, built from box geometry with
 16×16 procedural textures: head, body, four legs, leg-swing walk and head bob. They
-feel gravity and block collision, hop one block (and take the stairs' half-blocks),
-flee briefly when hit, burst into particles and drop items when killed, and take
-player attacks with knockback.
+feel gravity and block collision, slide along a wall they meet at an angle instead of
+stopping dead, jump a one-block rise in their way (and take the stairs' half-blocks)
+with the walker's own jump, kick for the bank when a shore blocks them in water, flee
+briefly when hit, burst into particles and drop items when killed, and take player
+attacks with knockback. Mobs keep their distance from one another and from the
+walkers: two bodies that overlap are pushed apart through the same block collision as
+walking, so a crowd stands round the player in a ring instead of merging into one.
 
 Population is a budget:
 
@@ -1021,8 +1025,14 @@ Population is a budget:
   conditions. Spiders (after beacon 2) and skeleton archers (after beacon 3) join the
   same spawns as the mission goes on; Archery and the night's newcomers describes
   them, the bow and its arrows
-- Zombies walk directly at the player within detection range (step-up steering, no full
-  pathfinding) and deal contact damage on a cooldown. Creepers approach, then hiss,
+- Zombies walk directly at the player within detection range (no full pathfinding),
+  stop at arm's length, and deal contact damage on a cooldown, but only with a clear
+  line from chest to the player's chest or eyes: a roof, a wall or a closed door
+  between them stops the blow, so a zombie on the wall top beside a shelter's roof
+  cannot hit through it. A hunter that makes no headway against a wall it cannot
+  jump for 0.6 s follows the wall to one side for a few seconds, keeps following it
+  while still pressed against it, keeps that side if it sticks again soon after,
+  and tries the other way after 8 s. Creepers approach, then hiss,
   flash, and explode on a 1.55 s fuse lit at about 2.5 blocks in three dimensions with
   clear sight — leaves and water do not break the sight line, walls and closed doors
   do — destroying nearby non-bedrock blocks, which drop as items. A creeper sealed
