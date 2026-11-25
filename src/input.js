@@ -226,6 +226,33 @@ function movePlayerAxis(axis, delta) {
   return false;
 }
 
+/** How far sideways a body caught inside a block may be eased out, per try. */
+const EMBED_PUSH_STEP = 0.02;
+const EMBED_PUSH_MAX = 1;
+
+/**
+ * A door shuts as a whole solid cell, so a player standing a little way into
+ * the doorway when it closes (their own hand or a friend's in co-op) ends up
+ * inside it. Every move from there still overlaps the door, and collision
+ * refuses them all: they would be frozen. So a body that starts a frame
+ * inside something is eased out sideways to the nearest spot where it fits,
+ * which is the side of the door they were mostly standing on. Only horizontal
+ * and at most a block, so it never lifts anyone through a ceiling or carries
+ * them through a wall.
+ */
+function easeOutOfSolid() {
+  const { x, y, z } = player.pos;
+  if (!playerCollidesAt(x, y, z)) return;
+  for (let d = EMBED_PUSH_STEP; d <= EMBED_PUSH_MAX + 1e-6; d += EMBED_PUSH_STEP) {
+    for (const [dx, dz] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
+      if (playerCollidesAt(x + dx, y, z + dz)) continue;
+      player.pos.x = x + dx;
+      player.pos.z = z + dz;
+      return;
+    }
+  }
+}
+
 function blockAtPoint(x, y, z) {
   return world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
 }
@@ -341,6 +368,7 @@ export function updatePlayer(dt, input) {
   updateKeyboardLook(dt);
 
   ensurePlayerChunks();
+  easeOutOfSolid();
   updatePlayerEnvironment();
   player.onLadder = ladderHolding(player.pos.x, player.pos.y, player.pos.z);
 
