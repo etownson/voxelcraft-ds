@@ -1564,9 +1564,12 @@ screenLayer.addEventListener('contextmenu', (event) => event.preventDefault());
 
 /* A click outside the panel throws what the cursor carries: the whole stack
    with the left button, one of it with the right. That is how a stack too big
-   to throw one at a time with Q goes to a friend. */
+   to throw one at a time with Q goes to a friend.
+   Only a press on the backdrop itself counts. A press on a slot re-renders the
+   panel before it bubbles here, so its target is already out of the page and
+   `closest('#screen-panel')` would miss it, throwing the stack just picked up. */
 screenLayer.addEventListener('mousedown', (event) => {
-  if (event.target.closest('#screen-panel')) return;
+  if (event.target !== screenLayer) return;
   const held = cursorCarried();
   if (!held) return;
   event.preventDefault();
