@@ -493,7 +493,7 @@ A first-person controller:
 - Gamepad support via the Web Gamepad API: left stick moves, right stick looks
   (configurable sensitivity), A/Cross jumps, right trigger mines/attacks, left trigger
   places/interacts, shoulder buttons scroll the hotbar, B/L3 latches sprint,
-  X drops one of the held item, Y opens the inventory, View/Back opens the journal, and Start/Menu opens the main
+  R3 (the right stick pressed in) drops one of the held item, Y opens the inventory, View/Back opens the journal, and Start/Menu opens the main
   menu. Menu grids are walked with the D-pad or stick: A picks up and places whole
   stacks, X takes half a stack and places one item, Y/Triangle quick-moves, B or
   View/Back closes
@@ -610,7 +610,7 @@ empty hand shows nothing.
   shift-click quick-moves between pack rows, and into or out of an open container —
   from the pack into a chest it tops up matching stacks, then claims free rows;
   armour shift-clicked from a container goes onto the body
-- **Dropping.** Q (gamepad X) throws one of the held item along the crosshair; held
+- **Dropping.** Q (gamepad R3, the right stick pressed in) throws one of the held item along the crosshair; held
   down it keeps throwing, one per key repeat. With a screen open, clicking outside the
   panel throws the stack on the cursor: left click the whole stack, right click one.
   A thrown stack leaves the eyes at 6 blocks a second with a little lift, lands about

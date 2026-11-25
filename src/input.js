@@ -1264,8 +1264,9 @@ export function updateGamepad(dt) {
   if (!readTransmission && (padB || gamepadState.pressed[PAD_BUTTON.l3]) && !inputView.held()) {
     toggleSprintLatch();
   }
-  // X throws one of the held item, to hand it to a friend or be rid of it.
-  if (gamepadState.pressed[PAD_BUTTON.x] && !inputView.held()) inputView.toss();
+  // R3, the right stick pressed in, throws one of the held item, to hand it to
+  // a friend or be rid of it.
+  if (gamepadState.pressed[PAD_BUTTON.r3] && !inputView.held()) inputView.toss();
   if (gamepadState.pressed[PAD_BUTTON.lb]) {
     inputView.hotbarStep(-1);
   }
