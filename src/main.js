@@ -1077,9 +1077,11 @@ window.__voxelcraft = {
    * Drop the game into its playing state without pointer lock so automated
    * checks can drive updatePlayer(). Real players get here through the overlay
    * click plus requestLock(); the harness must not race that 350 ms timeout.
+   * A connected gamepad already counts as playable, but the menu is still up
+   * and swallows every key the harness sends, so an open menu is closed too.
    */
   start() {
-    if (!isPlayable()) enableFallbackControls();
+    if (!isPlayable() || menuOpen()) enableFallbackControls();
     return { playable: isPlayable(), screen: activeScreen, dead: player.dead };
   },
   /** Throws one of the held item, or the whole stack, along the crosshair. */
