@@ -99,6 +99,12 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * beside this one, under `voxelcraft:pacing` per world, so the save's bytes
  * (which the snapshot guard compares) never carry it.
  *
+ * The beacon chain was stretched once while schema 7 stood (legs of 2,760
+ * blocks, difficulty tied to the beacons). The monuments are a pure function
+ * of the seed and SP0, so a world saved before that sees them move. It was
+ * done knowingly, with no game in progress; a later change to the layout
+ * must keep the old one for worlds already started.
+ *
  * From schema 7 on, a save is never thrown away. SAVE_KEY is frozen: it keeps
  * the name it had at schema 7 for good, and the record's own `v` says which
  * schema wrote it. A change that only adds fields needs nothing. Any other

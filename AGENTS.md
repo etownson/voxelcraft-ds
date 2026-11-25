@@ -157,8 +157,8 @@ deliberate commit, and say so in the commit message.
 
 ## Pacing
 
-The mission is meant to take four to six hours: beacon 1 at once, then about an
-hour to an hour and a half for each of the other four. `src/pacing.js` logs
+The mission is meant to be long, with no target length: beacon 1 at once, then
+half a day's walk and a hunt for each of the other four. `src/pacing.js` logs
 real play per beacon in every world (`window.__voxelcraft.pacing()`) and marks
 a run assisted when a debug verb or key bent it. `tools/pace-estimate.js` works
 out what each beacon should take from the game's own numbers (prices, hostile

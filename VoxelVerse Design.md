@@ -61,10 +61,12 @@ into this world to relight the five beacons placed in it long ago, and the world
 crafting stays locked until they do. Each beacon lit sends a transmission with more of
 the story, a new set of recipes and the way to the next beacon.
 
-The mission is meant to be short, because this is a hobby game few people will play for
-long: four to six hours in all. Beacon 1 is lit almost at once, and each of the other
-four takes about an hour to an hour and a half. The playtest log and the pace estimate
-(see Debug surface) measure a world against that.
+The mission is meant to be long. This is a hobby game played mostly by two friends who
+want to live in a world for a good while, and anyone else who drops in can enjoy it for a
+while and move on. Beacon 1 is lit almost at once. Each of the other four is half a day's
+walk past the one before it, and then a hunt, so every leg is an expedition with a night
+on the road. There is no target length any more; the playtest log and the pace estimate
+(see Debug surface) say how long a world actually took.
 
 ### Arrival
 
@@ -95,7 +97,11 @@ mission measures is measured from it: where the monuments stand, what essence ea
 wants, and how mean the enemies out that way have gotten. The first beacon is near SP0
 but just far enough away to need a short bit of exploration.
 
-The five monuments stand between SP0 and the far reaches of the world. Their positions
+The five monuments stand between SP0 and the far reaches of the world, as a chain of legs
+that keeps heading outward. Beacon 1 is 40 blocks from SP0. Every later beacon stands
+about 2,760 blocks past the one before it (`BEACON_TARGET_HOPS`): 12 in-game hours, or 10
+real minutes, of walking at 4.6 blocks/s in a straight line, and longer over real ground.
+Beacon 5 ends up around 11,000 blocks out. Their positions
 are a pure function of the seed and SP0, and they are laid down as stored edits, the same
 ones the save keeps, so every chunk that regenerates puts them back where they were
 planted. The search for a site refuses water, cliffs, trees and cave mouths. A dark
@@ -108,6 +114,15 @@ beacon 1 runs.
 Enemy difficulty scales with an enemy's distance along the X and Z axes from SP0, taken
 where it spawned. Enemies only start scaling along the Y axis as well once they are below
 sea level. Difficulty scales spawn frequency, health and attack damage.
+
+The X/Z part is tied to the beacons, not to raw blocks, so it climbs through the whole
+mission however long the legs are. SP0's ground asks for 0, and each monument's ground for
+its entry in `BEACON_DIFFICULTY`: 0.15, 1, 2, 3.25 and 4.75. Between two monuments it rises
+in a straight line with the distance, so a leg gets steadily meaner the farther the walker
+goes. Past beacon 5 it keeps the last leg's slope up to the cap of 6. Each step is a little
+steeper than the one before, and each beacon's value is close to what the earlier, shorter
+chain gave there, so the sword-per-beacon balance carries over. Depth adds one unit per 48
+blocks below sea level on top.
 
 The world divides into threat zones, SP0's and one around each beacon, each reaching
 halfway to its neighbours. The HUD shows the zone underfoot as pips, coloured green behind

@@ -315,13 +315,16 @@ export const B = Object.freeze({
 export const BEACON_COUNT = 5;
 /**
  * How far each monument stands from the one before it, in blocks: the mission
- * is a chain of legs, 40 out to 600, rather than a set of rings around the
- * spawn. Beacon 1 keeps its small first hop so the walker learns the machine
- * before they leave home ground. The chain runs outward from SP0, so the sum
- * of these is roughly how far the last monument stands from where they fell,
- * and the price follows that distance.
+ * is a chain of legs rather than a set of rings around the spawn. Beacon 1
+ * keeps its small first hop so the walker learns the machine before they leave
+ * home ground. Every leg after it is half a day on foot: 12 in-game hours is
+ * 600 real seconds (DAY_LENGTH_SECONDS / 2), and at WALK_SPEED that is 2,760
+ * blocks in a straight line, so each leg crosses at least one dusk and the
+ * walk out is an expedition, not an errand. The chain runs outward from SP0,
+ * so the sum of these is roughly how far the last monument stands from where
+ * they fell.
  */
-export const BEACON_TARGET_HOPS = [40, 200, 300, 400, 600];
+export const BEACON_TARGET_HOPS = [40, 2760, 2760, 2760, 2760];
 /**
  * The monuments march outward: each beacon's bearing is the direction the
  * chain is already travelling, wobbling by no more than this either side. Kept
@@ -370,12 +373,14 @@ export const BEACON_COLORS = Object.freeze([
  * Enemy difficulty reads three axes off the ground a mob spawns on: its X and
  * Z distance from SP0 always, and its depth below sea level on top of that,
  * because the design only charges for the dark once the player has left the
- * surface. One unit of difficulty per this many blocks of travel. The step is
- * wide because the mission now runs a long way out: at 300 the ramp is still
- * climbing when the walker reaches the last monument, rather than saturating
- * halfway to the second one.
+ * surface. The X/Z part is tied to the beacons rather than to raw blocks: the
+ * ground at each monument asks for that beacon's entry here, SP0 asks for 0,
+ * and between two of them it rises in a straight line with the distance. Past
+ * the last monument it keeps the last leg's slope up to DIFFICULTY_MAX. So the
+ * ramp climbs through every beacon however long the legs are, and each step is
+ * a little steeper than the one before it.
  */
-export const DIFFICULTY_XZ_STEP = 300;
+export const BEACON_DIFFICULTY = Object.freeze([0.15, 1, 2, 3.25, 4.75]);
 export const DIFFICULTY_Y_STEP = 48;
 /**
  * A ceiling on the total, so the far corners stay survivable rather than absurd.

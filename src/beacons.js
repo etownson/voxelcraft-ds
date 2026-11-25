@@ -31,7 +31,7 @@ import {
   B, BEACON_COLORS, BEACON_COUNT, BEACON_ESSENCE_PER_BLOCK, BEACON_KILLS_TO_LIGHT,
   BEACON_OUTWARD_BEARING, DIFFICULTY_ESSENCE_SCALE, HOSTILE_ESSENCE_AVERAGE,
   BEACON_TARGET_HOPS, CHUNK_SIZE,
-  DIFFICULTY_MAX, DIFFICULTY_XZ_STEP, DIFFICULTY_Y_STEP, SEA_LEVEL, WORLD_HEIGHT,
+  BEACON_DIFFICULTY, DIFFICULTY_MAX, DIFFICULTY_Y_STEP, SEA_LEVEL, WORLD_HEIGHT,
   WORLD_SEED, blockIndex, clamp
 } from './config.js';
 import { essenceCount, spendEssence } from './essence.js';
@@ -74,14 +74,14 @@ export const TRANSMISSIONS = [
     'You lit it. 💠 The grid stirs. I have recipes queued — they are in your journal now.',
     'I am sorry. 💔 You are flesh in that world: it will want feeding, and it can be hurt.',
     'The creatures are worst after dark and grow stronger the further you venture. Do not hide from them. Essence is what they pay.',
-    'Find the second beacon. We are preparing it with more recipes. Build a shelter before you light it. Promise me. 🤝',
+    'Find the second beacon. It is half a day\'s walk out, so you will sleep on the road. Build a shelter there before you light it. Promise me. 🤝',
     'And watch the sun. 🌙 Before it sets, have torches lit, a door hung and something cooked to eat. Night comes faster than you think.'
   ],
   [
     'Two of five. 🌄 The world is waking past this valley.',
     'The chaos you see has a history. It was made, not born. More of it once you are ready.',
     'You will want to farm: sow seeds on tilled soil beside water, and the wheat will rise.',
-    'More recipes are in the journal. The next beacon is farther out. Be brave. 💪'
+    'More recipes are in the journal. The next beacon is another long day out. Pack the base and bring it. Be brave. 💪'
   ],
   [
     'Three. The far grid hums now, and the creatures with it.',
@@ -111,6 +111,9 @@ export const TRANSMISSIONS = [
    SP0 moves is a different world. */
 let spawnPoint0 = { x: 0, z: 0 };
 let sites = null;
+/* The difficulty ramp's knots, [distance from SP0, difficulty], SP0 first and
+   then one per monument. Built with the sites, from where they really stand. */
+let knots = null;
 let beaconsActivated = 0;
 
 /** The mission readout's place on the page, painted through this at bootstrap. */
@@ -194,7 +197,7 @@ function chooseMonumentColumns() {
         const z = Math.round(from.z + Math.sin(angle) * radius);
         const ground = monumentGround(x, z);
         if (!ground) continue;
-        placed = monumentSite(index, from, x, z, ground.height);
+        placed = monumentColumn(index, from, x, z, ground.height);
       }
     }
     // A seed that refuses every column cannot stop the mission: fall back to
@@ -207,7 +210,7 @@ function chooseMonumentColumns() {
         const z = Math.round(from.z + Math.sin(base) * radius);
         const ground = step < 5 ? monumentGround(x, z) : sampleColumn(x, z);
         if (!ground) continue;
-        placed = monumentSite(index, from, x, z, Math.max(ground.height, SEA_LEVEL + 1));
+        placed = monumentColumn(index, from, x, z, Math.max(ground.height, SEA_LEVEL + 1));
       }
     }
     chosen.push(placed);
@@ -219,24 +222,63 @@ function chooseMonumentColumns() {
   return chosen;
 }
 
-/**
- * What a monument knows about itself: where it stands, the leg that reaches it
- * and the price asked there. Beacon 1 asks for its distance from SP0, which is
- * what the purse opens with. Every later beacon asks for about
- * `BEACON_KILLS_TO_LIGHT` kills' essence on the surface where the one before
- * it stands (`from`), so each is the same hunt in the zone the walker has
- * just unlocked, however far apart the monuments fall.
- */
-function monumentSite(index, from, x, z, height) {
+/** Where a monument stands, and the leg that reaches it. */
+function monumentColumn(index, from, x, z, height) {
   const hop = Math.round(Math.hypot(x - from.x, z - from.z));
   const distance = Math.round(Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z));
-  let cost;
-  if (index === 0) {
-    cost = Math.max(4, Math.round(distance / BEACON_ESSENCE_PER_BLOCK));
-  } else {
-    cost = Math.round(BEACON_KILLS_TO_LIGHT * killEssenceAt(from.x, from.z));
+  return { index, x, z, y: height, hop, distance };
+}
+
+/**
+ * The price asked at each monument, once every column stands and the
+ * difficulty ramp is drawn through them. Beacon 1 asks for its distance from
+ * SP0, which is what the purse opens with. Every later beacon asks for about
+ * `BEACON_KILLS_TO_LIGHT` kills' essence on the surface where the one before
+ * it stands, so each is the same hunt in the zone the walker has just
+ * unlocked, however far apart the monuments fall.
+ */
+function priceMonuments(columns) {
+  return columns.map((column, index) => {
+    let cost;
+    if (index === 0) {
+      cost = Math.max(4, Math.round(column.distance / BEACON_ESSENCE_PER_BLOCK));
+    } else {
+      const from = columns[index - 1];
+      cost = Math.round(BEACON_KILLS_TO_LIGHT * killEssenceAt(from.x, from.z));
+    }
+    return { ...column, cost };
+  });
+}
+
+/**
+ * The ramp's knots: SP0 at 0, then each monument at its BEACON_DIFFICULTY
+ * entry. The chain runs outward, but its bearing wobbles, so a knot nearer SP0
+ * than the one before it would fold the ramp; each distance is kept at least a
+ * block past the last.
+ */
+function buildKnots(columns) {
+  const table = [[0, 0]];
+  for (const column of columns) {
+    const last = table[table.length - 1][0];
+    table.push([Math.max(column.distance, last + 1), BEACON_DIFFICULTY[column.index]]);
   }
-  return { index, x, z, y: height, hop, distance, cost };
+  return table;
+}
+
+/* The X/Z part of difficulty at a distance from SP0, read off the knots. */
+function rampDifficulty(distance) {
+  if (!knots) beaconSites();
+  for (let i = 1; i < knots.length; i++) {
+    const [d1, v1] = knots[i];
+    if (distance <= d1) {
+      const [d0, v0] = knots[i - 1];
+      return v0 + (v1 - v0) * (distance - d0) / (d1 - d0);
+    }
+  }
+  // Past the last monument the last leg's slope carries on to the cap.
+  const [d0, v0] = knots[knots.length - 2];
+  const [d1, v1] = knots[knots.length - 1];
+  return v1 + (v1 - v0) * (distance - d1) / (d1 - d0);
 }
 
 /* An average hostile kill's essence on the surface at a column. */
@@ -256,7 +298,11 @@ export function frontierKillEssence(kills) {
 
 /** The five monument columns, computed once per world. */
 export function beaconSites() {
-  if (!sites) sites = chooseMonumentColumns();
+  if (!sites) {
+    const columns = chooseMonumentColumns();
+    knots = buildKnots(columns);
+    sites = priceMonuments(columns);
+  }
   return sites;
 }
 
@@ -267,15 +313,18 @@ export function spawnPoint() { return { ...spawnPoint0 }; }
 export function setSpawnPoint0(sp) {
   spawnPoint0 = { x: Math.trunc(sp.x) || 0, z: Math.trunc(sp.z) || 0 };
   sites = null;
+  knots = null;
 }
 
 /**
  * The difficulty the ground at a point asks for: X and Z travel from SP0
- * always, and depth below sea level only after the walker has gone under it —
- * one unit per step constant, capped, so the far corners stay survivable.
+ * always, along the ramp the monuments set (each beacon's ground asks for its
+ * BEACON_DIFFICULTY entry, rising steadily between them), and depth below sea
+ * level only after the walker has gone under it, one unit per step. Capped, so
+ * the far corners stay survivable.
  */
 export function difficultyAt(x, y, z) {
-  const horiz = Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z) / DIFFICULTY_XZ_STEP;
+  const horiz = rampDifficulty(Math.hypot(x - spawnPoint0.x, z - spawnPoint0.z));
   const depth = y < SEA_LEVEL ? (SEA_LEVEL - y) / DIFFICULTY_Y_STEP : 0;
   return clamp(horiz + depth, 0, DIFFICULTY_MAX);
 }
