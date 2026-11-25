@@ -85,6 +85,20 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * its own seed in `seed`. A save written before worlds is the default world's
  * and reads exactly as it did. A world downloaded as a file is this same
  * record, wrapped with the world's name.
+ *
+ * From schema 7 on, a save is never thrown away. SAVE_KEY is frozen: it keeps
+ * the name it had at schema 7 for good, and the record's own `v` says which
+ * schema wrote it. A change that only adds fields needs nothing. Any other
+ * change bumps SAVE_SCHEMA and adds the step that upgrades the schema before
+ * it to `MIGRATIONS` below, in the same commit, so every save already written
+ * walks forward one schema at a time as it is read. The record as it was
+ * before an upgrade is kept once under `voxelcraft:world:before-upgrade`, and a
+ * record that cannot be read at all is moved aside under
+ * `voxelcraft:world:unreadable` instead of being deleted (both per world). A
+ * save written by a newer build than this one is left alone and never written
+ * over: this page plays without saving until it is reloaded onto the new code.
+ * Schemas 1 to 6 had a key each and were refused rather than upgraded; they
+ * still sit under LEGACY_SAVE_KEYS.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
@@ -95,6 +109,51 @@ export const SAVE_SCHEMA = 7;
 registerWorldKey(SAVE_KEY);
 /** Where the world this page was booted into keeps its save. */
 export const ACTIVE_SAVE_KEY = worldKey(SAVE_KEY);
+const BEFORE_UPGRADE_BASE = 'voxelcraft:world:before-upgrade';
+const UNREADABLE_BASE = 'voxelcraft:world:unreadable';
+registerWorldKey(BEFORE_UPGRADE_BASE);
+registerWorldKey(UNREADABLE_BASE);
+
+/**
+ * One step per schema bump: `MIGRATIONS[n]` takes a parsed record written at
+ * schema n and returns it as schema n + 1 would have written it (it may change
+ * the record in place). Fill in what the new schema needs from what the old
+ * one had, and choose an honest default where it had nothing. Never delete a
+ * step: a save written years ago walks through all of them.
+ */
+const MIGRATIONS = {
+  // 7: (save) => { ...; return save; },
+};
+
+/** A record walked forward to SAVE_SCHEMA, or null when no path reaches it. */
+export function migrateSave(record) {
+  let save = record;
+  while (save && Number.isInteger(save.v) && save.v < SAVE_SCHEMA) {
+    const step = MIGRATIONS[save.v];
+    if (!step) return null;
+    const from = save.v;
+    save = step(save);
+    if (save) save.v = from + 1;
+  }
+  return save && save.v === SAVE_SCHEMA ? save : null;
+}
+
+/* Keys that hold a save from a newer build. Nothing on this page writes them. */
+const newerSaveKeys = new Set();
+
+/** Whether a save this page found was written by a newer build, and so left alone. */
+export function newerSaveFound() { return newerSaveKeys.size > 0; }
+
+/** Where `key`'s spare copies go: the per-world slots, or beside a co-op key. */
+function asideKey(key, base) {
+  return key === ACTIVE_SAVE_KEY ? worldKey(base) : key + ':' + base.split(':').pop();
+}
+
+function keepCopy(key, raw) {
+  try { localStorage.setItem(key, raw); } catch (full) {
+    console.warn('Could not keep a copy of the save under ' + key, full);
+  }
+}
 const AUTOSAVE_SECONDS = 25;
 
 let lastSaveAt = 0;
@@ -283,6 +342,11 @@ function serializeBlockEntities() {
 
 export function saveWorld() {
   if (saveDisabled || !saveTarget) return false;
+  if (newerSaveKeys.has(saveTarget)) {
+    lastSaveError = 'Saved by a newer version \u2014 reload to update. Not saving until then.';
+    if (saveNotice) saveNotice();
+    return false;
+  }
   try {
     const json = JSON.stringify(serializeWorldSave());
     localStorage.setItem(saveTarget, json);
@@ -302,7 +366,12 @@ export function saveWorld() {
   }
 }
 
-/** Reads and validates the stored save, or returns null when absent or stale. */
+/**
+ * Reads the stored save, upgraded to this schema, or null when there is none
+ * this page can play. Nothing that was stored is ever lost here: an older
+ * record is upgraded (its original kept once), a newer one is left alone and
+ * shielded from writes, and one that cannot be read is moved aside.
+ */
 export function readSavedWorld(key = ACTIVE_SAVE_KEY) {
   let raw = null;
   try {
@@ -312,17 +381,22 @@ export function readSavedWorld(key = ACTIVE_SAVE_KEY) {
     return null;
   }
   if (!raw) return null;
-  try {
-    const data = JSON.parse(raw);
-    if (!data || data.v !== SAVE_SCHEMA || data.seed !== WORLD_SEED) return null;
-    return data;
-  } catch (err) {
-    console.warn('Discarding corrupt world save:', err);
-    try {
-      localStorage.removeItem(key);
-    } catch (unavailable) {}
+  let data = null;
+  try { data = JSON.parse(raw); } catch (broken) { data = null; }
+  if (data && Number.isInteger(data.v) && data.v > SAVE_SCHEMA) {
+    newerSaveKeys.add(key);
+    lastSaveError = 'Saved by a newer version \u2014 reload to update. Not saving until then.';
     return null;
   }
+  const writtenAt = data ? data.v : null;
+  const upgraded = data && data.seed === WORLD_SEED ? migrateSave(data) : null;
+  if (!upgraded) {
+    console.warn('World save could not be read; kept under ' + asideKey(key, UNREADABLE_BASE));
+    keepCopy(asideKey(key, UNREADABLE_BASE), raw);
+    return null;
+  }
+  if (writtenAt !== SAVE_SCHEMA) keepCopy(asideKey(key, BEFORE_UPGRADE_BASE), raw);
+  return upgraded;
 }
 
 export function applySavedEdits(world, save) {

@@ -48,6 +48,11 @@ a world shared with each friend can sit side by side (`src/worlds.js`):
   schema is refused, the same as an old save
 - **Co-op rooms are per world.** Each world keeps its own room code for good, so a
   friend's saved link always opens the world played with them. See Co-op
+- **Saves carry forward.** From schema 7 on, an update to the game never costs a
+  world: a save from an older schema is upgraded as it is read (the original kept
+  once beside it), one that cannot be read is moved aside rather than deleted, and a
+  save from a newer build than the page is left untouched and not written over until
+  the page reloads onto the new code. Downloaded files are upgraded the same way
 
 ## The mission
 
@@ -1481,7 +1486,8 @@ the rail-or-page zone, the highlighted control and the hand that moved it; drive
 with `setVirtualPad` or key events), and audio (`audio`, `setVolume`).
 `waypoints()` lists what the arrow can follow and where it points now. `world()` names
 the world this page is (id, name, seed, whether it is a visit) and lists every world
-the browser keeps; `seed` is that world's seed. `coop()`
+the browser keeps; `seed` is that world's seed. `migrateSave(record)` walks a stored
+save record forward to the current schema, or answers null. `coop()`
 reports the co-op room: mode, code, this peer and the host, the peers, the avatars
 heard, how many mob pictures a guest is drawing, and the status line. The API is
 always there, `?debug` or not; the `G` give shelf and the `B` monument tour are the

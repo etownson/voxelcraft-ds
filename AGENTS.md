@@ -51,16 +51,28 @@ in its `loose` section, which is not compared. Anything that changes `strict`
 output needs a deliberate rebaseline (see Snapshot guard).
 
 **Persistence** (`src/save.js`). The save goes to localStorage under `SAVE_KEY`
-(`voxelcraft:world:v<SAVE_SCHEMA>`; read the current value there rather than
-copying it here). It stores only the blocks the player has changed, per
-chunk, plus the player's state and the mission's progress. Older saves are
-refused rather than migrated, and the comment above `SAVE_KEY` keeps a running
-history of what each schema added. When the save shape changes:
+(the first world) or `SAVE_KEY:<world id>` (every other world; see
+`src/worlds.js`). It stores only the blocks the player has changed, per
+chunk, plus the player's state and the mission's progress. The comment above
+`SAVE_KEY` keeps a running history of what each schema added.
+
+**A change must never throw away a player's save.** People put hours into a
+world, often with friends, so from schema 7 on every save is carried forward.
+`SAVE_KEY` is frozen at `voxelcraft:world:v7` and never changes again; the
+record's `v` says which schema wrote it. When the save shape changes:
 
 - If the change only adds fields, and a save written before it reads exactly
-  as it did, it may stay on the current schema. Note it in that comment.
-- Anything else (a field renamed, removed or reinterpreted) bumps `SAVE_SCHEMA`
-  and `SAVE_KEY` and moves the old key into `LEGACY_SAVE_KEYS`.
+  as it did (a new block-entity list that is simply absent, a new item id, a
+  field with an honest default), it stays on the current schema. Note it in
+  that comment.
+- Anything else (a field renamed, removed or reinterpreted) bumps
+  `SAVE_SCHEMA` and, in the same commit, adds `MIGRATIONS[old schema]`: the
+  step that turns a record of the old schema into the new one. Never remove a
+  step. Then run the save check (below) and add a fixture for the new schema.
+- `readSavedWorld` never deletes anything: an upgraded record's original is
+  kept under `voxelcraft:world:before-upgrade`, an unreadable one is moved to
+  `voxelcraft:world:unreadable`, and a save from a newer build is left alone
+  and never written over until the page reloads onto the new code.
 
 **Debug API.** `window.__voxelcraft`, defined in `main.js`, exposes the world,
 the player, the inventory, the item drops, the scene and the camera, plus verbs
@@ -98,7 +110,23 @@ Module scope rules (what a file declares, what it refers to) live in
 `tools/js-scope.mjs` and are shared by the import checker and the splitter.
 Never duplicate that logic in a new tool.
 
-There are no unit tests. The only behavioural test is the snapshot guard.
+There are no unit tests. The behavioural tests are the snapshot guard and the
+save check, both run in a page.
+
+## Save check
+
+`tools/save-fixtures/` holds one real save per schema from v7 on, exactly as
+the game stored it. `tools/save-check.js` walks each through the game's own
+`MIGRATIONS` and fails if any no longer reaches the current schema with its
+world, player, pack and containers. Run it in a page with the game booted:
+
+```js
+fetch('tools/save-check.js').then(r => r.text()).then(eval)
+```
+
+Run it whenever the save shape changes. After a bump, save a world at the new
+schema into `tools/save-fixtures/v<N>.json` and add `N` to the list in the
+script. Never remove a fixture.
 
 ## Snapshot guard
 

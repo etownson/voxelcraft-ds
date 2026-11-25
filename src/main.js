@@ -125,7 +125,7 @@ import {
 import { camera, renderer, scene, skyDome } from './render.js';
 import {
   ACTIVE_SAVE_KEY, LEGACY_SAVE_KEYS, SAVE_KEY, SAVE_SCHEMA, applySavedBlockEntities, applySavedEdits,
-  coopGuestKey, forgetSavedWorld, setSaveTarget, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
+  coopGuestKey, forgetSavedWorld, migrateSave, newerSaveFound, setSaveTarget, formatSavedAt, hasCurrentSave, hasLegacySave, onSaveWritten,
   readSavedWorld, rememberSavedWorld, restoreSavedArmour, restoreSavedBeacons,
   restoreSavedEssence,
   restoreSavedInventory,
@@ -246,12 +246,15 @@ async function loadWorldFile(file) {
   if (!data || data.kind !== 'voxelverse-world' || !data.save || !Number.isFinite(data.seed)) {
     return 'That file is not a VoxelVerse world.';
   }
-  if (data.save.v !== SAVE_SCHEMA) return 'That world is from another version of the game.';
+  if (Number(data.save.v) > SAVE_SCHEMA) return 'That world is from a newer version of the game. Reload to update, then load it.';
   if (data.save.seed !== data.seed) return 'That world file is damaged.';
+  // A file from an older schema walks forward the same way a stored save does.
+  const save = migrateSave(data.save);
+  if (!save) return 'That world is from a version of the game this one cannot read.';
   const made = createWorld(data.name || file.name.replace(/\.json$/i, ''), data.seed);
   if (!made) return 'Browser storage refused the world.';
   try {
-    localStorage.setItem(worldKey(SAVE_KEY, made.id), JSON.stringify(data.save));
+    localStorage.setItem(worldKey(SAVE_KEY, made.id), JSON.stringify(save));
     if (data.waypoints) localStorage.setItem(worldKey(WAYPOINTS_KEY, made.id), JSON.stringify(data.waypoints));
   } catch (full) {
     deleteWorld(made.id);
@@ -848,7 +851,11 @@ setTransmissionFinisher(() => {
 // A world written by an older build stays in storage but cannot be read, so
 // say so out loud on the first new-world boot rather than let a player wonder
 // where their base went.
-if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
+if (newerSaveFound()) {
+  // The save is a newer build's. It is left exactly as it was, and this page
+  // writes nothing, so reloading onto the new code finds it intact.
+  showToast('This world was saved by a newer version \u2014 reload to update. Nothing is saved until then.');
+} else if (!loadedSave && !hasCurrentSave() && hasLegacySave()) {
   showToast('Older worlds can\u2019t be loaded \u2014 this is a new world');
 }
 
@@ -975,6 +982,10 @@ window.__voxelcraft = {
     resumeAutosave();
     saveWorld();
     return this.saveInfo();
+  },
+  /** A stored record walked forward to this schema, or null: the save-check tool's door. */
+  migrateSave(record) {
+    return migrateSave(JSON.parse(JSON.stringify(record)));
   },
   saveInfo() {
     const written = saveReport();
