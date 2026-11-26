@@ -196,6 +196,8 @@ let audioMusicVolume = AUDIO_DEFAULT_MUSIC_VOLUME;
 let audioMusicTrack = null;
 /** True once the current window's one-shot song has started; silence follows its end. */
 let audioMusicPlayed = false;
+/** The context time before which the window's song waits for its sunrise or sunset cue. */
+let audioMusicCueUntil = 0;
 let audioVoices = new Set();
 let audioVoiceSerial = 0;
 const audioBuffers = new Map();
@@ -1113,6 +1115,42 @@ function missionSongIsRunning() {
   return !!audioMissionSong && audioLoops.has(audioMissionSong);
 }
 
+/*
+ * Sunrise and sunset are announced on the sound-effects bus, so a player who
+ * has turned the music right down still hears the day turn. Each cue is a
+ * short synthesised arpeggio: sunrise climbs a major triad into a high
+ * shimmer, sunset falls a minor one into a low hum. The window's song (dawn's
+ * or dusk's) is held until the cue has rung out, so the two never overlap.
+ */
+const DAY_CUE_SECONDS = 2.6;
+
+function playDayCue(notes, tail) {
+  if (!audioIsAudible()) return false;
+  const start = audioCtx.currentTime + 0.05;
+  notes.forEach((freq, i) => {
+    audioTone({
+      type: 'triangle', from: freq, to: freq, duration: 0.9,
+      now: start + i * 0.28, volume: 0.06, bus: 'sfx', reverb: 0.35, priority: 2
+    });
+  });
+  audioTone({
+    type: 'sine', from: tail.from, to: tail.to, duration: 1.5,
+    now: start + notes.length * 0.28, volume: tail.volume, bus: 'sfx',
+    reverb: 0.4, priority: 2
+  });
+  return true;
+}
+
+/** The sun is up: C, E, G climbing, then a high C that brightens as it holds. */
+export function playSunriseSound() {
+  return playDayCue([523.25, 659.25, 783.99], { from: 1046.5, to: 1174.66, volume: 0.045 });
+}
+
+/** The sun is down: G, E-flat, C falling, then a low C that sinks as it fades. */
+export function playSunsetSound() {
+  return playDayCue([392.0, 311.13, 261.63], { from: 130.81, to: 98.0, volume: 0.07 });
+}
+
 /** The four scheduled music windows, in the same clock the HUD shows. */
 function musicTrackForClock(hours) {
   if (hours >= 6 && hours < 12) return 'music_dawn';
@@ -1149,9 +1187,18 @@ export function updateAmbient(dt) {
   // stays quiet until the next one opens.
   const musicTrack = musicTrackForClock(clockHours());
   if (musicTrack !== audioMusicTrack) {
+    // A window opened by the clock itself, not by a world loading into one:
+    // sunrise and sunset each get their cue on the effects bus, and the
+    // window's song waits until the cue has rung out.
+    const crossed = audioMusicTrack !== null;
     if (audioMusicTrack) audioStopLoop(audioMusicTrack);
     audioMusicTrack = musicTrack;
     audioMusicPlayed = false;
+    if (crossed && musicTrack === 'music_dawn' && playSunriseSound()) {
+      audioMusicCueUntil = audioCtx.currentTime + DAY_CUE_SECONDS;
+    } else if (crossed && musicTrack === 'music_dusk' && playSunsetSound()) {
+      audioMusicCueUntil = audioCtx.currentTime + DAY_CUE_SECONDS;
+    }
   }
   let music = underwater ? 0.04 : (openSky ? 0.16 : 0.12);
   if (audioListener.dead) {
@@ -1177,8 +1224,9 @@ export function updateAmbient(dt) {
   // while the arrival sequence holds it or a mission song runs — a fresh world
   // gets one song at its start, and the mission gets one at its end.
   const missionSong = missionSongIsRunning();
+  const cueRinging = audioCtx.currentTime < audioMusicCueUntil;
   if (missionSong || audioArrivalHold) music = 0;
-  if (!missionSong && !audioArrivalHold &&
+  if (!missionSong && !audioArrivalHold && !cueRinging &&
       (!audioMusicPlayed || audioLoops.has(musicTrack))) {
     if (audioSetLoop(musicTrack, music, 6000)) audioMusicPlayed = true;
   }
@@ -2449,6 +2497,7 @@ export function audioStatus() {
     missionTrack: audioMissionSong,
     musicVariant: (audioLoops.get(audioMusicTrack) || {}).variant ?? null,
     musicPlayed: audioMusicPlayed,
+    musicCueRinging: !!audioCtx && audioCtx.currentTime < audioMusicCueUntil,
     activeVoices: audioVoices.size,
     maxVoices: AUDIO_MAX_VOICES,
     noiseBuffer: !!audioNoiseBuffer,

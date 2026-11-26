@@ -1524,6 +1524,14 @@ dawn, noon, dusk, midnight — draws one random song from its folder under
 own bus, plays through once (`loop = false`), has no synthesizer behind it, and re-rolls
 to avoid repeating last night's song.
 
+Sunrise (06:00) and sunset (18:00) are announced before their window's song, on the
+Sound effects bus rather than the music bus, so a player with the music turned off still
+hears the day turn. Each cue is a short synthesised arpeggio: sunrise climbs a major
+triad into a brightening high note, sunset falls a minor one into a sinking low hum. The
+dawn or dusk song waits until the cue has rung out (about 2.6 s). A cue only marks the
+clock crossing the hour, a bed's wake-up included; loading a world into the dawn or dusk
+window plays no cue.
+
 A fresh world breaks the schedule once, from the first frame: a held clock keeps it
 silent behind the start menu, through the first-spawn scene, and while the arrival
 transmission talks. When the transmitter finishes its line — typed out, or closed — the
