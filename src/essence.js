@@ -118,6 +118,21 @@ export function spendEssence(amount) {
   return true;
 }
 
+/**
+ * Takes a share of the purse away, rounded down, and answers how much went.
+ * A death is what asks: unlike a beacon's price it is never refused, it only
+ * ever takes what is there.
+ */
+export function forfeitEssence(fraction) {
+  const lost = Math.floor(essenceTotal * Math.max(0, Math.min(1, Number(fraction) || 0)));
+  if (lost <= 0) return 0;
+  essenceTotal -= lost;
+  markWorldDirty();
+  paintEssence();
+  essenceMoved(-lost);
+  return lost;
+}
+
 /* ---------- The bubbles ---------- */
 
 export const essenceEntities = [];

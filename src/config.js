@@ -406,6 +406,13 @@ export const DIFFICULTY_SPAWN_SCALE = 0.4;
  */
 export const HUNGER_MAX = 20;
 export const HUNGER_REGEN_MIN = 18;
+/**
+ * The share of the carried essence a death takes, rounded down, so a purse
+ * under ten loses nothing. Minecraft drops the whole pack where you fall; here
+ * the pack is kept and the price is a tenth of the fuel instead, which stings
+ * on a beacon hunt without undoing it.
+ */
+export const DEATH_ESSENCE_LOSS = 0.1;
 /** Saturation a new world or a respawned player starts with. Minecraft's own value. */
 export const SATURATION_ON_RESPAWN = 5;
 /** Seconds between starvation hits once the stomach is empty. */

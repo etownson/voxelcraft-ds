@@ -142,6 +142,11 @@ Every later beacon costs about thirty kills' worth of essence, at the yield an e
 on the ground of the beacon lit before it, so each new beacon asks for the same hunt in
 the zone the last one opened.
 
+Dying costs a tenth of the carried essence, rounded down, so a purse under ten loses
+nothing. The pack is kept (see Health), so this is the whole price of a death: enough to
+make a reckless fight on the frontier cost part of the next beacon, never enough to undo
+a hunt. The death screen says what was lost. In co-op it comes out of the room's purse.
+
 ### Transmissions
 
 Each time you activate a new beacon you receive a unique transmission carrying:
@@ -507,7 +512,8 @@ Health:
 - Health regenerates only through the hunger system (see Hunger): a nearly full stomach
   heals, an empty one kills
 - On death, a respawn screen offers a respawn (its button, the `A` key, or gamepad A)
-  at the spawn point with full health and a full stomach; the inventory is kept
+  at the spawn point with full health and a full stomach; the inventory is kept; a tenth
+  of the carried essence is lost (see Essence)
 
 ## Mining and block interaction
 

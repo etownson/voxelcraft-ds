@@ -112,6 +112,8 @@ export const arrivalBarsEl = document.getElementById('arrival-bars');
 export const viewportEl = document.getElementById('viewport');
 export const deathScreenEl = document.getElementById('death-screen');
 export const deathCauseEl = document.getElementById('death-cause');
+/** The line under the cause that says what the death cost in essence. */
+export const deathPenaltyEl = document.getElementById('death-penalty');
 const respawnButton = document.getElementById('respawn-button');
 
 let damageFlashTimer = 0;

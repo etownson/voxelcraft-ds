@@ -54,7 +54,7 @@ import {
 import { isWorldDirty, markWorldDirty, world } from './chunks.js';
 import { attackMob, clearMobTarget, mobTarget, updateCombat, updateMobTarget } from './combat.js';
 import {
-  B, CHUNK_SIZE, DAY_LENGTH_SECONDS, DAY_START, EXHAUSTION_THRESHOLD, EYE_HEIGHT, HUNGER_MAX,
+  B, CHUNK_SIZE, DAY_LENGTH_SECONDS, DEATH_ESSENCE_LOSS, DAY_START, EXHAUSTION_THRESHOLD, EYE_HEIGHT, HUNGER_MAX,
   HUNGER_REGEN_MIN, SATURATION_ON_RESPAWN, WATER_NEIGHBORS, WATER_TICK_SECONDS, WORLD_HEIGHT,
   WORLD_SEED, blockIndex, clamp
 } from './config.js';
@@ -75,7 +75,7 @@ import {
 } from './drops.js';
 import { enchantCost, enchantOffer, enchantSlot } from './enchanting.js';
 import {
-  essenceCount, essenceEntities, grantEssence as addEssence, setEssence, setEssenceLedger,
+  essenceCount, essenceEntities, forfeitEssence, grantEssence as addEssence, setEssence, setEssenceLedger,
   setEssencePainter, setEssenceShare,
   spawnEssenceBurst, updateEssenceBubbles
 } from './essence.js';
@@ -94,7 +94,7 @@ import {
 } from './held.js';
 import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
-  deathCauseEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
+  deathCauseEl, deathPenaltyEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence,
   paintCoopHold, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
@@ -663,6 +663,11 @@ setDeathView({
       fire: 'You burned to death.'
     };
     deathCauseEl.textContent = messages[cause] || 'The world got the better of you.';
+    // A death costs a tenth of the carried essence. The pack is kept, so this
+    // is the price of dying; in co-op it comes out of the room's purse.
+    const lost = forfeitEssence(DEATH_ESSENCE_LOSS);
+    deathPenaltyEl.textContent = lost > 0 ? '\u2212' + lost + ' Essence' : '';
+    deathPenaltyEl.classList.toggle('hidden', lost <= 0);
     deathScreenEl.classList.remove('hidden');
     overlayEl.classList.add('hidden');
     if (document.pointerLockElement === canvas) document.exitPointerLock();
