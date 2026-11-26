@@ -574,6 +574,13 @@ kbd {
 }
 #overlay .menu-blurb.muted { font-size: 11px; color: #7d90a2; }
 
+/* Guide: one walkable paragraph a topic, lit like a Controls row. */
+#overlay .guide-entry {
+  margin: 0 0 4px; padding: 5px 8px; border-radius: 2px; outline-offset: -2px;
+}
+#overlay .guide-entry strong { color: #eaf3fb; font-weight: 600; }
+#overlay .menu-guide .menu-blurb.muted { margin-top: 12px; padding: 0 8px; }
+
 /* Settings: one row a control, label, control, value. */
 #overlay .setting-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

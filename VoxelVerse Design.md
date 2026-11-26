@@ -1381,7 +1381,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   debug give shelf
 - The main menu is the start form and the pause panel in one card: a rail down the
   left holds Start (Resume once the world has been entered), Worlds, Journal, Waypoints,
-  Co-op, Settings and Controls, and the page for whichever has the highlight fills the
+  Co-op, Settings, Guide and Controls, and the page for whichever has the highlight fills the
   right. The Co-op page takes a name, hosts this world or joins a room by code, and
   once in a room shows the code, a copy-link button, the players (each other player
   with a Go to button that teleports to them) and a status line. Start sits at the top of the rail and never moves; only the page scrolls.
@@ -1395,7 +1395,13 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
   and coordinates toggles, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
-  highlighted, so a pad can answer. Controls lists keyboard and mouse beside the pad,
+  highlighted, so a pad can answer. Guide is plain text for a newcomer: the basics
+  (the mission, essence, the arrow, staying alive, the threat pips), then the ways the
+  game is not Minecraft (earned recipes, long legs, distance scaling, scarcer food,
+  essence enchanting, the harder gear numbers, creeper drops, the sprint latch, co-op's
+  shared purse). It is static, in `index.html`, so a gameplay change this document
+  records also updates its line there. Each paragraph is a stop for the walker, so a
+  pad scrolls it. Controls lists keyboard and mouse beside the pad,
   with the column for the hand in use lit. Journal mounts the same book the `J`
   screen shows (below)
 - Every control in the card is reachable from every hand, through one walker

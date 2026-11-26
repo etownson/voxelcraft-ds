@@ -1,6 +1,6 @@
 /*
  * The main menu: the start form and the pause panel in one card. A rail down
- * the left holds Start, Worlds, Journal, Waypoints, Co-op, Settings and Controls; the page for whichever
+ * the left holds Start, Worlds, Journal, Waypoints, Co-op, Settings, Guide and Controls; the page for whichever
  * of them has the highlight fills the right. Start sits at the top of the rail
  * and never moves, and only the page scrolls.
  *
@@ -16,6 +16,9 @@
  * The journal page mounts the same book the J screen shows (journal.js),
  * rebuilt each time the menu comes up so a fresh transmission is there to read.
  * Reset world asks before it erases, inside the card, where a pad can answer.
+ *
+ * The Guide page is static text in index.html: the basics, then the ways the
+ * game is not Minecraft. It is kept in step with VoxelVerse Design.md by hand.
  *
  * The Worlds page lists the worlds this browser keeps (worlds.js), and goes to
  * one, makes one, renames, deletes, downloads or loads one from a file. Going
