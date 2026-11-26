@@ -62,8 +62,8 @@
       "leather||||||||",
       "diamond||||||||",
       "stick||||||||",
-      "raw_beef||||||||",
-      "cooked_beef||||||||",
+      "raw_meat||||||||",
+      "cooked_meat||||||||",
       "wheat||||||||",
       "bread||||||||",
       "apple||||||||",
@@ -324,7 +324,7 @@
     },
     "save": {
       "key": "voxelcraft:world:v7",
-      "schema": 7,
+      "schema": 8,
       "bytes": 1853,
       "edits": 93,
       "error": null
