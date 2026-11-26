@@ -833,7 +833,7 @@ const ENCHANTED_ARMOR_DEFENSE = {
   iron: [5, 12, 8, 5],
   diamond: [7, 16, 12, 7]
 };
-const ENCHANTED_ARROW_DAMAGE = { wood: 12, iron: 16, diamond: 20 };
+const ENCHANTED_ARROW_DAMAGE = { wood: 13, iron: 17, diamond: 21 };
 const ENCHANTED_PREFIX = 'enchanted_';
 
 /** The enchanted twin of an item id, whether or not it exists. */

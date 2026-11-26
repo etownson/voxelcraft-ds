@@ -1009,8 +1009,8 @@ Enchanted numbers:
 
 | Item | Wood | Stone | Iron | Diamond | Leather |
 | --- | --- | --- | --- | --- | --- |
-| Sword damage | 8 | 12 | 16 | 20 | — |
-| Bow damage (full draw) | 12 | — | 16 | 20 | — |
+| Sword damage | 9 | 13 | 17 | 21 | — |
+| Bow damage (full draw) | 13 | — | 17 | 21 | — |
 | Tool mining speed | 3.0 | 5.0 | 7.0 | 10.0 | — |
 | Tool attack damage field | 3.0 | 4.0 | 6.0 | 8.0 | — |
 | Defence (H/C/L/B) | — | — | 5 / 12 / 8 / 5 | 7 / 16 / 12 / 7 | 3 / 8 / 5 / 3 |

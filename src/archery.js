@@ -38,7 +38,7 @@ const BOW_MIN_POWER = 0.1;
 const BOW_ARROW_SPEED = 42;
 /**
  * A full draw's damage when the bow in hand somehow carries none of its own.
- * Every bow does: its `arrowDamage` in blocks.js, 10 for wood up to 20 for an
+ * Every bow does: its `arrowDamage` in blocks.js, 10 for wood up to 21 for an
  * enchanted diamond bow.
  */
 const BOW_DAMAGE = 10;

@@ -136,7 +136,7 @@ export function updateMobTarget() {
 /** What each tier of sword takes off a mob per blow. Any other tool does less. */
 export const SWORD_DAMAGE = Object.freeze({ wood: 6, stone: 10, iron: 14, diamond: 18 });
 /** The same blow from an enchanted sword. */
-export const ENCHANTED_SWORD_DAMAGE = Object.freeze({ wood: 8, stone: 12, iron: 16, diamond: 20 });
+export const ENCHANTED_SWORD_DAMAGE = Object.freeze({ wood: 9, stone: 13, iron: 17, diamond: 21 });
 /** Seconds between swings, whatever is in hand. */
 export const ATTACK_COOLDOWN = 0.38;
 
