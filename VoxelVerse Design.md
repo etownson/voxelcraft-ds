@@ -1403,7 +1403,9 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   and coordinates toggles, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
   highlighted, so a pad can answer. Guide is plain text for a newcomer: the basics
-  (the mission, essence, which pickaxe each ore needs, the arrow, staying alive, the threat pips), then the ways the
+  (the mission, essence, which pickaxe each ore needs, the arrow, staying alive, the threat pips), then the
+  enemies (zombies, creepers, spiders and skeleton archers: when each appears, what it does and how to
+  meet it, with hits in hearts as they land near SP0), then the ways the
   game is not Minecraft (earned recipes, long legs, distance scaling, scarcer food,
   essence enchanting, the harder gear numbers, creeper drops, the sprint latch, co-op's
   shared purse). It is static, in `index.html`, so a gameplay change this document

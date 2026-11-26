@@ -17,8 +17,8 @@
  * rebuilt each time the menu comes up so a fresh transmission is there to read.
  * Reset world asks before it erases, inside the card, where a pad can answer.
  *
- * The Guide page is static text in index.html: the basics, then the ways the
- * game is not Minecraft. It is kept in step with VoxelVerse Design.md by hand.
+ * The Guide page is static text in index.html: the basics, the enemies, then
+ * the ways the game is not Minecraft. It is kept in step with VoxelVerse Design.md by hand.
  *
  * The Worlds page lists the worlds this browser keeps (worlds.js), and goes to
  * one, makes one, renames, deletes, downloads or loads one from a file. Going
