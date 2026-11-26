@@ -540,34 +540,37 @@ Tool tiers (`TOOL_TIERS`):
 | Iron | 6 | 3 | 251 | 5.0 |
 | Diamond | 8 | 4 | 1561 | 7.0 |
 
-Hardnesses, tool gates and drops, each block's correct tool in italics:
+Hardnesses, blast resistances (see Animals and mobs: creepers), tool gates and drops, each
+block's correct tool in italics:
 
-| Block | Hardness | Correct tool | Min tier | Drops |
-| --- | --- | --- | --- | --- |
-| Dirt | 0.5 | *shovel* | — | Dirt |
-| Grass Block | 0.6 | *shovel* | — | Dirt, plus 1 seed at 2% |
-| Sand | 0.5 | *shovel* | — | Sand |
-| Snow Block | 0.2 | *shovel* | — | Snow |
-| Farmland | 0.6 | *shovel* | — | Dirt |
-| Oak Leaves | 0.2 | *hoe* | — | Apple at 2.5%; never a leaf block |
-| Torch | 0 | — | — | Torch |
-| Oak Log | 2.0 | *axe* | — | Oak Log |
-| Oak Planks | 2.0 | *axe* | — | Oak Planks |
-| Crafting Table | 2.5 | *axe* | — | Crafting Table |
-| Stone | 1.5 | *pickaxe* | 1 (wood) | Cobblestone |
-| Cobblestone | 2.0 | *pickaxe* | 1 (wood) | Cobblestone |
-| Coal Ore | 3.0 | *pickaxe* | 1 (wood) | 1–2 Coal |
-| Iron Ore | 3.0 | *pickaxe* | 2 (stone) | Raw Iron |
-| Diamond Ore | 3.0 | *pickaxe* | 3 (iron) | Diamond |
-| Glass | 0.3 | — | — | Glass |
-| Furnace | 3.5 | *pickaxe* | 1 (wood) | Furnace |
-| Wooden Door | 3.0 | *axe* | — | Door |
-| Red Bed | 0.2 | — | — | Bed |
-| Chest | 2.5 | *axe* | — | Chest |
-| Oak Stairs | 2.0 | *axe* | — | Oak Stairs |
-| Cobblestone Stairs | 2.0 | *pickaxe* | 1 (wood) | Cobblestone Stairs |
-| Ladder | 0.4 | *axe* | — | Ladder |
-| Bedrock | ∞ | — | — | never breaks |
+| Block | Hardness | Blast resistance | Correct tool | Min tier | Drops |
+| --- | --- | --- | --- | --- | --- |
+| Dirt | 0.5 | 0.5 | *shovel* | — | Dirt |
+| Grass Block | 0.6 | 0.6 | *shovel* | — | Dirt, plus 1 seed at 2% |
+| Sand | 0.5 | 0.5 | *shovel* | — | Sand |
+| Snow Block | 0.2 | 0.2 | *shovel* | — | Snow |
+| Farmland | 0.6 | 0.6 | *shovel* | — | Dirt |
+| Oak Leaves | 0.2 | 0.2 | *hoe* | — | Apple at 2.5%; never a leaf block |
+| Torch | 0 | 0 | — | — | Torch |
+| Oak Log | 2.0 | 2 | *axe* | — | Oak Log |
+| Oak Planks | 2.0 | 3 | *axe* | — | Oak Planks |
+| Crafting Table | 2.5 | 2.5 | *axe* | — | Crafting Table |
+| Stone | 1.5 | 6 | *pickaxe* | 1 (wood) | Cobblestone |
+| Cobblestone | 2.0 | 6 | *pickaxe* | 1 (wood) | Cobblestone |
+| Coal Ore | 3.0 | 3 | *pickaxe* | 1 (wood) | 1–2 Coal |
+| Iron Ore | 3.0 | 3 | *pickaxe* | 2 (stone) | Raw Iron |
+| Diamond Ore | 3.0 | 3 | *pickaxe* | 3 (iron) | Diamond |
+| Glass | 0.3 | 0.3 | — | — | Glass |
+| Furnace | 3.5 | 3.5 | *pickaxe* | 1 (wood) | Furnace |
+| Wooden Door | 3.0 | 3 | *axe* | — | Door |
+| Red Bed | 0.2 | 0.2 | — | — | Bed |
+| Chest | 2.5 | 2.5 | *axe* | — | Chest |
+| Oak Stairs | 2.0 | 3 | *axe* | — | Oak Stairs |
+| Cobblestone Stairs | 2.0 | 6 | *pickaxe* | 1 (wood) | Cobblestone Stairs |
+| Ladder | 0.4 | 0.4 | *axe* | — | Ladder |
+| Obsidian | 50 | 1200 | *pickaxe* | 4 (diamond) | Obsidian |
+| Enchanting Table | 2.5 | 1200 | *pickaxe* | 1 (wood) | Enchanting Table |
+| Bedrock | ∞ | ∞ | — | — | never breaks |
 
 Between blocks, a held click does not chain at full speed: once a block gives way the
 game waits six ticks (`MINING_BLOCK_DELAY`, 0.3 s) before the next one starts to crack,
@@ -1122,8 +1125,21 @@ Population is a budget:
   and tries the other way after 8 s. Creepers approach, then hiss,
   flash, and explode on a 1.55 s fuse lit at about 2.5 blocks in three dimensions with
   clear sight — leaves and water do not break the sight line, walls and closed doors
-  do — destroying nearby non-bedrock blocks, which drop as items. A creeper sealed
-  too tight suffocates before it lights
+  do. The blast works as Minecraft's does, at power 3: from the creeper's feet a ray
+  runs towards every point on the surface of a 16×16×16 cube, each starting at the
+  power ±30%, losing 0.225 per 0.3-block step and `(resistance + 0.3) × 0.3` more for
+  each step spent inside a block; a block a ray reaches with strength to spare breaks
+  and drops as an item. Each block's blast resistance is Minecraft's own (see the
+  table under Mining), so a creeper chews through dirt and planks, takes about one
+  layer off stone, cannot touch obsidian or an enchanting table, and breaks nothing
+  at all when it goes off in water (fluids resist 100). Bedrock, beacons and fluids
+  never break. Every block the blast breaks still drops, rather than Minecraft's one
+  in three: a crater should not quietly eat a base. The blow reaches 6 blocks and
+  falls off with distance, and is scaled again by exposure, the share of 45 lines
+  from a grid over the player's body to the blast that nothing solid cuts (leaves
+  count as solid here), measured before the crater opens; a player fully behind a
+  wall takes no damage and no knockback. A creeper sealed too tight suffocates
+  before it lights
 - Hostile mobs burn under open sky at dawn (sheltered in darkness they stay) and keep
   giving up and vanishing on a roll — 25% every 5 s once idle and 32+ blocks away in
   three dimensions — so a cave under the player's base cannot hold the entire hostile

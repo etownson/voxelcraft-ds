@@ -384,6 +384,25 @@ BLOCKS.push({
   drops: [{ item: 'enchanting_table', min: 1, max: 1 }], placeable: true
 });
 
+/**
+ * How much of a blast each block soaks up, Minecraft's own blast resistance
+ * numbers. Every ray of an explosion pays `(resistance + 0.3) * 0.3` for each
+ * 0.3-block step it takes through a block, so a creeper chews through dirt and
+ * planks, barely scars stone, and cannot touch obsidian. A block not listed
+ * here takes the fallback in the loop below: unbreakable blocks shrug off
+ * anything, fluids take 100 (which is why a blast in water breaks nothing),
+ * and the rest (torches, crops) take nothing at all.
+ */
+const BLAST_RESISTANCE = {
+  grass: 0.6, dirt: 0.5, sand: 0.5, snow: 0.2, farmland: 0.6,
+  leaves: 0.2, glass: 0.3, bed: 0.2, bed_head: 0.2, ladder: 0.4,
+  log: 2, planks: 3, oak_stairs: 3, crafting_table: 2.5, chest: 2.5,
+  door: 3, door_top: 3, door_open: 3, door_open_top: 3,
+  coal_ore: 3, iron_ore: 3, diamond_ore: 3, furnace: 3.5, furnace_lit: 3.5,
+  stone: 6, cobblestone: 6, cobblestone_stairs: 6,
+  obsidian: 1200, enchanting_table: 1200
+};
+
 export const BLOCK_BY_KEY = new Map();
 for (const block of BLOCKS) {
   block.solid ??= false;
@@ -411,6 +430,8 @@ for (const block of BLOCKS) {
   block.fluid ??= null;
   block.fluidLevel ??= -1;
   block.falling ??= false;
+  block.blastResistance ??= BLAST_RESISTANCE[block.key]
+    ?? (block.unbreakable ? 3600000 : block.fluid ? 100 : 0);
   if (BLOCKS[block.id] !== block) {
     throw new Error('Block ' + block.key + ' must sit at index ' + block.id);
   }

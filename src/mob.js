@@ -1082,7 +1082,7 @@ function mobSeesWalker(mob) {
  * It walks the line cell by cell, every cell it passes through, so it cannot
  * slip between samples across the corner of a roof edge or a wall.
  */
-function clearLine(fromX, fromY, fromZ, toX, toY, toZ) {
+function clearLine(fromX, fromY, fromZ, toX, toY, toZ, seesThrough = sightPasses) {
   const dx = toX - fromX;
   const dy = toY - fromY;
   const dz = toZ - fromZ;
@@ -1110,22 +1110,120 @@ function clearLine(fromX, fromY, fromZ, toX, toY, toZ) {
     else { z += stepZ; maxZ += deltaZ; }
     if (x === endX && y === endY && z === endZ) return true;
     const id = world.getBlock(x, y, z);
-    if (id === B.AIR || isWater(id) || id === B.LEAVES) continue;
+    if (seesThrough(id)) continue;
     const block = BLOCKS[id];
     if (block && block.solid) return false;
   }
   return true;
 }
 
+/** What a mob's eyes pass through: open air, water, and the gaps in leaves. */
+function sightPasses(id) {
+  return id === B.AIR || isWater(id) || id === B.LEAVES;
+}
+
+/** A blast is stopped by anything solid, leaves included, as in Minecraft. */
+function nothingPasses() {
+  return false;
+}
+
+/** Minecraft's creeper: power 3, so a blast reaches 6 blocks to hurt. */
+const CREEPER_BLAST_POWER = 3;
+/** How far each blast ray moves per step, and what the step itself costs. */
+const BLAST_STEP = 0.3;
+const BLAST_STEP_DECAY = 0.225;
+
+/**
+ * The cells a blast of this power breaks, found the way Minecraft finds them:
+ * a ray towards every point on the surface of a 16×16×16 cube, each starting
+ * with the power give or take 30%, losing strength with every step and paying
+ * each block's blast resistance for every step it spends inside it. A cell
+ * breaks when a ray reaches it with strength left over. Tough blocks therefore
+ * also shield whatever is behind them, and the random start strengths give the
+ * crater its ragged edge.
+ */
+function blastCells(cx, cy, cz, power) {
+  const cells = new Map();
+  for (let i = 0; i < 16; i++) {
+    for (let j = 0; j < 16; j++) {
+      for (let k = 0; k < 16; k++) {
+        if (i !== 0 && i !== 15 && j !== 0 && j !== 15 && k !== 0 && k !== 15) continue;
+        let dx = (i / 15) * 2 - 1;
+        let dy = (j / 15) * 2 - 1;
+        let dz = (k / 15) * 2 - 1;
+        const length = Math.hypot(dx, dy, dz);
+        dx = (dx / length) * BLAST_STEP;
+        dy = (dy / length) * BLAST_STEP;
+        dz = (dz / length) * BLAST_STEP;
+        let strength = power * (0.7 + Math.random() * 0.6);
+        let x = cx;
+        let y = cy;
+        let z = cz;
+        while (strength > 0) {
+          const bx = Math.floor(x);
+          const by = Math.floor(y);
+          const bz = Math.floor(z);
+          const id = world.getBlock(bx, by, bz);
+          if (id !== B.AIR) {
+            const block = BLOCKS[id];
+            strength -= (block.blastResistance + 0.3) * BLAST_STEP;
+            if (strength > 0 && block.breakable && !block.liquid) {
+              cells.set(bx + ',' + by + ',' + bz, [bx, by, bz]);
+            }
+          }
+          x += dx;
+          y += dy;
+          z += dz;
+          strength -= BLAST_STEP_DECAY;
+        }
+      }
+    }
+  }
+  return [...cells.values()];
+}
+
+/**
+ * How much of a walker the blast can see, from 0 to 1: lines from a grid of
+ * points over their body to the blast, and the share of them nothing solid
+ * cuts. A player behind a wall takes nothing; one peeking round a corner
+ * takes part of it. Measured before the crater opens, as Minecraft does.
+ */
+function blastExposure(cx, cy, cz, walker) {
+  const inset = 0.05;
+  const width = PLAYER_HALF_WIDTH * 2 - inset * 2;
+  const height = PLAYER_HEIGHT - inset * 2;
+  const minX = walker.pos.x - PLAYER_HALF_WIDTH + inset;
+  const minY = walker.pos.y + inset;
+  const minZ = walker.pos.z - PLAYER_HALF_WIDTH + inset;
+  let open = 0;
+  let total = 0;
+  for (let a = 0; a <= 2; a++) {
+    for (let b = 0; b <= 4; b++) {
+      for (let c = 0; c <= 2; c++) {
+        total++;
+        if (clearLine(
+          minX + (width * a) / 2, minY + (height * b) / 4, minZ + (width * c) / 2,
+          cx, cy, cz, nothingPasses
+        )) open++;
+      }
+    }
+  }
+  return open / total;
+}
+
 function explodeCreeper(mob) {
   const cx = mob.pos.x;
   const cy = mob.pos.y + 0.75;
   const cz = mob.pos.z;
-  // A crater just over two blocks deep. The old 3.2 bit out nearly a stack of
-  // barrels of terrain at once; this still takes the ground out from under the
-  // player and opens a visible scar, but a house or a mine entrance can now
-  // survive standing next to one.
-  const radius = 2.2;
+  const reach = CREEPER_BLAST_POWER * 2;
+  // Who the blast can see is settled before it opens the crater, so the wall
+  // that shielded someone still counts even though the blast then breaks it.
+  const exposures = new Map();
+  for (const walker of walkerList()) {
+    const distance = Math.hypot(walker.pos.x - cx, walker.pos.y + 0.9 - cy, walker.pos.z - cz);
+    if (distance < reach) exposures.set(walker, blastExposure(cx, cy, cz, walker));
+  }
+
   const edits = [];
   const drops = [];
   // The ore the crater eats pays essence the way a pickaxe break does.
@@ -1133,40 +1231,31 @@ function explodeCreeper(mob) {
   // One door spread over two cells should only pay out its item once.
   const blastDoors = new Set();
 
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dz = -2; dz <= 2; dz++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
-        const x = Math.floor(cx) + dx;
-        const y = Math.floor(cy) + dy;
-        const z = Math.floor(cz) + dz;
-        const id = world.getBlock(x, y, z);
-        if (id === B.AIR || id === B.BEDROCK || isWater(id)) continue;
-        const block = BLOCKS[id];
-        if (!block.breakable || block.liquid) continue;
-        // A furnace or chest caught in the blast empties its contents first,
-        // so what was kept inside is not simply deleted.
-        if (block.blockEntity) spillContents(x, y, z);
-        edits.push({ x, y, z, id: B.AIR });
-        for (const drop of block.drops || []) {
-          if (block.door) {
-            const base = x + ',' + (block.door === 'upper' ? y - 1 : y) + ',' + z;
-            if (blastDoors.has(base)) continue;
-            blastDoors.add(base);
-          }
-          // The same roll a pickaxe makes. Without it a blast pays out every
-          // conditional drop in the crater at once: seeds from every grass block,
-          // an apple from every leaf.
-          if (drop.chance != null && Math.random() >= drop.chance) continue;
-          drops.push({
-            id: drop.item,
-            count: drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1)),
-            x: x + 0.5, y: y + 0.5, z: z + 0.5
-          });
-        }
-        if (block.essence) blastEssence += block.essence;
+  // The crater is measured from the creeper's feet, as Minecraft's is, so
+  // about half the rays go into the ground it stands on.
+  for (const [x, y, z] of blastCells(cx, mob.pos.y, cz, CREEPER_BLAST_POWER)) {
+    const block = BLOCKS[world.getBlock(x, y, z)];
+    // A furnace or chest caught in the blast empties its contents first,
+    // so what was kept inside is not simply deleted.
+    if (block.blockEntity) spillContents(x, y, z);
+    edits.push({ x, y, z, id: B.AIR });
+    for (const drop of block.drops || []) {
+      if (block.door) {
+        const base = x + ',' + (block.door === 'upper' ? y - 1 : y) + ',' + z;
+        if (blastDoors.has(base)) continue;
+        blastDoors.add(base);
       }
+      // The same roll a pickaxe makes. Without it a blast pays out every
+      // conditional drop in the crater at once: seeds from every grass block,
+      // an apple from every leaf.
+      if (drop.chance != null && Math.random() >= drop.chance) continue;
+      drops.push({
+        id: drop.item,
+        count: drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1)),
+        x: x + 0.5, y: y + 0.5, z: z + 0.5
+      });
     }
+    if (block.essence) blastEssence += block.essence;
   }
 
   if (edits.length) world.setBlocksBatch(edits);
@@ -1195,17 +1284,20 @@ function explodeCreeper(mob) {
     const playerCy = walker.pos.y + 0.9;
     const playerCz = walker.pos.z;
     const distance = Math.hypot(playerCx - cx, playerCy - cy, playerCz - cz);
-    if (distance >= 6) continue;
+    // Out of reach, or behind something solid on every line to the blast.
+    const exposure = exposures.get(walker) ?? 0;
+    if (distance >= reach || exposure <= 0) continue;
+    // How hard it lands: close and in the open is the whole blow, and every
+    // line a wall cuts takes its share off, knockback and damage alike.
+    const impact = (1 - distance / reach) * exposure;
     // The blast carries the difficulty of the ground the creeper was bred on,
     // the same way its health does: `mob.attack` is the def's 14 scaled up.
-    const damage = Math.round(
-      (mob.attack ?? mob.def.damage) * (1 - distance / 6)
-    );
-    const knock = 8 * (1 - distance / 6);
+    const damage = Math.round((mob.attack ?? mob.def.damage) * impact);
+    const knock = 8 * impact;
     if (distance > 0.01) {
       walker.vel.x += ((playerCx - cx) / distance) * knock;
       walker.vel.z += ((playerCz - cz) / distance) * knock;
-      walker.vel.y += 4.5 * (1 - distance / 6);
+      walker.vel.y += 4.5 * impact;
       walker.onGround = false;
     }
     hurtWalker(damage, 'creeper', walker);
