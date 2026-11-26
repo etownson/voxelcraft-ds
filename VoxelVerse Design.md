@@ -1002,7 +1002,7 @@ slot, and the slot refuses anything the table cannot work on.
   be enchanted again. Putting one back in the slot offers a **repair** instead, for the
   same price, and only while it has worn at all.
 - **Mends**: enchanting and repairing both hand the item back at full durability, which is
-  1.5 × the base item's.
+  2.5 × the base item's.
 - **Icons**: an enchanted item is drawn as its base with a violet shimmer over it.
 
 Enchanted numbers:

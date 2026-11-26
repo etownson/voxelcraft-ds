@@ -822,12 +822,12 @@ for (const [tier, stats] of Object.entries(ARMOR_MATERIALS)) {
  * Every enchanted item is an item of its own, `enchanted_<base id>`, for the
  * reason a full bucket is: merge rules, saves and dropped items know a stack
  * by its id and its wear and by nothing else. An enchanted item is its base
- * with better numbers and half as many uses again; the swords' and bows'
+ * with better numbers and two and a half times the uses; the swords' and bows'
  * blows come from combat.js and the `arrowDamage` here, the tools' from their
  * tier's enchanted row, the armour's from these columns (helmet, chestplate,
  * leggings, boots). Shears are not enchantable.
  */
-export const ENCHANTED_DURABILITY_SCALE = 1.5;
+export const ENCHANTED_DURABILITY_SCALE = 2.5;
 const ENCHANTED_ARMOR_DEFENSE = {
   leather: [3, 8, 5, 3],
   iron: [5, 12, 8, 5],

@@ -1,7 +1,7 @@
 /*
  * The enchanting table's one trick. Put a sword, a tool, a bow or a piece of
  * armour in its slot and pay essence, and the slot holds the enchanted version
- * instead: better numbers, half as many uses again, and every one of them
+ * instead: better numbers, two and a half times the uses, and every one of them
  * there, because enchanting mends whatever wear the item had. An item is
  * enchanted once; an enchanted item put back in the slot can only be mended,
  * for the same price, and only while it has worn at all.
