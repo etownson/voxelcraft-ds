@@ -138,6 +138,16 @@ export function setMenuActions(verbs) {
   Object.assign(menuActions, verbs);
 }
 
+/** A world restored from its save has been stepped into before, so a reload
+ *  comes back to Resume rather than Start. */
+export function markMenuWorldEntered() {
+  played = true;
+  if (!overlayEl.classList.contains('hidden')) {
+    startButton.textContent = 'Resume';
+    paintHints();
+  }
+}
+
 /* ---------- State ---------- */
 
 /** The page on the right. */

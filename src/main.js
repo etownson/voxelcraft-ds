@@ -125,7 +125,7 @@ import {
   PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
-import { menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
+import { markMenuWorldEntered, menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
 import { makeRoomCode, normalizeRoomCode, roomCode } from './net.js';
 import {
   PACING_BASE, flushPacing, forgetPacing, loadPacing, markPacingAssisted, notePacingDeath,
@@ -930,6 +930,8 @@ if (!loadedSave) {
   // behind the menu, none during the fade, and none while the transmitter
   // talks. Its first music is the arrival song, at the end of all that.
   setArrivalHold(true);
+} else {
+  markMenuWorldEntered();
 }
 paintMenuMission();
 
