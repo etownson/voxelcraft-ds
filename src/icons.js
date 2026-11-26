@@ -458,7 +458,7 @@ const MATERIAL_ICON_PAINTERS = {
     px(10, 9, '#3e3b34', 1, 1);
     px(6, 6, '#1b1a16', 1, 1);
   },
-  cooked_beef(px) {
+  cooked_meat(px) {
     // Seared outside with a pink seam, the classic steak look.
     px(4, 4, '#8f4a26', 6, 5);
     px(3, 5, '#a15a2e', 2, 3);
@@ -475,7 +475,7 @@ const MATERIAL_ICON_PAINTERS = {
     paintIconLine(px, 4, 12, 13, 3, '#9a7040');
     paintIconLine(px, 5, 11, 11, 4, '#b88a52');
   },
-  raw_beef(px) {
+  raw_meat(px) {
     px(4, 4, '#b34a4f', 6, 5);
     px(3, 5, '#c95c5e', 2, 3);
     px(9, 3, '#d36b6c', 3, 2);

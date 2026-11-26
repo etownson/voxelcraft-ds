@@ -109,7 +109,7 @@ export function setMobSpawning(on) { mobSpawningOn = !!on; }
  */
 export const MOB_CAP = 32;
 /**
- * Animals are deliberately scarce. Steak is the best food in the game — worth
+ * Animals are deliberately scarce. Cooked meat is the best food in the game — worth
  * nearly twice a loaf of bread — and a landscape that refills itself with cows
  * makes farming optional forever. A herd this thin, arriving this rarely,
  * cannot keep a busy player in meat, so wheat becomes the meal they plan the
@@ -212,21 +212,21 @@ let hostileSoundCooldown = 0;
 export const MOB_DEFS = {
   cow: {
     hostile: false, health: 10, speed: 1.15, width: 0.82, height: 1.42,
-    drops: [{ id: 'raw_beef', min: 1, max: 2 }, { id: 'leather', min: 0, max: 2 }]
+    drops: [{ id: 'raw_meat', min: 1, max: 2 }, { id: 'leather', min: 0, max: 2 }]
   },
   pig: {
     hostile: false, health: 10, speed: 1.25, width: 0.78, height: 1.18,
-    drops: [{ id: 'raw_beef', min: 1, max: 2 }]
+    drops: [{ id: 'raw_meat', min: 1, max: 2 }]
   },
   sheep: {
     hostile: false, health: 8, speed: 1.2, width: 0.86, height: 1.34,
-    drops: [{ id: 'raw_beef', min: 1, max: 2 }, { id: 'wool', min: 1, max: 1 }]
+    drops: [{ id: 'raw_meat', min: 1, max: 2 }, { id: 'wool', min: 1, max: 1 }]
   },
   chicken: {
     hostile: false, health: 4, speed: 1.5, width: 0.46, height: 0.82,
     // A chicken is a mouthful next to a cow: half the time it gives one raw
-    // beef, against the bigger animals' one or two every time.
-    drops: [{ id: 'feather', min: 0, max: 2 }, { id: 'raw_beef', min: 0, max: 1 }]
+    // meat, against the bigger animals' one or two every time.
+    drops: [{ id: 'feather', min: 0, max: 2 }, { id: 'raw_meat', min: 0, max: 1 }]
   },
   zombie: {
     hostile: true, health: 20, speed: 1.85, width: 0.62, height: 1.94,

@@ -15,7 +15,7 @@
  * Never remove a fixture.
  */
 (function () {
-  var SCHEMAS = [7];
+  var SCHEMAS = [7, 8];
   return Promise.all(SCHEMAS.map(function (n) {
     return fetch('tools/save-fixtures/v' + n + '.json', { cache: 'reload' })
       .then(function (r) { return r.json(); })

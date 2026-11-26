@@ -195,8 +195,8 @@ Crafting table (3×3) recipes:
 | Wood Shovel    |
 | Wood Hoe       |
 
-The furnace also arrives with this beacon: it makes iron ingots, steak, glass, stone and
-charcoal from raw iron, raw beef, sand, cobblestone and logs. Its fuels and timings are
+The furnace also arrives with this beacon: it makes iron ingots, cooked meat, glass, stone and
+charcoal from raw iron, raw meat, sand, cobblestone and logs. Its fuels and timings are
 under Furnace and smelting.
 
 So does the enchanting table: cobblestone at the four corners, planks on the four edges
@@ -727,10 +727,10 @@ with nothing cushioning it.
 | Wheat | 2 | 1.2 |
 | Apple | 4 | 2.4 |
 | Bread | 5 | 6.0 |
-| Steak | 8 | 12.8 |
+| Cooked Meat | 8 | 12.8 |
 
-Deliberate divergences from Minecraft: raw beef feeds nobody as it comes (right-click
-answers *Raw Beef needs cooking in a furnace*; only a furnace's steak is food, which
+Deliberate divergences from Minecraft: raw meat feeds nobody as it comes (right-click
+answers *Raw Meat needs cooking in a furnace*; only a furnace's cooked meat is food, which
 makes the cooker a gate of the food chain, not just of the tech tree); wheat itself is
 edible, so farming has to feed you or it is decoration; the apple's food values are
 Minecraft's but its source is not — see Farming.
@@ -738,7 +738,7 @@ Minecraft's but its source is not — see Farming.
 ## Furnace and smelting
 
 Eight cobblestone ring a furnace at the crafting table, and the furnace is mandatory:
-iron only becomes an ingot through it, and so does steak, glass and charcoal. Every
+iron only becomes an ingot through it, and so does cooked meat, glass and charcoal. Every
 smelt takes ten seconds. A burning furnace is a second block id and gives off light
 level 13. Contents, remaining burn, and the direction it faces live in a block entity
 keyed by position; block entities within 32 blocks of the player, plus the one whose
@@ -747,7 +747,7 @@ screen is open, tick.
 | Input | Output |
 | --- | --- |
 | Raw Iron | Iron Ingot |
-| Raw Beef | Steak |
+| Raw Meat | Cooked Meat |
 | Sand | Glass |
 | Cobblestone | Stone |
 | Oak Log | Charcoal |
@@ -1145,11 +1145,11 @@ Population is a budget:
   three dimensions — so a cave under the player's base cannot hold the entire hostile
   budget. Everything despawns at 96 blocks in three dimensions
 
-Drops: cows, pigs and sheep drop Raw Beef (and Leather from cows); a woolly sheep
+Drops: cows, pigs and sheep drop Raw Meat (and Leather from cows); a woolly sheep
 drops one wool on top of its meat, a shorn one meat only; chickens drop 0–2
-feathers and, being small, only sometimes meat: one Raw Beef half the time, against
+feathers and, being small, only sometimes meat: one Raw Meat half the time, against
 the 1–2 every larger animal gives; spiders drop string and skeletons arrows.
-Raw beef must be cooked. Shearing is the other way to take wool — see Shearing.
+Raw meat must be cooked. Shearing is the other way to take wool — see Shearing.
 
 ## Shearing
 
@@ -1190,7 +1190,7 @@ Edited blocks override generated terrain and persist across reloads:
   position; block contents survive only while the saved block diff still says the block
   stands there — at load time the chunks are not made yet, so the override is the only
   witness
-- Saves go to `localStorage` under `voxelcraft:world:v7` (`SAVE_SCHEMA` 7): seed, block
+- Saves go to `localStorage` under `voxelcraft:world:v7` (`SAVE_SCHEMA` 8; schema 8 renamed the meat items to `raw_meat` and `cooked_meat`): seed, block
   diff, block entities (furnace rows; `entities.chests`, one 57-field row per box, plus
   a trailing slot-to-record map for any slot whose wear or packed contents the id and
   count pairs cannot hold; a packed chest's stack record carries its slots as a fourth

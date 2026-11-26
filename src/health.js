@@ -287,7 +287,7 @@ export function updateHealth(dt) {
   // Java's saturation boost: a completely full bar with saturation left mends a
   // point of health every half second and burns 1.5 saturation for it, eight times
   // the speed of the slow heal below and paid out of a pocket food never sees.
-  // Minecraft never runs both at once — a steak's 12.8 saturation is worth exactly
+  // Minecraft never runs both at once — cooked meat's 12.8 saturation is worth exactly
   // 8⅓ points of health, which only works out if the boost is the one paying — and
   // it does not pause the boost when the player is hit, which is why this sits
   // above the post-damage cooldown. Eating well before a fight is what keeps you

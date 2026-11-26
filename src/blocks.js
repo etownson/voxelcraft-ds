@@ -527,14 +527,14 @@ defineItem({ id: 'leather', name: 'Leather', kind: 'material', stack: 64 });
 defineItem({ id: 'diamond', name: 'Diamond', kind: 'material', stack: 64 });
 defineItem({ id: 'stick', name: 'Stick', kind: 'material', stack: 64 });
 // Raw meat is food in name only: it carries no hunger value of its own, because
-// a furnace has to turn it into steak before anyone can eat it. Minecraft gives
+// a furnace has to turn it into cooked meat before anyone can eat it. Minecraft gives
 // it 3 food and 1.8 saturation; withholding both is what makes the furnace the
 // only road past it.
-defineItem({ id: 'raw_beef', name: 'Raw Beef', kind: 'food', stack: 64, needsCooking: true });
+defineItem({ id: 'raw_meat', name: 'Raw Meat', kind: 'food', stack: 64, needsCooking: true });
 // Food values are Minecraft's, saturation included. Wheat is the one exception:
 // Minecraft does not let you eat wheat at all, so 2 food is this game's own
 // stopgap and its saturation borrows Minecraft's 2-food tier (a melon slice).
-defineItem({ id: 'cooked_beef', name: 'Steak', kind: 'food', stack: 64, hunger: 8, saturation: 12.8 });
+defineItem({ id: 'cooked_meat', name: 'Cooked Meat', kind: 'food', stack: 64, hunger: 8, saturation: 12.8 });
 defineItem({ id: 'wheat', name: 'Wheat', kind: 'food', stack: 64, hunger: 2, saturation: 1.2 });
 defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5, saturation: 6 });
 // The apple's food values are Minecraft's to the decimal. Where it comes from is

@@ -121,13 +121,18 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * over: this page plays without saving until it is reloaded onto the new code.
  * Schemas 1 to 6 had a key each and were refused rather than upgraded; they
  * still sit under LEGACY_SAVE_KEYS.
+ *
+ * Schema 8 renames two item ids: `raw_beef` became `raw_meat` and
+ * `cooked_beef` became `cooked_meat`, since every animal drops the same meat.
+ * A schema 7 record would otherwise lose that food from every pack, chest and
+ * furnace, so MIGRATIONS[7] rewrites the old ids wherever a stack can sit.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [
   'voxelcraft:world:v1', 'voxelcraft:world:v2', 'voxelcraft:world:v3',
   'voxelcraft:world:v4', 'voxelcraft:world:v5', 'voxelcraft:world:v6'
 ];
-export const SAVE_SCHEMA = 7;
+export const SAVE_SCHEMA = 8;
 registerWorldKey(SAVE_KEY);
 /** Where the world this page was booted into keeps its save. */
 export const ACTIVE_SAVE_KEY = worldKey(SAVE_KEY);
@@ -144,8 +149,42 @@ registerWorldKey(UNREADABLE_BASE);
  * step: a save written years ago walks through all of them.
  */
 const MIGRATIONS = {
-  // 7: (save) => { ...; return save; },
+  7: (save) => renameItemIds(save, { raw_beef: 'raw_meat', cooked_beef: 'cooked_meat' })
 };
+
+/**
+ * Rewrites item ids everywhere a save keeps one: the pack and the worn row,
+ * the stacks inside a packed chest, a furnace's three slots, a chest's id and
+ * count pairs and its full records, and an enchanting table's slot.
+ */
+function renameItemIds(save, renames) {
+  const renamed = (id) => (typeof id === 'string' && renames[id]) || id;
+  const fixRecord = (record) => {
+    if (!Array.isArray(record)) return record;
+    record[0] = renamed(record[0]);
+    if (Array.isArray(record[3])) record[3].forEach(fixRecord);
+    return record;
+  };
+  if (Array.isArray(save.inventory)) save.inventory.forEach(fixRecord);
+  if (Array.isArray(save.armour)) save.armour.forEach(fixRecord);
+  const entities = save.entities;
+  if (entities && typeof entities === 'object') {
+    for (const row of Array.isArray(entities.furnaces) ? entities.furnaces : []) {
+      if (!Array.isArray(row)) continue;
+      for (let slot = 0; slot < 3; slot++) row[3 + slot * 2] = renamed(row[3 + slot * 2]);
+    }
+    for (const row of Array.isArray(entities.chests) ? entities.chests : []) {
+      if (!Array.isArray(row)) continue;
+      for (let slot = 0; slot < CHEST_SLOTS; slot++) row[3 + slot * 2] = renamed(row[3 + slot * 2]);
+      const full = row[3 + CHEST_SLOTS * 2];
+      if (full && typeof full === 'object' && !Array.isArray(full)) Object.values(full).forEach(fixRecord);
+    }
+    for (const row of Array.isArray(entities.enchanters) ? entities.enchanters : []) {
+      if (Array.isArray(row)) fixRecord(row[3]);
+    }
+  }
+  return save;
+}
 
 /** A record walked forward to SAVE_SCHEMA, or null when no path reaches it. */
 export function migrateSave(record) {

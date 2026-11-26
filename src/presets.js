@@ -17,7 +17,7 @@ export const PRESET_STAGES = 5;
    and stone. */
 const BASE_KIT = [
   ['crafting_table', 1], ['furnace', 1], ['chest', 1], ['door', 1],
-  ['torch', 32], ['cooked_beef', 8], ['log', 16], ['planks', 32], ['stick', 16],
+  ['torch', 32], ['cooked_meat', 8], ['log', 16], ['planks', 32], ['stick', 16],
   ['cobblestone', 64], ['coal', 12]
 ];
 

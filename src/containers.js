@@ -25,7 +25,7 @@ import { player } from './player.js';
 /** What a furnace can transform, and how long one item takes. */
 export const SMELTING_RECIPES = new Map([
   ['raw_iron', { out: 'iron_ingot', seconds: 10 }],
-  ['raw_beef', { out: 'cooked_beef', seconds: 10 }],
+  ['raw_meat', { out: 'cooked_meat', seconds: 10 }],
   ['sand', { out: 'glass', seconds: 10 }],
   ['cobblestone', { out: 'stone', seconds: 10 }],
   ['log', { out: 'charcoal', seconds: 10 }]
