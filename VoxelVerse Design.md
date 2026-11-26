@@ -990,7 +990,8 @@ when it is broken.
 
 The enchanting table (beacon 1) turns a sword, a tool (pickaxe, axe, shovel, hoe), a bow
 or a piece of armour into its enchanted version, for essence. Shears cannot be enchanted.
-The screen has one slot and a button; shift-clicking gear from the pack lays it in the
+The screen has one slot and a button, with the price under them and, under that, the
+essence the walker carries, kept current while the screen is open; shift-clicking gear from the pack lays it in the
 slot, and the slot refuses anything the table cannot work on.
 
 - **Price**: about `ENCHANT_KILLS` (10) hostile kills' essence on the ground of the most

@@ -994,3 +994,9 @@ body.screen-open #crosshair, body.screen-open #bottom-hud { opacity: 0; }
   background: rgba(40, 32, 56, 0.55); cursor: default;
 }
 #screen-panel .inv-slot.enchant-button.disabled { background: rgba(40, 32, 56, 0.55); }
+/* The carried essence under the price, in the HUD purse's own colours. */
+.enchant-purse {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 11px; letter-spacing: 0.04em; color: #bdeef8;
+}
+.enchant-purse .essence-bubble { width: 11px; height: 11px; }

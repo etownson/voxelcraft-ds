@@ -95,7 +95,7 @@ import {
 import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathPenaltyEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
-  openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence,
+  openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence, updateEnchanterGauges,
   paintCoopHold, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
@@ -503,10 +503,12 @@ setHungerPainter(renderHunger);
 
 /* The carried essence gets its picture the same way: the essence layer says
    when the total moves, and never names the row it draws. The menu's mission
-   page quotes what is being carried toward the next beacon, so the purse
-   repaints both. */
+   page quotes what is being carried toward the next beacon, and an open
+   enchanting table sets the purse beside its price, so the purse repaints
+   all three. */
 setEssencePainter(() => {
   renderEssence();
+  updateEnchanterGauges();
   paintMenuMission();
 });
 

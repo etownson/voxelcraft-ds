@@ -723,17 +723,44 @@ function buildEnchanterColumn() {
   button.className = 'slot inv-slot enchant-button';
   button.dataset.container = 'enchant';
   button.dataset.index = '0';
-  button.classList.toggle('disabled', !offer.ready);
   button.textContent = offer.action === 'repair' ? 'Repair' : 'Enchant';
   body.append(slotEl, button);
 
   const status = document.createElement('div');
   status.className = 'craft-output-name';
-  status.textContent = offer.reason ||
-    (offer.action === 'repair' ? 'Mend fully' : 'Enchant') + ' for ' + offer.cost + ' essence';
 
-  column.append(label, body, status);
+  // What the walker carries, beside what the table asks, so the price can be
+  // weighed without closing the screen to read the HUD's purse.
+  const purse = document.createElement('div');
+  purse.className = 'enchant-purse';
+  const bubble = document.createElement('span');
+  bubble.className = 'essence-bubble';
+  const purseText = document.createElement('span');
+  purse.append(bubble, purseText);
+
+  column.append(label, body, status, purse);
+  enchanterGauges = { button, status, purse: purseText };
+  updateEnchanterGauges();
   return column;
+}
+
+/** Parts of the open enchanting screen that follow the purse, refreshed without a re-render. */
+let enchanterGauges = null;
+
+/**
+ * Repaints the open table's button, caption and carried essence. Essence can
+ * move while the screen is open (a co-op partner spends it, a bubble lands),
+ * so the essence painter calls this as well as the screen builder.
+ */
+export function updateEnchanterGauges() {
+  if (!enchanterGauges) return;
+  const state = activeEnchanter();
+  if (!state) return;
+  const offer = enchantOffer(state);
+  enchanterGauges.button.classList.toggle('disabled', !offer.ready);
+  enchanterGauges.status.textContent = offer.reason ||
+    (offer.action === 'repair' ? 'Mend fully' : 'Enchant') + ' for ' + offer.cost + ' essence';
+  enchanterGauges.purse.textContent = 'You carry ' + essenceCount() + ' essence';
 }
 
 /* Spends the essence and enchants or mends the table's item, then redraws. */
@@ -814,6 +841,7 @@ export function renderScreen() {
   const isChest = activeScreen === 'chest';
   const isEnchanter = activeScreen === 'enchanter';
   furnaceGauges = null;
+  enchanterGauges = null;
   if (isEnchanter && !activeEnchanter()) {
     closeScreen();
     return;
@@ -1216,6 +1244,7 @@ export function closeScreen() {
   activeScreen = null;
   activeScreenAt = null;
   furnaceGauges = null;
+  enchanterGauges = null;
   screenLayer.classList.add('hidden');
   document.body.classList.remove('screen-open');
   updateCursorVisual();
