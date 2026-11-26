@@ -73,7 +73,7 @@ import {
   recountSharedDrop, setDropShare, setItemPickup, spawnItemDrop, takeSharedDrop, tossItemDrop,
   updateItemEntities
 } from './drops.js';
-import { enchantCost, enchantOffer, enchantSlot } from './enchanting.js';
+import { enchantCost, enchantOffer, enchantSlot, repairCost } from './enchanting.js';
 import {
   essenceCount, essenceEntities, forfeitEssence, grantEssence as addEssence, setEssence, setEssenceLedger,
   setEssencePainter, setEssenceShare,
@@ -1770,7 +1770,7 @@ window.__voxelcraft = {
     else if (activeScreen === 'enchanter' && activeScreenAt) {
       key = activeScreenAt.x + ',' + activeScreenAt.y + ',' + activeScreenAt.z;
     }
-    if (!key) return { cost: enchantCost() };
+    if (!key) return { cost: enchantCost(), repairCost: repairCost() };
     const state = world.blockEntities.get(key);
     if (!state || state.kind !== 'enchanter') return null;
     return { at: key.split(',').map(Number), slot: slotInfo(state.slots[0]), ...enchantOffer(state) };

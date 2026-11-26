@@ -999,8 +999,8 @@ slot, and the slot refuses anything the table cannot work on.
   of what the next beacon asks, so enchanting is a real choice against the mission's own
   price, and it grows as the walker moves out.
 - **Once only**: an enchanted item is a separate item id (`enchanted_<base id>`) and cannot
-  be enchanted again. Putting one back in the slot offers a **repair** instead, for the
-  same price, and only while it has worn at all.
+  be enchanted again. Putting one back in the slot offers a **repair** instead, for half
+  the price (rounded), and only while it has worn at all.
 - **Mends**: enchanting and repairing both hand the item back at full durability, which is
   2.5 × the base item's.
 - **Icons**: an enchanted item is drawn as its base with a violet shimmer over it.

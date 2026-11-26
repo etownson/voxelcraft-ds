@@ -347,10 +347,10 @@ export const BEACON_ESSENCE_PER_BLOCK = 1.5;
  */
 export const BEACON_KILLS_TO_LIGHT = 30;
 /**
- * Enchanting an item, or repairing an enchanted one, costs about this many
- * hostile kills' essence on the ground of the most recently lit beacon: a
- * third of what the next beacon asks, so it is a real choice against the
- * mission's own price and grows with it.
+ * Enchanting an item costs about this many hostile kills' essence on the
+ * ground of the most recently lit beacon: a third of what the next beacon
+ * asks, so it is a real choice against the mission's own price and grows with
+ * it. Repairing an enchanted item costs half of that.
  */
 export const ENCHANT_KILLS = 10;
 /**

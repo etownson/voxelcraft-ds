@@ -4,7 +4,7 @@
  * instead: better numbers, two and a half times the uses, and every one of them
  * there, because enchanting mends whatever wear the item had. An item is
  * enchanted once; an enchanted item put back in the slot can only be mended,
- * for the same price, and only while it has worn at all.
+ * for half the price, and only while it has worn at all.
  *
  * The price is about `ENCHANT_KILLS` hostile kills' essence on the ground of
  * the most recently lit beacon, so it grows the way the mission's own prices
@@ -18,9 +18,14 @@ import { markWorldDirty } from './chunks.js';
 import { ENCHANT_KILLS } from './config.js';
 import { essenceCount, spendEssence } from './essence.js';
 
-/** What enchanting or mending one item costs right now, in essence. */
+/** What enchanting one item costs right now, in essence. */
 export function enchantCost() {
   return frontierKillEssence(ENCHANT_KILLS);
+}
+
+/** What mending one enchanted item costs right now: half its enchanting price. */
+export function repairCost() {
+  return Math.round(enchantCost() / 2);
 }
 
 /**
@@ -41,8 +46,8 @@ export function enchantAction(stack) {
  */
 export function enchantOffer(state) {
   const stack = state && state.slots ? state.slots[0] : null;
-  const cost = enchantCost();
   const action = enchantAction(stack);
+  const cost = action === 'repair' ? repairCost() : enchantCost();
   let reason = null;
   if (!stack) {
     reason = 'Place gear to enchant';
