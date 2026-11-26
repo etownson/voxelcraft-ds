@@ -151,7 +151,8 @@ Each time you activate a new beacon you receive a unique transmission carrying:
   beacon
 - The way to the next beacon. The HUD's waypoint arrow points at it from the moment the
   last one is lit, and the main menu's mission page says what it wants and what you
-  carry. No coordinates are shown: the arrow is the way. The walker can also save places
+  carry. No coordinates are shown unless the player turns them on in Settings: the
+  arrow is the way. The walker can also save places
   of their own under a name and have the arrow follow those, or any beacon already lit
 
 ### Beacon 1
@@ -1334,8 +1335,11 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
 - Top left, a day dial: a disc, day on its top half and night on its bottom, turned
   so the hour now sits under a notch (noon puts the sun there, midnight the moon,
   dawn and dusk the seam). Hovering it gives the clock. Beside it, the sprint latch
-  while it is set, and a frame-rate counter only when Settings → Display turns it on
-  (a per-browser preference, kept outside the world save)
+  while it is set, a frame-rate counter only when Settings → Display turns it on,
+  and the walker's block position (`XYZ x / y / z`, whole blocks at the feet) only
+  when its own Display toggle does (both per-browser preferences, kept outside the
+  world save; the position is off by default because the arrow, not numbers, is
+  how the mission is found)
 - Under those, the threat zone: `Zone` and a pip per beacon. There is SP0's zone,
   which lights none, and one per beacon, whose zone lights as many as its number; each runs halfway to its neighbours, so
   a beacon stands in the middle of its own, and the last runs on past the final
@@ -1354,8 +1358,8 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   player in the co-op room (followed as they walk, named with · down while dead), or no
   arrow at all. A followed player who leaves the room hands the arrow back to the next
   beacon, and so does a reload, since a player is only followable while in the room
-- The position readout (XYZ, chunk, loaded chunks, mobs, triangles) is a debug tool
-  and only shows when the page is opened with `?debug`
+- The full position readout (exact XYZ, chunk, loaded chunks, mobs, triangles) is a
+  debug tool and only shows when the page is opened with `?debug`
 - Screens: inventory (27 storage + hotbar + 2×2 grid + armour column), crafting table
   (3×3), furnace (three slots and burn gauge), chest (27 slots above the pack), and a
   debug give shelf
@@ -1373,7 +1377,7 @@ Minecraft-style per-voxel lighting baked into chunk meshes as vertex colors:
   can be deleted. They live in their own localStorage key, written for this world's
   seed and SP0, so a save-schema bump never costs them and Reset world forgets them. Each world keeps its own list.
   Settings carries the gamepad status, a look-sensitivity slider, the frame-rate
-  toggle, the Master, Sound effects and Music sliders, and New
+  and coordinates toggles, the Master, Sound effects and Music sliders, and New
   world, which asks *Erase this world for good?* inside the card with Keep it
   highlighted, so a pad can answer. Controls lists keyboard and mouse beside the pad,
   with the column for the hand in use lit. Journal mounts the same book the `J`

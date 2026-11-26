@@ -30,6 +30,20 @@ export function setFpsShown(on) {
   for (const listener of listeners) listener();
 }
 
+/* The walker's block position on the HUD. Off unless asked for, because the
+   mission is found by the waypoint arrow, not by numbers; some players still
+   want them, to plan a build or to tell a friend where they are. */
+let showCoords = storageGet(SETTINGS_KEY + ':coords') === '1';
+
+/** Whether the player's XYZ readout is on the HUD. */
+export function coordsShown() { return showCoords; }
+
+export function setCoordsShown(on) {
+  showCoords = !!on;
+  storageSet(SETTINGS_KEY + ':coords', showCoords ? '1' : '0');
+  for (const listener of listeners) listener();
+}
+
 /** Whoever paints a preference hears when one changes. */
 export function onSettingsChanged(listener) {
   listeners.add(listener);

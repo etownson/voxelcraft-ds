@@ -99,7 +99,7 @@ import {
   paintCoopHold, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
-  toggleInventory, toggleJournal, updateCursorVisual, updateDebug,
+  toggleInventory, toggleJournal, updateCursorVisual, updateDebug, paintPosition,
   updateFurnaceGauges, updateGamepadScreen
 } from './hud.js';
 import {
@@ -2788,6 +2788,7 @@ function animate(now) {
   skyDome.position.copy(camera.position);
   renderGame();
 
+  paintPosition();
   if (sampleFrameRate(rawDt)) updateDebug();
 }
 

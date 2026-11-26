@@ -40,7 +40,7 @@ html, body {
 #crosshair::before { left: 0; top: 9px; width: 20px; height: 2px; }
 #crosshair::after { left: 9px; top: 0; width: 2px; height: 20px; }
 
-/* Top left: the day dial, then the optional frame rate and the sprint latch. */
+/* Top left: the day dial, then the optional frame rate and coordinates and the sprint latch. */
 #top-left {
   position: absolute; top: 10px; left: 12px;
   display: flex; align-items: center; gap: 10px;
@@ -51,6 +51,8 @@ html, body {
 #top-lines:empty { display: none; }
 #fps { color: #e8f1fa; }
 #fps.hidden { display: none; }
+#position { color: #e8f1fa; font-variant-numeric: tabular-nums; }
+#position.hidden { display: none; }
 /* Sprint is latched, not held, so the HUD says so while the latch is set. */
 #sprint-state { color: #7ec8e8; }
 #sprint-state.hidden { display: none; }

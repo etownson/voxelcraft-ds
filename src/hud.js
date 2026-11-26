@@ -63,12 +63,13 @@ import { player } from './player.js';
 import { camera, renderer } from './render.js';
 import { applyDayNight, clockHours, formatClock, isNight, nudgeDayTime } from './sky.js';
 import { debugEnabled, noteDebugUse } from './debug.js';
-import { fpsShown, onSettingsChanged } from './settings.js';
+import { coordsShown, fpsShown, onSettingsChanged } from './settings.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { createNav } from './menu-nav.js';
 import { tossStack } from './toss.js';
 
 const fpsEl = document.getElementById('fps');
+const positionEl = document.getElementById('position');
 const dayDialEl = document.getElementById('day-dial');
 const dayDialFaceEl = dayDialEl.querySelector('.dial-face');
 const debugEl = document.getElementById('debug');
@@ -1934,14 +1935,37 @@ export function sampleFrameRate(seconds) {
   return true;
 }
 
-/* The readout. The day dial and the frame rate are the player's; the position
-   and the chunk line are the builder's and only show with ?debug. */
+/* The readout. The day dial, the frame rate and the block position are the
+   player's; the exact position and the chunk line are the builder's and only
+   show with ?debug. */
 debugEl.classList.toggle('hidden', !debugEnabled);
 fpsEl.classList.toggle('hidden', !fpsShown());
+positionEl.classList.toggle('hidden', !coordsShown());
 onSettingsChanged(() => {
   fpsEl.classList.toggle('hidden', !fpsShown());
+  positionEl.classList.toggle('hidden', !coordsShown());
+  positionText = '';
   updateDebug();
+  paintPosition();
 });
+
+let positionText = '';
+
+/**
+ * The player's own XYZ, when Settings → Display asks for it: the block the
+ * feet stand in, whole numbers as a builder counts them. It runs every frame,
+ * so the page is only written when the block changes.
+ */
+export function paintPosition() {
+  if (!coordsShown()) return;
+  // Resting on a block leaves the feet a hair under its top face, so y is
+  // nudged up before flooring, or standing still would read one block low.
+  const text = 'XYZ ' + Math.floor(player.pos.x) + ' / ' + Math.floor(player.pos.y + 0.01) +
+    ' / ' + Math.floor(player.pos.z);
+  if (text === positionText) return;
+  positionText = text;
+  positionEl.textContent = text;
+}
 
 let dialAngle = null;
 let dialLabel = '';
