@@ -1139,7 +1139,12 @@ Population is a budget:
   roll, so these knobs are the whole supply: meat is a find, not a stipend, and the
   wheat field is the reliable half of the food economy. A chunk's herd roll is spent
   only while the player is close enough to have seen it, so herds arrive as the player
-  travels
+  travels. A spent roll on grass comes back after one game day (`HERD_REGROW_SECONDS`)
+  once none of the animals it gave are still alive, even if the player never left:
+  people settle near beacon 1, and before this the ground around a base was hunted
+  bare for good unless they walked some 180 blocks off to unload it. The roll is still
+  keyed to the chunk, so only chunks that held a herd hold one again — a base gets an
+  animal or two back a day, not a refilled field
 - Zombies spawn on solid ground at night or in dark places — the light level at the
   spot below a threshold, so unlit caves spawn zombies even at noon and torch-lit
   areas are safe — in a band 20 to 48 blocks around the player. Night arrives in

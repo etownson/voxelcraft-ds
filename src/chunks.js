@@ -101,8 +101,11 @@ export class Chunk {
      * Set once this chunk's passive-mob spawn roll has been spent while the
      * player was close enough to see it. Unloading a chunk clears the flag, so
      * a grass field the player walks back over is free to be stocked again.
+     * `herdSpentAt` is when a grassy chunk spent it, on the mob layer's own
+     * clock: a game day later the roll comes back even if the player stayed.
      */
     this.mobSpawnChecked = false;
+    this.herdSpentAt = null;
     this.group = new THREE.Group();
     this.group.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
     this.group.name = 'chunk-' + cx + '-' + cz;

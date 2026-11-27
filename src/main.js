@@ -122,7 +122,7 @@ import {
 } from './inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
-  PASSIVE_SPAWN_RADIUS, countMobs, damageMob, hostileSpawnTally, mobs, setMobWorld, spawnMob,
+  PASSIVE_SPAWN_RADIUS, countMobs, damageMob, herdRollReady, hostileSpawnTally, mobs, setMobWorld, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
 import { markMenuWorldEntered, menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
@@ -1401,11 +1401,11 @@ window.__voxelcraft = {
     zeroSpawnTally();
     return { ...hostileSpawnTally };
   },
-  /** Loaded chunks around the player whose herd roll has not been spent yet. */
+  /** Loaded chunks around the player whose herd roll is free: unspent, or grown back. */
   unspentSpawnChunks() {
     let count = 0;
     for (const chunk of world.chunks.values()) {
-      if (!chunk.meshed || chunk.mobSpawnChecked) continue;
+      if (!chunk.meshed || !herdRollReady(chunk)) continue;
       const dx = chunk.cx * CHUNK_SIZE + CHUNK_SIZE / 2 - player.pos.x;
       const dz = chunk.cz * CHUNK_SIZE + CHUNK_SIZE / 2 - player.pos.z;
       if (Math.hypot(dx, dz) <= PASSIVE_SPAWN_RADIUS) count++;

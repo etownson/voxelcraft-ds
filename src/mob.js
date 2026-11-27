@@ -18,7 +18,7 @@ import { BLOCKS, isLava, isWater } from './blocks.js';
 import { onChunkMeshed, world } from './chunks.js';
 import { cellCollidesAt, inLavaAt, submergedAt } from './collision.js';
 import {
-  B, CHUNK_SIZE, COLLISION_EPSILON, DIFFICULTY_DAMAGE_SCALE, DIFFICULTY_ESSENCE_SCALE,
+  B, CHUNK_SIZE, COLLISION_EPSILON, DAY_LENGTH_SECONDS, DIFFICULTY_DAMAGE_SCALE, DIFFICULTY_ESSENCE_SCALE,
   DIFFICULTY_HEALTH_SCALE, DIFFICULTY_SPAWN_SCALE, EYE_HEIGHT, GRAVITY, MAX_MOVE_STEP,
   BURN_DAMAGE, BURN_INTERVAL, BURN_SECONDS, LAVA_DAMAGE, LAVA_DAMAGE_INTERVAL,
   JUMP_SPEED, PLAYER_HALF_WIDTH, PLAYER_HEIGHT, TERMINAL_VELOCITY, chunkKey, clamp
@@ -134,6 +134,18 @@ const PASSIVE_SPAWN_MIN_RADIUS = 20;
  * event, not scenery.
  */
 const PASSIVE_SPAWN_INTERVAL = 5;
+/**
+ * Seconds of play before a chunk whose herd was taken may roll for it again.
+ * Unloading the chunk used to be the only way back, which meant walking some
+ * 180 blocks off and returning: anyone who settled near a beacon hunted the
+ * ground around it bare in the first hour and never saw an animal there again.
+ * One game day is slow enough that meat stays a find — the roll is still keyed
+ * to the chunk, so only the chunks that held a herd hold one again, and the
+ * passive cap still applies — but a base gets an animal or two back each day.
+ */
+export const HERD_REGROW_SECONDS = DAY_LENGTH_SECONDS;
+/** Seconds of play the mob layer has run, the clock herd regrowth is timed by. */
+let herdClock = 0;
 /**
  * Hostiles spawn in a band rather than anywhere nearby: close enough to reach
  * the player in seconds, far enough that they arrive out of the dark instead of
@@ -1724,6 +1736,7 @@ function updateMobAnimation(mob, dt) {
 
 export function updateMobs(dt) {
   if (dt <= 0) return;
+  herdClock += dt;
 
   if (animalSoundCooldown > 0) animalSoundCooldown -= dt;
   if (hostileSoundCooldown > 0) hostileSoundCooldown -= dt;
@@ -1992,6 +2005,7 @@ function rollChunkHerd(chunk) {
   }
 
   chunk.mobSpawnChecked = true;
+  chunk.herdSpentAt = herdClock;
 
   const rand = chunkRandom(chunk.cx, chunk.cz, MOB_SALT);
   // Fewer than half of grassy chunks hold a herd, so green country is still
@@ -2042,6 +2056,35 @@ function rollChunkHerd(chunk) {
   return spawned;
 }
 
+/**
+ * Whether a chunk's herd roll is free to be taken: never spent, or spent on
+ * grass a game day ago with none of the animals it gave still walking about,
+ * so a herd that is still alive never gets a twin. Desert, snow and ocean
+ * chunks never record a spend, so they never come back. Changes nothing.
+ */
+export function herdRollReady(chunk) {
+  if (!chunk.mobSpawnChecked) return true;
+  if (chunk.herdSpentAt == null) return false;
+  if (herdClock - chunk.herdSpentAt < HERD_REGROW_SECONDS) return false;
+  const key = chunkKey(chunk.cx, chunk.cz);
+  for (const mob of mobs) if (mob.spawnChunk === key) return false;
+  return true;
+}
+
+/** Like `herdRollReady`, but a chunk whose herd has grown back is reopened. */
+function herdRollOpen(chunk) {
+  if (!herdRollReady(chunk)) return false;
+  chunk.mobSpawnChecked = false;
+  chunk.herdSpentAt = null;
+  return true;
+}
+
+/** Moves the herd clock on, for a check that cannot wait a game day. */
+export function advanceHerdClock(seconds) {
+  herdClock += Math.max(0, seconds);
+  return herdClock;
+}
+
 /* A freshly meshed chunk rolls for its herd, and that is the whole of what the
    mob layer does with the event: the registration is the only thing the mesher
    has to know about, so it never learns that animals exist. */
@@ -2075,7 +2118,7 @@ export function trySpawnPassive() {
     // A meshed chunk is a hard requirement: an ungenerated column reads as air
     // all the way down, and the animal would fall straight out of the world.
     const chunk = world.getChunk(cx, cz);
-    if (!chunk || !chunk.meshed || chunk.mobSpawnChecked) continue;
+    if (!chunk || !chunk.meshed || !herdRollOpen(chunk)) continue;
 
     if (rollChunkHerd(chunk)) return mobs[mobs.length - 1];
   }
