@@ -16,7 +16,7 @@ export const PRESET_STAGES = 5;
 /* A base anyone past beacon 1 has built up: the stations, light, food, wood
    and stone. */
 const BASE_KIT = [
-  ['crafting_table', 1], ['furnace', 1], ['chest', 1], ['door', 1],
+  ['crafting_table', 1], ['furnace', 1], ['chest', 1], ['door', 1], ['bed', 1],
   ['torch', 32], ['cooked_meat', 8], ['log', 16], ['planks', 32], ['stick', 16],
   ['cobblestone', 64], ['coal', 12]
 ];
@@ -24,10 +24,10 @@ const BASE_KIT = [
 const tools = (tier) => ['sword', 'pickaxe', 'axe', 'shovel'].map((tool) => [tier + '_' + tool, 1]);
 const armour = (tier) => ['helmet', 'chestplate', 'leggings', 'boots'].map((piece) => tier + '_' + piece);
 
-/* Bows, beds and buckets arrive with beacon 2, and the string for a bow is the
+/* Bows and buckets arrive with beacon 2, and the string for a bow is the
    spiders beacon 2 wakes, so a walker who has lit beacon 3 has had a night of
    spiders to make one. */
-const KIT_AFTER_TWO = [['bow', 1], ['arrow', 32], ['bed', 1], ['bucket', 1], ['bread', 8], ['wheat_seeds', 8]];
+const KIT_AFTER_TWO = [['bow', 1], ['arrow', 32], ['bucket', 1], ['bread', 8], ['wheat_seeds', 8]];
 
 const KITS = {
   // Lit within minutes of landing: the recipes have just arrived, and all the

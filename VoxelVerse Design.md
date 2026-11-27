@@ -195,6 +195,7 @@ Crafting table (3×3) recipes:
 | Enchanting Table |
 | Wooden Door ×3 |
 | Chest          |
+| Bed            |
 | Wood Pickaxe   |
 | Wood Sword     |
 | Wood Axe       |
@@ -204,6 +205,10 @@ Crafting table (3×3) recipes:
 The furnace also arrives with this beacon: it makes iron ingots, cooked meat, glass, stone and
 charcoal from raw iron, raw meat, sand, cobblestone and logs. Its fuels and timings are
 under Furnace and smelting.
+
+The bed comes with it too, so the first nights can be slept through and a death walks
+back from the base rather than from SP0. Its wool comes from killing sheep, one fleece
+each; shears, which take a sheep's 1–3 without killing it, wait for beacon 2.
 
 So does the enchanting table: cobblestone at the four corners, planks on the four edges
 and coal in the middle. It enchants and mends gear for essence; see Enchanting.
@@ -225,7 +230,6 @@ Crafting table (3×3) recipes:
 | Bread                 |
 | Apple Pie             |
 | Shears                |
-| Bed                   |
 | Bucket                |
 | Oak Stairs ×4         |
 | Cobblestone Stairs ×4 |
@@ -1049,7 +1053,7 @@ the whole door with it and pays out one item.
 A bed (ids 33/34) is the same two-cell arrangement: the foot takes the aimed cell, the
 head sits one step along a facing pointed away from the placer, both cells carry the
 facing, and both are solid — you walk on a bed, not through it. Three wool over three
-planks makes one at the table. Breaking either half clears the other outright, so a bed
+planks makes one at the table, a recipe beacon 1 sends. Breaking either half clears the other outright, so a bed
 never pays out twice. It is drawn as geometry: a half-tall mattress across both cells,
 blanket red with a wooden rail, plank ends, and a pillow at the far end of the head.
 
@@ -1198,7 +1202,8 @@ nearer block still wins a right click outright: a crafting table with a cow pres
 behind it opens. Holding the left button down answers once, then swings in silence.
 
 Fleece never grows back: a fleecy hillside is worth fencing. The shorn model drops the
-fleece layer and shows bare skin. Wool's only use is the bed.
+fleece layer and shows bare skin. Wool's only use is the bed, which beacon 1 already taught: a sheep killed
+before there are shears pays one wool, so the first bed costs three sheep.
 
 ## Archery and the night's newcomers
 The night grows with the mission. Before beacon 2 a hostile spawn is a creeper 16% of the time and a zombie otherwise. Once beacon 2 is lit, 28% of spawns roll a spider. A spider is wider than a block, so when it would not fit centred on the spot it tries the spot's four corners, which need only a clear 2×2. Only when none of those fit does it arrive as a zombie instead. Once beacon 3 is lit, another fifth of spawns are skeletons. The newcomers take their share out of the zombies'. All of them scale with the ground they were spawned on, as every enemy does, and pay essence when killed.

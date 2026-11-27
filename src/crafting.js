@@ -33,7 +33,7 @@ export const craft3 = new Array(CRAFT3_SIZE * CRAFT3_SIZE).fill(null);
  * and columns do not matter. A '.' means the cell must stay empty. `unlockedBy`
  * is the beacon that transmits the recipe, in the grouping the design writes
  * down: beacon 1 pays for the survival kit — the 2x2 basics, the furnace, the
- * chest, the door and the wooden tools; beacon 2 for farming, building and
+ * chest, the door, the bed and the wooden tools; beacon 2 for farming, building and
  * stone; beacon 3 for iron; beacon 4 for diamond.
  */
 export const RECIPES = [
@@ -115,8 +115,9 @@ export const RECIPES = [
   },
   {
     // Blanket over boards: three wool laid across three planks, the table's
-    // own pattern for a bed.
-    id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, unlockedBy: 2,
+    // own pattern for a bed. It comes with beacon 1's survival kit: a killed
+    // sheep pays its fleece, so the wool needs no shears.
+    id: 'bed', pattern: ['WWW', 'PPP'], key: { W: 'wool', P: 'planks' }, unlockedBy: 1,
     result: { id: 'bed', count: 1 }
   },
   {
