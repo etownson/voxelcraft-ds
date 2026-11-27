@@ -77,6 +77,24 @@ export const RECIPES = [
     result: { id: 'bread', count: 1 }
   },
   {
+    // Cooked meat between two ears of wheat: a crust folded round the filling.
+    // Three cells across, so it wants the table like bread does.
+    id: 'meat_pie', pattern: ['WMW'], key: { W: 'wheat', M: 'cooked_meat' }, unlockedBy: 2,
+    result: { id: 'meat_pie', count: 1 }
+  },
+  {
+    // An apple dropped in over cooked meat. Shaped rather than shapeless,
+    // because the shapeless matcher does not count, and two apples would make
+    // one stew. One cell wide, so the pocket grid folds it too.
+    id: 'meat_stew', pattern: ['A', 'M'], key: { A: 'apple', M: 'cooked_meat' }, unlockedBy: 2,
+    result: { id: 'meat_stew', count: 1 }
+  },
+  {
+    // Two apples either side of an ear of wheat. Three across: table only.
+    id: 'apple_pie', pattern: ['AWA'], key: { A: 'apple', W: 'wheat' }, unlockedBy: 2,
+    result: { id: 'apple_pie', count: 1 }
+  },
+  {
     // Six planks in two columns, three leaves tall: Minecraft's own door
     // pattern, and three doors out of it like the original gives.
     id: 'door', pattern: ['PP', 'PP', 'PP'], key: { P: 'planks' }, unlockedBy: 1,

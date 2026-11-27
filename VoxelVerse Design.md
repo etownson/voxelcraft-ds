@@ -222,6 +222,9 @@ Crafting table (3×3) recipes:
 | Item                  |
 | --------------------- |
 | Bread                 |
+| Meat Pie              |
+| Meat Stew             |
+| Apple Pie             |
 | Shears                |
 | Bed                   |
 | Bucket                |
@@ -656,6 +659,9 @@ Recipes:
 | Torch ×4 | coal (or charcoal) over a stick | 2×2 |
 | Furnace ×1 | eight cobblestone ring | 3×3 |
 | Bread ×1 | `WWW` | 3×3 |
+| Meat Pie ×1 | `WMW`: wheat, cooked meat, wheat | 3×3 |
+| Meat Stew ×1 | apple over cooked meat | 2×2 |
+| Apple Pie ×1 | `AWA`: apple, wheat, apple | 3×3 |
 | Wooden Door ×3 | `PP` / `PP` / `PP` | 3×3 |
 | Shears ×1 | two iron ingots point-to-point (either diagonal) | 2×2 |
 | Red Bed ×1 | `WWW` over `PPP` | 3×3 |
@@ -668,7 +674,7 @@ Recipes:
 
 Anything three cells across — bed, bucket, chest, stairs, ladder, bread, door, furnace,
 tools, armour — needs the crafting table; the pocket 2×2 folds only planks, sticks,
-tables, and torches. Coal, charcoal, raw iron, iron ingots, diamond, leather, wool,
+tables, torches and meat stew. Coal, charcoal, raw iron, iron ingots, diamond, leather, wool,
 feathers, seeds and apples are material or food items and cannot be placed in the
 world.
 
@@ -734,6 +740,19 @@ with nothing cushioning it.
 | Apple | 4 | 2.4 |
 | Bread | 5 | 6.0 |
 | Cooked Meat | 8 | 12.8 |
+| Apple Pie | 10 | 9.6 |
+| Meat Stew | 12 | 16.8 |
+| Meat Pie | 12 | 19.2 |
+
+The three meals are this game's own, folded at the table from beacon 2. Each gives
+exactly the hunger of its ingredients (meat pie: two wheat and a cooked meat; stew: an
+apple and a cooked meat; apple pie: two apples and a wheat), so combining food never
+costs a bite, and pays instead in saturation and in one slot and one bite for three. A
+bigger hunger number would only spill over the 20-point bar. Meat pie is the best meal
+there is; stew needs no farm but spends a scarce apple; apple pie is the light meal for
+a forager. Stew has no bowl: a container that comes back after eating would be a
+mechanic of its own for very little play. All three recipes are shaped, because the
+shapeless matcher does not count and would take two apples for one stew.
 
 Deliberate divergences from Minecraft: raw meat feeds nobody as it comes (right-click
 answers *Raw Meat needs cooking in a furnace*; only a furnace's cooked meat is food, which
@@ -800,8 +819,8 @@ cooking while open.
   rate, because a food nobody ever finds is indistinguishable from one that does not
   exist. A leaf gives up nothing else — no leaf block, ever. The roll is a drop entry
   on the leaf block itself, so every path that destroys a block owes it — a creeper
-  crater included. Apples cannot be farmed (there are no saplings), and have no other
-  use: food or nothing
+  crater included. Apples cannot be farmed (there are no saplings); they are eaten as
+  they come or folded into meat stew and apple pie
 
 ## Fluids: water and lava
 

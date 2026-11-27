@@ -542,6 +542,18 @@ defineItem({ id: 'bread', name: 'Bread', kind: 'food', stack: 64, hunger: 5, sat
 // hundred, which is effectively invisible, so this game rolls at 2.5% and makes
 // clearing a forest worth the pause.
 defineItem({ id: 'apple', name: 'Apple', kind: 'food', stack: 64, hunger: 4, saturation: 2.4 });
+// The three meals are this game's own. Each gives exactly the hunger of what
+// went into it, so folding food at the table never costs a bite, and pays for
+// the trouble in saturation instead: a fuller cushion, in one slot and one
+// bite. A bigger hunger number would only spill over a 20-point bar. Meat pie
+// (two wheat, one cooked meat) is the best meal there is; stew (an apple over
+// cooked meat) needs no farm but spends a scarce apple; apple pie (two apples,
+// one wheat) is the light meal for a forager with no furnace going. Stew has no
+// bowl: a container that comes back after eating would be a mechanic of its own
+// for very little play.
+defineItem({ id: 'meat_pie', name: 'Meat Pie', kind: 'food', stack: 64, hunger: 12, saturation: 19.2 });
+defineItem({ id: 'meat_stew', name: 'Meat Stew', kind: 'food', stack: 64, hunger: 12, saturation: 16.8 });
+defineItem({ id: 'apple_pie', name: 'Apple Pie', kind: 'food', stack: 64, hunger: 10, saturation: 9.6 });
 // Seeds are the one item that turns into a block on right click, so they carry
 // the stage they plant as rather than a block id of their own.
 defineItem({ id: 'wheat_seeds', name: 'Wheat Seeds', kind: 'seed', stack: 64, plants: B.WHEAT_0 });

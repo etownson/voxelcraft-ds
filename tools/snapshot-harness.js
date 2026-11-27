@@ -32,7 +32,7 @@
   }
   function fix3(n) { return n.toFixed(3); }
 
-  /* [recipe id, expected result, 9 grid cells] - 17 of the 48 recipes, driven
+  /* [recipe id, expected result, 9 grid cells] - 17 of the 51 recipes, driven
      end to end. The rest are covered by the recipe table digest below. Every
      one of them is locked behind a beacon now, so the list runs only after
      `beaconGate` has walked the mission forward; `beaconGate` itself proves

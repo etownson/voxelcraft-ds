@@ -126,6 +126,10 @@ import { DEFAULT_WORLD_ID, activeWorld, registerWorldKey, worldKey } from './wor
  * `cooked_beef` became `cooked_meat`, since every animal drops the same meat.
  * A schema 7 record would otherwise lose that food from every pack, chest and
  * furnace, so MIGRATIONS[7] rewrites the old ids wherever a stack can sit.
+ *
+ * The meat pie, meat stew and apple pie ride schema 8 without a bump: they are
+ * new item ids and nothing else, so a save written before them holds none and
+ * reads exactly as it did.
  */
 export const SAVE_KEY = 'voxelcraft:world:v7';
 export const LEGACY_SAVE_KEYS = [

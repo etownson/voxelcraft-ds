@@ -552,6 +552,44 @@ const MATERIAL_ICON_PAINTERS = {
     px(10, 3, '#4f8f3a', 3, 1);
     px(11, 4, '#6fb04a', 2, 1);
   },
+  meat_pie(px) {
+    // A domed crust in a dark tin, a slit across the top showing the meat.
+    px(2, 10, '#6b4a2c', 12, 2);
+    px(3, 12, '#4f3520', 10, 1);
+    px(3, 6, '#c98a43', 10, 4);
+    px(4, 5, '#d99a52', 8, 1);
+    px(5, 4, '#e6b771', 6, 1);
+    px(4, 6, '#e9bd7c', 3, 1);
+    px(5, 7, '#8f4a26', 6, 1);
+    px(6, 7, '#b35f34', 3, 1);
+    px(3, 9, '#a96f30', 10, 1);
+  },
+  meat_stew(px) {
+    // A brown pot seen from above the rim: dark broth, meat chunks, apple red.
+    px(2, 7, '#5a3b22', 12, 1);
+    px(3, 8, '#7a5230', 10, 4);
+    px(4, 12, '#5a3b22', 8, 1);
+    px(3, 5, '#4f3520', 10, 2);
+    px(4, 5, '#6e3a1e', 8, 2);
+    px(5, 5, '#8f4a26', 2, 1);
+    px(9, 6, '#8f4a26', 2, 1);
+    px(7, 5, '#c8352f', 2, 1);
+    px(11, 5, '#e0605a', 1, 1);
+    px(4, 9, '#946539', 3, 1);
+    px(1, 8, '#5a3b22', 1, 2);
+    px(14, 8, '#5a3b22', 1, 2);
+  },
+  apple_pie(px) {
+    // A golden lattice crust with apple red showing between the strips.
+    px(2, 10, '#6b4a2c', 12, 2);
+    px(3, 12, '#4f3520', 10, 1);
+    px(3, 6, '#b8322c', 10, 4);
+    px(4, 5, '#c8352f', 8, 1);
+    for (const x of [4, 7, 10]) px(x, 5, '#e6b771', 2, 5);
+    px(3, 7, '#e0ab63', 10, 1);
+    px(5, 4, '#e9bd7c', 6, 1);
+    px(3, 9, '#a96f30', 10, 1);
+  },
   diamond(px) {
     px(6, 3, '#c6f7fb', 4, 1);
     px(5, 4, '#8ce8f2', 6, 1);
