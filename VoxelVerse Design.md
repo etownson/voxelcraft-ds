@@ -740,7 +740,7 @@ with nothing cushioning it.
 | Apple | 4 | 2.4 |
 | Bread | 5 | 6.0 |
 | Cooked Meat | 8 | 12.8 |
-| Meat Stew | 10 | 9.6 |
+| Meat Stew | 12 | 16.0 |
 | Apple Pie | 12 | 16.8 |
 | Meat Pie | 12 | 19.2 |
 
@@ -748,8 +748,8 @@ The three meals are this game's own, and they climb with the beacons: meat stew 
 apple over a cooked meat) arrives with beacon 1, apple pie (two apples and a wheat) with
 beacon 2, meat pie (two wheat and a cooked meat) with beacon 3. Each is one slot and one
 bite in place of three. Stew is the plain early meal, the only one that needs no farm,
-and gives back less than its apple and meat would eaten apart (10 / 9.6 against
-12 / 15.2): it buys a compact bite, not food. Apple pie pays well above its parts
+and pays only just above its apple and meat eaten apart (12 / 16.0 against 12 / 15.2),
+so it stays the least of the three while still being worth folding. Apple pie pays well above its parts
 (12 / 16.8 against 10 / 6.0), which is what makes hoarding apples worth it, and meat pie
 is the best meal there is. No meal passes 12 hunger, because more would only spill over
 the 20-point bar. Stew has no bowl: a container that comes back after eating would be a

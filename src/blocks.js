@@ -545,16 +545,16 @@ defineItem({ id: 'apple', name: 'Apple', kind: 'food', stack: 64, hunger: 4, sat
 // The three meals are this game's own, and they climb with the beacons: stew
 // (an apple over cooked meat) at beacon 1, apple pie (two apples, one wheat) at
 // beacon 2, meat pie (two wheat, one cooked meat) at beacon 3. Each is one slot
-// and one bite in place of three. Stew is the plain early meal and gives back
-// less than its apple and meat would eaten apart (10 / 9.6 against 12 / 15.2):
-// it is there for the compact bite before any farm exists. Apple pie pays well
-// above its parts (12 / 16.8 against 10 / 6.0), which is what makes hoarding
-// apples worth it, and meat pie is the best meal there is. Hunger never goes
-// past 12, because more would only spill over a 20-point bar. Stew has no bowl:
-// a container that comes back after eating would be a mechanic of its own for
-// very little play.
+// and one bite in place of three. Stew is the plain early meal and pays only
+// just above its apple and meat eaten apart (12 / 16.0 against 12 / 15.2), so
+// it stays the least of the three while still being worth folding. Apple pie
+// pays well above its parts (12 / 16.8 against 10 / 6.0), which is what makes
+// hoarding apples worth it, and meat pie is the best meal there is. Hunger never
+// goes past 12, because more would only spill over a 20-point bar. Stew has no
+// bowl: a container that comes back after eating would be a mechanic of its own
+// for very little play.
 defineItem({ id: 'meat_pie', name: 'Meat Pie', kind: 'food', stack: 64, hunger: 12, saturation: 19.2 });
-defineItem({ id: 'meat_stew', name: 'Meat Stew', kind: 'food', stack: 64, hunger: 10, saturation: 9.6 });
+defineItem({ id: 'meat_stew', name: 'Meat Stew', kind: 'food', stack: 64, hunger: 12, saturation: 16 });
 defineItem({ id: 'apple_pie', name: 'Apple Pie', kind: 'food', stack: 64, hunger: 12, saturation: 16.8 });
 // Seeds are the one item that turns into a block on right click, so they carry
 // the stage they plant as rather than a block id of their own.
