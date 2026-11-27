@@ -67,6 +67,9 @@
       "wheat||||||||",
       "bread||||||||",
       "apple||||||||",
+      "meat_pie||||||||",
+      "meat_stew||||||||",
+      "apple_pie||||||||",
       "wheat_seeds||||||||",
       "feather||||||||",
       "wool||||||||",
@@ -191,6 +194,9 @@
       "furnace=furnacex1=CCC/C.C/CCC=1shut",
       "enchanting_table=enchanting_tablex1=CPC/PXP/CPC=1shut",
       "bread=breadx1=WWW=2shut",
+      "meat_pie=meat_piex1=WMW=2shut",
+      "meat_stew=meat_stewx1=A/M=2shut",
+      "apple_pie=apple_piex1=AWA=2shut",
       "door=doorx3=PP/PP/PP=1shut",
       "shears=shearsx1=I./.I=2shut",
       "shears_alt=shearsx1=.I/I.=2shut",
@@ -263,7 +269,7 @@
       "purse:31+31->31",
       "lit:1",
       "journal:14",
-      "forward:4/56"
+      "forward:4/59"
     ],
     "crafting": [
       "planks:OK",
