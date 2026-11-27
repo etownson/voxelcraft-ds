@@ -105,9 +105,11 @@ export function setMobSpawning(on) { mobSpawningOn = !!on; }
  * which put the groups in direct competition for the last few slots: a
  * comfortable herd of animals left room for only 9 zombies, and the total sat
  * at 29 of 30 with nowhere to put anything. Splitting the budget means a full
- * herd can no longer decide how dangerous the night is.
+ * herd can no longer decide how dangerous the night is. All three were halved
+ * together (from 32, 10 and 16) so the world holds half as many animals and
+ * half as many hostiles at once.
  */
-export const MOB_CAP = 32;
+export const MOB_CAP = 16;
 /**
  * Animals are deliberately scarce. Cooked meat is the best food in the game — worth
  * nearly twice a loaf of bread — and a landscape that refills itself with cows
@@ -115,8 +117,8 @@ export const MOB_CAP = 32;
  * cannot keep a busy player in meat, so wheat becomes the meal they plan the
  * day around. See the animal scarcity addendum in the design document.
  */
-export const PASSIVE_CAP = 10;
-export const HOSTILE_CAP = 16;
+export const PASSIVE_CAP = 5;
+export const HOSTILE_CAP = 8;
 const MOB_SALT = 0x4D0B5A17;
 /**
  * A chunk only earns its herd roll while the player is this close, which is

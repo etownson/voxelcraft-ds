@@ -1100,9 +1100,10 @@ walking, so a crowd stands round the player in a ring instead of merging into on
 
 Population is a budget:
 
-- `MOB_CAP` 32 total, split into `PASSIVE_CAP` 10 and `HOSTILE_CAP` 16 that add up to
+- `MOB_CAP` 16 total, split into `PASSIVE_CAP` 5 and `HOSTILE_CAP` 8 that add up to
   no more than the total with no reservations — a healthy herd can never decide how
-  dangerous the night is
+  dangerous the night is. All three were halved from 32, 10 and 16 so the world holds
+  half as many animals and half as many enemies at once
 - Passive animals — cows, pigs, sheep, chickens — spawn on grass in plains, forest, and
   rainforest as chunks load. Chickens, the only source of feathers, are the most
   common species in every one of them: plains roll chicken 30%, cow 25%, pig 20%,
