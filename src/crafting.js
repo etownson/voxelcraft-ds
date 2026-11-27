@@ -79,14 +79,15 @@ export const RECIPES = [
   {
     // Cooked meat between two ears of wheat: a crust folded round the filling.
     // Three cells across, so it wants the table like bread does.
-    id: 'meat_pie', pattern: ['WMW'], key: { W: 'wheat', M: 'cooked_meat' }, unlockedBy: 2,
+    id: 'meat_pie', pattern: ['WMW'], key: { W: 'wheat', M: 'cooked_meat' }, unlockedBy: 3,
     result: { id: 'meat_pie', count: 1 }
   },
   {
     // An apple dropped in over cooked meat. Shaped rather than shapeless,
     // because the shapeless matcher does not count, and two apples would make
-    // one stew. One cell wide, so the pocket grid folds it too.
-    id: 'meat_stew', pattern: ['A', 'M'], key: { A: 'apple', M: 'cooked_meat' }, unlockedBy: 2,
+    // one stew. One cell wide, so the pocket grid folds it too. It arrives with
+    // the furnace at beacon 1: the one meal that needs no farm.
+    id: 'meat_stew', pattern: ['A', 'M'], key: { A: 'apple', M: 'cooked_meat' }, unlockedBy: 1,
     result: { id: 'meat_stew', count: 1 }
   },
   {

@@ -185,6 +185,7 @@ Handheld (inventory 2×2) recipes:
 | Sticks ×4      |
 | Crafting Table |
 | Torch ×4       |
+| Meat Stew      |
 
 Crafting table (3×3) recipes:
 
@@ -222,8 +223,6 @@ Crafting table (3×3) recipes:
 | Item                  |
 | --------------------- |
 | Bread                 |
-| Meat Pie              |
-| Meat Stew             |
 | Apple Pie             |
 | Shears                |
 | Bed                   |
@@ -264,6 +263,7 @@ Crafting table (3×3) recipes:
 
 | Item            |
 | --------------- |
+| Meat Pie        |
 | Iron pickaxe    |
 | Iron sword      |
 | Iron axe        |
@@ -740,17 +740,19 @@ with nothing cushioning it.
 | Apple | 4 | 2.4 |
 | Bread | 5 | 6.0 |
 | Cooked Meat | 8 | 12.8 |
-| Apple Pie | 10 | 9.6 |
-| Meat Stew | 12 | 16.8 |
+| Meat Stew | 10 | 9.6 |
+| Apple Pie | 12 | 16.8 |
 | Meat Pie | 12 | 19.2 |
 
-The three meals are this game's own, folded at the table from beacon 2. Each gives
-exactly the hunger of its ingredients (meat pie: two wheat and a cooked meat; stew: an
-apple and a cooked meat; apple pie: two apples and a wheat), so combining food never
-costs a bite, and pays instead in saturation and in one slot and one bite for three. A
-bigger hunger number would only spill over the 20-point bar. Meat pie is the best meal
-there is; stew needs no farm but spends a scarce apple; apple pie is the light meal for
-a forager. Stew has no bowl: a container that comes back after eating would be a
+The three meals are this game's own, and they climb with the beacons: meat stew (an
+apple over a cooked meat) arrives with beacon 1, apple pie (two apples and a wheat) with
+beacon 2, meat pie (two wheat and a cooked meat) with beacon 3. Each is one slot and one
+bite in place of three. Stew is the plain early meal, the only one that needs no farm,
+and gives back less than its apple and meat would eaten apart (10 / 9.6 against
+12 / 15.2): it buys a compact bite, not food. Apple pie pays well above its parts
+(12 / 16.8 against 10 / 6.0), which is what makes hoarding apples worth it, and meat pie
+is the best meal there is. No meal passes 12 hunger, because more would only spill over
+the 20-point bar. Stew has no bowl: a container that comes back after eating would be a
 mechanic of its own for very little play. All three recipes are shaped, because the
 shapeless matcher does not count and would take two apples for one stew.
 
