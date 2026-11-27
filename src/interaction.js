@@ -216,7 +216,13 @@ export function miningFacts(blockId, stack) {
  */
 export function wearHeldTool(amount = 1) {
   const stack = getSelectedStack();
-  if (!stack || !consumeDurability(stack, amount)) return false;
+  if (!stack) return false;
+  if (!consumeDurability(stack, amount)) {
+    // Repaint even when the tool holds, or the wear strip waits for whatever
+    // redraws the pack next: a pickup, which a sword's glancing blow never brings.
+    paintPack();
+    return false;
+  }
 
   const item = ITEMS.get(stack.id);
   emptyHand();
