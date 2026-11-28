@@ -62,3 +62,18 @@ export function setCoopName(name) {
   coopNameValue = String(name || '').trim().slice(0, 24);
   storageSet(SETTINGS_KEY + ':coopName', coopNameValue);
 }
+
+/* Camera assist, for a pad player who finds the right stick hard to work
+   while steering: the view follows the walk, levels its tilt and leans onto a
+   hostile close ahead (see src/camera-assist.js). It belongs to the person
+   holding the pad, not to the world, so it lives here. Off unless asked for. */
+let cameraAssistOn = storageGet(SETTINGS_KEY + ':cameraAssist') === '1';
+
+/** Whether the camera assist turns the view for the pad. */
+export function cameraAssist() { return cameraAssistOn; }
+
+export function setCameraAssist(on) {
+  cameraAssistOn = !!on;
+  storageSet(SETTINGS_KEY + ':cameraAssist', cameraAssistOn ? '1' : '0');
+  for (const listener of listeners) listener();
+}

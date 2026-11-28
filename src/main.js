@@ -35,6 +35,7 @@ import {
   updateCoop
 } from './coop.js';
 import { atlasCanvas } from './atlas.js';
+import { setAssistTargets } from './camera-assist.js';
 import {
   audioCtx, audioStatus, playMissionCompleteSong, playPickupSound, playSound, playSpawnSong,
   resumeAudioIfUnpaused, setArrivalHold, setAudioMenuPause, setAudioMusicVolume,
@@ -492,6 +493,11 @@ setDropShare({
 
 /* And the crosshair stops pointing whenever something else has the controls. */
 setAimBlocked(() => !!activeScreen || player.dead || introActive());
+/* The camera assist leans onto hostiles; it hears where their bodies are from
+   here, so the input layer never reaches into the mob layer. */
+setAssistTargets(() => mobs
+  .filter((mob) => mob.def.hostile && !mob.dead)
+  .map((mob) => ({ x: mob.pos.x, y: mob.pos.y + mob.def.height * 0.5, z: mob.pos.z })));
 
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */

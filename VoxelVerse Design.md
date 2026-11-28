@@ -510,6 +510,14 @@ A first-person controller:
   menu. Menu grids are walked with the D-pad or stick: A picks up and places whole
   stacks, X takes half a stack and places one item, Y/Triangle quick-moves, B or
   View/Back closes
+- Camera assist (Settings → Controller, off by default, a per-browser preference
+  outside the save) is for a pad player who finds working both sticks at once hard.
+  Once the right stick has rested for 0.8 s the view turns itself (`src/camera-assist.js`):
+  it follows the walk (a left stick pushed sideways turns the view up to 1.7 rad/s,
+  never while backing up), eases its tilt back to -0.18 (held still while standing
+  mining or on a ladder), and leans onto the nearest hostile within 6 blocks and about
+  35° of the crosshair. Every turn is an ease, and touching the right stick hands the
+  view straight back
 
 Health:
 

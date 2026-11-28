@@ -27,6 +27,7 @@ import { cancelBowDraw, releaseBowDraw } from './archery.js';
 import { ensureAudio, playJumpSound } from './audio.js';
 import { meshChunk, world } from './chunks.js';
 import { inLavaAt, isSolid, ladderHolding, playerCollidesAt, submergedAt } from './collision.js';
+import { updateCameraAssist } from './camera-assist.js';
 import { swingAtMob, updateMobTarget } from './combat.js';
 import {
   AIR_ACCEL, CHUNK_SIZE, EYE_HEIGHT, GRAVITY, GROUND_ACCEL, JUMP_SPEED, LADDER_CLIMB_SPEED,
@@ -41,6 +42,7 @@ import { hideMiningFeedback } from './interaction.js';
 import { applyLook, exhaustForMovement, player, turnPlayer, view } from './player.js';
 import { camera, renderer } from './render.js';
 import { say } from './say.js';
+import { cameraAssist } from './settings.js';
 import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './worldgen.js';
 
 export const canvas = renderer.domElement;
@@ -970,6 +972,8 @@ export function padMenuDirection(dt, state, negative, positive, axisValue) {
 }
 
 export let padMiningDown = false;
+/** Seconds since the right stick last looked; the camera assist waits on it. */
+let padLookIdleFor = 0;
 /** True for the single frame where a pad press dismissed the overlay. */
 let padResumeFrame = false;
 /** True while the A that dismissed the menu is still held: it must not jump. */
@@ -1170,7 +1174,19 @@ function applyGamepadLook(dt) {
 
   const lookX = gpAxis(2);
   const lookY = gpAxis(3);
-  if (!lookX && !lookY) return;
+  if (!lookX && !lookY) {
+    padLookIdleFor += dt;
+    if (cameraAssist() && isPlayable() && !inputView.held()) {
+      updateCameraAssist(dt, {
+        moveX: gpAxis(0),
+        moveForward: -gpAxis(1),
+        lookIdleFor: padLookIdleFor,
+        mining: padMiningDown
+      });
+    }
+    return;
+  }
+  padLookIdleFor = 0;
 
   const speed = GP_LOOK_SPEED * gamepadState.sensitivity * dt;
   turnPlayer(-lookX * speed, -lookY * speed);

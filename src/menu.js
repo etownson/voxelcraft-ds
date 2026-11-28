@@ -41,7 +41,9 @@ import { essenceCount } from './essence.js';
 import { buildJournalBody, journalTitle } from './journal.js';
 import { PAD_BUTTON, gamepadState, overlayEl, startFromOverlay } from './input.js';
 import { createNav, navDevice, onNavDevice } from './menu-nav.js';
-import { coopName, coordsShown, fpsShown, setCoopName, setCoordsShown, setFpsShown } from './settings.js';
+import {
+  cameraAssist, coopName, coordsShown, fpsShown, setCameraAssist, setCoopName, setCoordsShown, setFpsShown
+} from './settings.js';
 import { formatSavedAt } from './save.js';
 import {
   deleteWaypoint, nextWaypointLabel, setActiveWaypoint, waypointTargets
@@ -67,6 +69,7 @@ const waypointLabelInput = document.getElementById('waypoint-label');
 const waypointSaveButton = document.getElementById('waypoint-save');
 const fpsToggle = document.getElementById('fps-toggle');
 const coordsToggle = document.getElementById('coords-toggle');
+const cameraAssistToggle = document.getElementById('camera-assist-toggle');
 const coopNameInput = document.getElementById('coop-name');
 const coopOffEl = document.getElementById('coop-off');
 const coopOnEl = document.getElementById('coop-on');
@@ -211,7 +214,7 @@ function showPage(name) {
   if (name === 'home') paintHome();
   if (name === 'worlds') paintWorlds();
   if (name === 'waypoints') paintWaypoints();
-  if (name === 'settings') { paintFpsToggle(); paintCoordsToggle(); }
+  if (name === 'settings') { paintFpsToggle(); paintCoordsToggle(); paintCameraAssistToggle(); }
   if (name === 'coop') paintCoopName();
   pagesEl.scrollTop = 0;
   paintHints();
@@ -667,6 +670,19 @@ coordsToggle.addEventListener('click', () => {
   paintCoordsToggle();
 });
 paintCoordsToggle();
+
+function paintCameraAssistToggle() {
+  const on = cameraAssist();
+  cameraAssistToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+  cameraAssistToggle.textContent = on ? 'On' : 'Off';
+}
+
+cameraAssistToggle.addEventListener('click', () => {
+  if (!freshPick(cameraAssistToggle)) return;
+  setCameraAssist(!cameraAssist());
+  paintCameraAssistToggle();
+});
+paintCameraAssistToggle();
 
 /** Steps from the rail into the shown page, back where the highlight left it. */
 function enterPage(name = shownPage) {
