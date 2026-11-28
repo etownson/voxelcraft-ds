@@ -26,14 +26,8 @@ import { aimOrigin, applyLook, player, turnPlayer, view } from './player.js';
 
 /** How long the right stick must rest before the assist turns the view. */
 export const ASSIST_LOOK_IDLE_SECONDS = 0.8;
-/* Radians per second the view follows a stick pushed fully sideways. The
-   circle a turn walks has the walking speed over the turn rate for its
-   radius: a diagonal push at 1.7 walked a ring nearly eight blocks across,
-   and at 3.4 with the curve below it is about three. */
-export const ASSIST_FOLLOW_RATE = 3.4;
-/* A partial push turns harder than its share (|x| ** 0.6), so a thumb resting
-   on the diagonal steers nearly as tight as one pushed all the way over. */
-export const ASSIST_FOLLOW_CURVE = 0.6;
+/** Radians per second the view follows a stick pushed fully sideways. */
+export const ASSIST_FOLLOW_RATE = 1.7;
 /** The resting tilt: a little below level, as the spawn view stands. */
 export const ASSIST_REST_PITCH = -0.18;
 /** How quickly the tilt drifts back to rest (exponential, per second). */
@@ -102,10 +96,7 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
     dYaw = target.yawOff * blend;
     dPitch = target.pitchOff * blend;
   } else {
-    if (moveForward > -0.3) {
-      const push = Math.sign(moveX) * Math.abs(moveX) ** ASSIST_FOLLOW_CURVE;
-      dYaw = -push * ASSIST_FOLLOW_RATE * dt;
-    }
+    if (moveForward > -0.3) dYaw = -moveX * ASSIST_FOLLOW_RATE * dt;
     const walking = Math.hypot(moveX, moveForward) > 0.2;
     if (!player.onLadder && !(mining && !walking)) {
       dPitch = (ASSIST_REST_PITCH - view.pitch) * ease(ASSIST_LEVEL_RATE, dt);
