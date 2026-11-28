@@ -42,7 +42,7 @@ import { hideMiningFeedback } from './interaction.js';
 import { applyLook, exhaustForMovement, player, turnPlayer, view } from './player.js';
 import { camera, renderer } from './render.js';
 import { say } from './say.js';
-import { cameraAssist, lockOnAssist } from './settings.js';
+import { autoJump, cameraAssist, lockOnAssist } from './settings.js';
 import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './worldgen.js';
 
 export const canvas = renderer.domElement;
@@ -335,6 +335,36 @@ function tryStepUp(startX, baseY, startZ, moveX, moveZ, blockedX, blockedZ) {
 }
 
 
+/** The highest ledge auto-jump goes for: a jump's apex, JUMP_SPEED² / 2g =
+ *  1.35, less a margin, so the feet clear a full block with room to carry over
+ *  it, and anything taller is left alone rather than jumped at and missed. */
+const AUTO_JUMP_MAX_LEDGE = (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY) - 0.1;
+
+/** How hard the walk has to lean into the ledge before it counts as a push. */
+const AUTO_JUMP_MIN_PUSH = 0.3;
+
+/**
+ * Auto-jump's question: would a jump from here put the feet on top of what the
+ * walk is pressed against? Only when the body has headroom to rise over it
+ * where it stands, there is room for the body on top of it a short way ahead
+ * along the walk, and something solid there to land on. A ledge too tall, a
+ * low ceiling, or a wall with no top in reach all answer no, so the player is
+ * never thrown at a wall the jump could not get over.
+ */
+function autoJumpClears(baseY, dirX, dirZ) {
+  const { x, z } = player.pos;
+  const reach = PLAYER_HALF_WIDTH + 0.4;
+  const aheadX = x + dirX * reach;
+  const aheadZ = z + dirZ * reach;
+  for (let lift = PLAYER_STEP_HEIGHT; lift <= AUTO_JUMP_MAX_LEDGE + 1e-6; lift += WATER_MANTLE_STEP) {
+    const y = baseY + lift;
+    if (playerCollidesAt(x, y, z)) return false;
+    if (playerCollidesAt(aheadX, y, aheadZ)) continue;
+    return isSolid(world.getBlock(Math.floor(aheadX), Math.floor(y - 0.05), Math.floor(aheadZ)));
+  }
+  return false;
+}
+
 function updatePlayerEnvironment() {
   player.inWater =
     submergedAt(player.pos.x, player.pos.y + 0.2, player.pos.z) ||
@@ -478,6 +508,18 @@ export function updatePlayer(dt, input) {
     const step = tryStepUp(startX, player.pos.y, startZ, moveX, moveZ, hitX, hitZ);
     if (step.pastX) hitX = false;
     if (step.pastZ) hitZ = false;
+  }
+
+  // Auto-jump: a ledge too tall to step but low enough to jump, walked into on
+  // purpose, is jumped. The jump starts next frame, as a pressed one would.
+  if ((hitX || hitZ) && autoJump() && player.onGround && !swimming && !player.onLadder &&
+      !jumped && Math.hypot(hitX ? wishX : 0, hitZ ? wishZ : 0) > AUTO_JUMP_MIN_PUSH) {
+    const along = Math.hypot(wishX, wishZ);
+    if (autoJumpClears(player.pos.y, wishX / along, wishZ / along)) {
+      player.vel.y = JUMP_SPEED;
+      player.onGround = false;
+      jumped = true;
+    }
   }
 
   if ((hitX || hitZ) && swimming && input.jump) {

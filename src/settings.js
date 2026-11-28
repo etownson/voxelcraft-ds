@@ -94,3 +94,18 @@ export function setLockOnAssist(on) {
   storageSet(SETTINGS_KEY + ':lockOnAssist', lockOnAssistOn ? '1' : '0');
   for (const listener of listeners) listener();
 }
+
+/* Auto-jump: walking into a ledge a jump would clear jumps it, so a climb up
+   a hillside needs no jump button. It is a matter of taste and of the hands
+   on the controls, not of the world, so it lives here. Off unless asked for:
+   a jump nobody pressed is a surprise to anyone who never chose it. */
+let autoJumpOn = storageGet(SETTINGS_KEY + ':autoJump') === '1';
+
+/** Whether pushing into a ledge a jump would clear jumps it. */
+export function autoJump() { return autoJumpOn; }
+
+export function setAutoJump(on) {
+  autoJumpOn = !!on;
+  storageSet(SETTINGS_KEY + ':autoJump', autoJumpOn ? '1' : '0');
+  for (const listener of listeners) listener();
+}

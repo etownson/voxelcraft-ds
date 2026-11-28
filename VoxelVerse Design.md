@@ -508,6 +508,13 @@ A first-person controller:
   acceleration, buoyancy, a mantle at the surface). Ladders are climbed, not collided
   with — see Ladders
 - The collision box is 0.6 wide, 1.8 tall, eye at 1.62
+- Auto-jump (Settings → Movement, off by default, a per-browser preference outside
+  the save) jumps for a walker on the ground who pushes into a ledge too tall to step
+  (over 0.6) but low enough to jump (up to 1.25, a jump's 1.35 apex less a margin):
+  only when the body has headroom to rise where it stands and room on top of the
+  ledge a short way ahead, with something solid there to land on. It never fires
+  swimming, on a ladder, or at a wall a jump could not get over, and it works the
+  same for keyboard and pad
 - Gamepad support via the Web Gamepad API: left stick moves, right stick looks
   (configurable sensitivity), A/Cross jumps, right trigger mines/attacks, left trigger
   places/interacts, shoulder buttons scroll the hotbar, B/L3 latches sprint,

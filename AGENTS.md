@@ -147,6 +147,9 @@ whatever script asked for it, so a check started in the same evaluation is cut
 off partway and returns nothing. Wipe and reload in one, wait for the game to
 boot, then run the check in the next.
 
+The harness walks into terrain, so it assumes auto-jump (a per-browser
+setting) is off on the origin it runs on, as it is by default.
+
 `wipeSave()` erases the world saved for that origin. To keep a real save, run
 the guard on another port (each origin has its own localStorage), or copy the
 `SAVE_KEY` entry aside first and put it back afterwards.
