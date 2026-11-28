@@ -28,6 +28,11 @@ import { aimOrigin, applyLook, player, turnPlayer, view } from './player.js';
 export const ASSIST_LOOK_IDLE_SECONDS = 0.8;
 /** Radians per second the view follows a stick pushed fully sideways. */
 export const ASSIST_FOLLOW_RATE = 1.7;
+/* How far sideways the left stick must lean before the view follows it. A
+   thumb walking straight ahead is never quite straight, and without this the
+   view wandered with it; past the band the turn ramps up from nothing, so it
+   still starts gently. */
+export const ASSIST_FOLLOW_DEADZONE = 0.25;
 /** The resting tilt: a little below level, as the spawn view stands. */
 export const ASSIST_REST_PITCH = -0.18;
 /** How quickly the tilt drifts back to rest (exponential, per second). */
@@ -96,7 +101,11 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
     dYaw = target.yawOff * blend;
     dPitch = target.pitchOff * blend;
   } else {
-    if (moveForward > -0.3) dYaw = -moveX * ASSIST_FOLLOW_RATE * dt;
+    const lean = Math.abs(moveX) - ASSIST_FOLLOW_DEADZONE;
+    if (moveForward > -0.3 && lean > 0) {
+      const push = Math.sign(moveX) * lean / (1 - ASSIST_FOLLOW_DEADZONE);
+      dYaw = -push * ASSIST_FOLLOW_RATE * dt;
+    }
     const walking = Math.hypot(moveX, moveForward) > 0.2;
     if (!player.onLadder && !(mining && !walking)) {
       dPitch = (ASSIST_REST_PITCH - view.pitch) * ease(ASSIST_LEVEL_RATE, dt);
