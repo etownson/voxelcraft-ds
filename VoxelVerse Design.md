@@ -513,7 +513,8 @@ A first-person controller:
 - Camera assist (Settings → Controller, off by default, a per-browser preference
   outside the save) is for a pad player who finds working both sticks at once hard.
   Once the right stick has rested for 0.8 s the view turns itself (`src/camera-assist.js`):
-  it follows the walk (a left stick pushed sideways turns the view up to 1.7 rad/s,
+  it follows the walk (a left stick pushed sideways turns the view up to 3.4 rad/s,
+  a partial push turning harder than its share, so a walking turn on the diagonal circles about three blocks across;
   never while backing up), eases its tilt back to -0.18 (held still while standing
   mining or on a ladder), and leans onto the nearest hostile within 6 blocks and about
   35° of the crosshair. Every turn is an ease, and touching the right stick hands the
