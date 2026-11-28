@@ -515,7 +515,8 @@ A first-person controller:
   Once the right stick has rested for 0.8 s the view turns itself (`src/camera-assist.js`):
   it follows the walk (a left stick pushed sideways turns the view up to 1.7 rad/s,
   never while backing up, and not at all inside a quarter-stick band either side of
-  straight ahead, so a walk in a straight line stays straight), eases its tilt back to -0.18 (held still while standing
+  straight ahead, so a walk in a straight line stays straight; a lean it steers on
+  turns instead of strafing, so a hard push from a standstill turns on the spot), eases its tilt back to -0.18 (held still while standing
   mining or on a ladder), and leans onto the nearest hostile within 6 blocks and about
   35° of the crosshair. Every turn is an ease, and touching the right stick hands the
   view straight back

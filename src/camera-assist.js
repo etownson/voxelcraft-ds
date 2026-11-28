@@ -88,12 +88,19 @@ function aimTarget() {
  * One frame of the assist. `moveX` and `moveForward` are the left stick
  * (right and forward positive), `lookIdleFor` the seconds since the right
  * stick last moved, `mining` whether the mining trigger is held.
+ *
+ * Answers whether the stick's sideways lean went into steering this frame.
+ * When it did, the walk must not also strafe on it: a walker sliding sideways
+ * while the view turns traces a circle five blocks across, so pushing the
+ * stick hard over from a standstill swung them round a ring instead of
+ * turning them on the spot.
  */
 export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor = 0, mining = false } = {}) {
-  if (dt <= 0 || lookIdleFor < ASSIST_LOOK_IDLE_SECONDS) return;
+  if (dt <= 0 || lookIdleFor < ASSIST_LOOK_IDLE_SECONDS) return false;
 
   let dYaw = 0;
   let dPitch = 0;
+  let steering = false;
   const target = aimTarget();
 
   if (target) {
@@ -103,6 +110,7 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
   } else {
     const lean = Math.abs(moveX) - ASSIST_FOLLOW_DEADZONE;
     if (moveForward > -0.3 && lean > 0) {
+      steering = true;
       const push = Math.sign(moveX) * lean / (1 - ASSIST_FOLLOW_DEADZONE);
       dYaw = -push * ASSIST_FOLLOW_RATE * dt;
     }
@@ -112,7 +120,9 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
     }
   }
 
-  if (!dYaw && !dPitch) return;
-  turnPlayer(dYaw, dPitch);
-  applyLook();
+  if (dYaw || dPitch) {
+    turnPlayer(dYaw, dPitch);
+    applyLook();
+  }
+  return steering;
 }

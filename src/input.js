@@ -645,7 +645,7 @@ export function readPlayerInput() {
 
   if (gamepadState.active) {
     forward -= gpAxis(1);
-    right += gpAxis(0);
+    if (!padSteering) right += gpAxis(0);
   }
 
   // A pick spent on the menu stays spent until the thumb lets go, and the
@@ -974,6 +974,10 @@ export function padMenuDirection(dt, state, negative, positive, axisValue) {
 export let padMiningDown = false;
 /** Seconds since the right stick last looked; the camera assist waits on it. */
 let padLookIdleFor = 0;
+/* Whether the camera assist turned the left stick's sideways lean into
+   steering this frame; the walk then leaves that lean out instead of
+   strafing on it, so a hard push from a standstill turns on the spot. */
+let padSteering = false;
 /** True for the single frame where a pad press dismissed the overlay. */
 let padResumeFrame = false;
 /** True while the A that dismissed the menu is still held: it must not jump. */
@@ -1169,6 +1173,7 @@ function pollGamepad(dt) {
 }
 
 function applyGamepadLook(dt) {
+  padSteering = false;
   if (!gamepadState.active || inputView.screenOpen() || player.dead || dt <= 0) return;
   if (!overlayEl.classList.contains('hidden')) return;
 
@@ -1177,7 +1182,7 @@ function applyGamepadLook(dt) {
   if (!lookX && !lookY) {
     padLookIdleFor += dt;
     if (cameraAssist() && isPlayable() && !inputView.held()) {
-      updateCameraAssist(dt, {
+      padSteering = updateCameraAssist(dt, {
         moveX: gpAxis(0),
         moveForward: -gpAxis(1),
         lookIdleFor: padLookIdleFor,
