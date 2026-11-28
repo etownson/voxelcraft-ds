@@ -11,9 +11,9 @@
  *   where the walker is going, faster the further over it is, the way a
  *   third-person camera swings round behind its runner. Backing up leaves the
  *   view alone, so walking backwards never spins it.
- * - It levels the tilt. With the right stick still, the pitch drifts back to an
- *   easy eye line. It holds still while the walker stands mining, on a ladder,
- *   or with something to aim at.
+ * - It levels the tilt. Two seconds after the right stick lets go, the pitch
+ *   drifts back to an easy eye line. It holds still while the walker stands
+ *   mining, on a ladder, or with something to aim at.
  * - It leans onto a hostile close ahead, nearest first, so a swing lands
  *   without fine aiming.
  *
@@ -37,6 +37,10 @@ export const ASSIST_FOLLOW_DEADZONE = 0.25;
 export const ASSIST_REST_PITCH = -0.18;
 /** How quickly the tilt drifts back to rest (exponential, per second). */
 export const ASSIST_LEVEL_RATE = 1.6;
+/* How long the tilt is left alone before it starts to level, counted from the
+   right stick's release or from whatever last held it still (a ladder, mining
+   on the spot, a hostile to aim at), so a look up or down stays put a while. */
+export const ASSIST_LEVEL_DELAY_SECONDS = 2;
 /** How far and how far off the crosshair a hostile can be to draw the aim. */
 export const ASSIST_AIM_RANGE = 6;
 export const ASSIST_AIM_CONE = 0.61; // ~35 degrees
@@ -44,6 +48,8 @@ export const ASSIST_AIM_CONE = 0.61; // ~35 degrees
 export const ASSIST_AIM_RATE = 5;
 
 let assistTargets = () => [];
+/** Seconds since the levelling was last held, toward `ASSIST_LEVEL_DELAY_SECONDS`. */
+let levelWait = 0;
 
 /**
  * Registers where the hostiles are: a function returning points to aim at,
@@ -96,7 +102,11 @@ function aimTarget() {
  * turning them on the spot.
  */
 export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor = 0, mining = false } = {}) {
-  if (dt <= 0 || lookIdleFor < ASSIST_LOOK_IDLE_SECONDS) return false;
+  if (dt <= 0) return false;
+  if (lookIdleFor < ASSIST_LOOK_IDLE_SECONDS) {
+    levelWait = lookIdleFor;
+    return false;
+  }
 
   let dYaw = 0;
   let dPitch = 0;
@@ -107,6 +117,7 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
     const blend = ease(ASSIST_AIM_RATE, dt);
     dYaw = target.yawOff * blend;
     dPitch = target.pitchOff * blend;
+    levelWait = 0;
   } else {
     const lean = Math.abs(moveX) - ASSIST_FOLLOW_DEADZONE;
     if (moveForward > -0.3 && lean > 0) {
@@ -115,8 +126,13 @@ export function updateCameraAssist(dt, { moveX = 0, moveForward = 0, lookIdleFor
       dYaw = -push * ASSIST_FOLLOW_RATE * dt;
     }
     const walking = Math.hypot(moveX, moveForward) > 0.2;
-    if (!player.onLadder && !(mining && !walking)) {
-      dPitch = (ASSIST_REST_PITCH - view.pitch) * ease(ASSIST_LEVEL_RATE, dt);
+    if (player.onLadder || (mining && !walking)) {
+      levelWait = 0;
+    } else {
+      levelWait += dt;
+      if (levelWait >= ASSIST_LEVEL_DELAY_SECONDS) {
+        dPitch = (ASSIST_REST_PITCH - view.pitch) * ease(ASSIST_LEVEL_RATE, dt);
+      }
     }
   }
 
