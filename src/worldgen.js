@@ -159,6 +159,43 @@ function cutCrossesAquifer(tables, x, z, y, fill, wx, wz) {
   return false;
 }
 
+/** The fewest face-joined cells a cave cut must belong to, or it stays solid. */
+const MIN_CAVE_CELLS = 3;
+
+/**
+ * Does this cut belong to a real cave? Near the surface a tunnel's band of the
+ * noise is far thinner than a block, so the grid only catches it here and
+ * there: a dotted trail of lone cells and pairs that reads as pockmarks in the
+ * grass and stray pockets in solid stone. A cut is kept only if it joins at
+ * least MIN_CAVE_CELLS face-connected cells that the cave test would carve,
+ * which drops those specks and leaves every real tunnel and cavern as it was.
+ * It asks the pure cave test and the terrain heights rather than the chunk's
+ * blocks, so the answer never depends on where a chunk border falls. The search
+ * stops at the count, so it never reaches further than CAVE_REACH from the cut.
+ */
+function cutJoinsCave(heights, x, y, z, wx, wz) {
+  const seen = [[x, y, z]];
+  for (let i = 0; i < seen.length; i++) {
+    const [cx, cy, cz] = seen[i];
+    for (const [dx, dy, dz] of CAVE_FACES) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      const nz = cz + dz;
+      if (ny < 4 || ny > heights[(nx + CAVE_REACH) + (nz + CAVE_REACH) * CAVE_SPAN]) continue;
+      if (seen.some(([sx, sy, sz]) => sx === nx && sy === ny && sz === nz)) continue;
+      if (!caveCarvesAt(wx + nx - x, ny, wz + nz - z)) continue;
+      seen.push([nx, ny, nz]);
+      if (seen.length >= MIN_CAVE_CELLS) return true;
+    }
+  }
+  return false;
+}
+
+const CAVE_FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+/** How far past the chunk the speck search can step, and the height grid it reads. */
+const CAVE_REACH = MIN_CAVE_CELLS - 1;
+const CAVE_SPAN = CHUNK_SIZE + 2 * CAVE_REACH;
+
 /**
  * Carve connected spaghetti tunnels and occasional larger caverns. A cut fills
  * with what its region holds at that height: water up to the region's table,
@@ -178,6 +215,16 @@ function carveCaves(chunk) {
       tables[(x + 1) + (z + 1) * (CHUNK_SIZE + 2)] = waterTableAt(baseX + x, baseZ + z);
     }
   }
+  // Terrain heights as far out as the speck search can step.
+  const heights = new Int16Array(CAVE_SPAN * CAVE_SPAN);
+  for (let z = -CAVE_REACH; z < CHUNK_SIZE + CAVE_REACH; z++) {
+    for (let x = -CAVE_REACH; x < CHUNK_SIZE + CAVE_REACH; x++) {
+      const inside = x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE;
+      heights[(x + CAVE_REACH) + (z + CAVE_REACH) * CAVE_SPAN] = inside
+        ? chunk.heightMap[x + z * CHUNK_SIZE]
+        : sampleColumn(baseX + x, baseZ + z).height;
+    }
+  }
 
   for (let z = 0; z < CHUNK_SIZE; z++) {
     for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -191,6 +238,7 @@ function carveCaves(chunk) {
         const id = blocks[index];
         if (id === B.AIR || isWater(id) || id === B.BEDROCK) continue;
         if (!caveCarvesAt(wx, y, wz)) continue;
+        if (!cutJoinsCave(heights, x, y, z, wx, wz)) continue;
         // A cave that starts out touching the sea is a cave the simulation then
         // has to flood, so no cut here may reach the water.
         if (cutOpensSea(chunk, x, z, y, h)) continue;

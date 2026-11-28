@@ -390,7 +390,12 @@ Terrain content:
 - A connected cave system carved with 3D noise: long winding "spaghetti" tunnels from
   two independent low-frequency fields that branch and intersect into networks, plus
   occasional larger caverns from a separate blobby pass. Cave density increases with
-  depth, and tunnels occasionally break through the surface as walkable cave entrances
+  depth, and tunnels occasionally break through the surface as walkable cave entrances.
+  Near the surface a tunnel is thinner than a block, so the grid would only catch it
+  here and there and leave single-block pockmarks in the grass and stray pockets in the
+  stone. A cut is therefore kept only when it joins at least three face-connected cells
+  the cave test carves (`MIN_CAVE_CELLS`); the cave test itself is unchanged, so the
+  spawn and beacon site searches, which avoid it, still pick the same columns
 - Cave fluids by region. A coarse noise field (`waterTableAt`) splits the underground
   into regions about a hundred blocks across:
   - About half are dry. Their caves are air, except at or below y=10 (`LAVA_LEVEL`),
