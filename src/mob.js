@@ -1131,6 +1131,11 @@ function clearLine(fromX, fromY, fromZ, toX, toY, toZ, seesThrough = sightPasses
   return true;
 }
 
+/** Whether nothing solid but leaves or water lies between two `{ x, y, z }`. */
+export function sightClear(from, to) {
+  return clearLine(from.x, from.y, from.z, to.x, to.y, to.z);
+}
+
 /** What a mob's eyes pass through: open air, water, and the gaps in leaves. */
 function sightPasses(id) {
   return id === B.AIR || isWater(id) || id === B.LEAVES;

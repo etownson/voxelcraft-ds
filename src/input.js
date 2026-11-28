@@ -42,7 +42,7 @@ import { hideMiningFeedback } from './interaction.js';
 import { applyLook, exhaustForMovement, player, turnPlayer, view } from './player.js';
 import { camera, renderer } from './render.js';
 import { say } from './say.js';
-import { cameraAssist } from './settings.js';
+import { cameraAssist, lockOnAssist } from './settings.js';
 import { caveCarvesAt, sampleColumn, terrainHeight, treeAt } from './worldgen.js';
 
 export const canvas = renderer.domElement;
@@ -1181,12 +1181,16 @@ function applyGamepadLook(dt) {
   const lookY = gpAxis(3);
   if (!lookX && !lookY) {
     padLookIdleFor += dt;
-    if (cameraAssist() && isPlayable() && !inputView.held()) {
+    const follow = cameraAssist();
+    const lockOn = lockOnAssist();
+    if ((follow || lockOn) && isPlayable() && !inputView.held()) {
       padSteering = updateCameraAssist(dt, {
         moveX: gpAxis(0),
         moveForward: -gpAxis(1),
         lookIdleFor: padLookIdleFor,
-        mining: padMiningDown
+        mining: padMiningDown,
+        follow,
+        lockOn
       });
     }
     return;

@@ -298,6 +298,17 @@ export function bowDraw() {
 }
 
 /**
+ * How an arrow loosed this instant would fly: `{ speed, gravity, drag }`, or
+ * null while no bow is drawn. The lock-on assist aims a drawn bow with it.
+ */
+export function drawnArrowFlight() {
+  if (drawTime < 0 || !holdingBow()) return null;
+  const power = bowDraw();
+  if (power < BOW_MIN_POWER) return null;
+  return { speed: BOW_ARROW_SPEED * power, gravity: ARROW_GRAVITY, drag: ARROW_DRAG };
+}
+
+/**
  * The use button coming down. With a bow in hand and an arrow in the pack it
  * starts the draw; with a bow and no arrows it says so. Anything else in hand
  * is not this layer's business, and the answer is false.

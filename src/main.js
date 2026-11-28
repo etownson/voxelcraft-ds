@@ -24,7 +24,7 @@ import {
   updateTarget
 } from './aim.js';
 import {
-  arrows, beginBowDraw, bowDraw, cancelBowDraw, clearArrows, mobShootsWalker, releaseBowDraw,
+  arrows, beginBowDraw, bowDraw, cancelBowDraw, clearArrows, drawnArrowFlight, mobShootsWalker, releaseBowDraw,
   setArcheryWorld, updateArchery
 } from './archery.js';
 import {
@@ -35,7 +35,7 @@ import {
   updateCoop
 } from './coop.js';
 import { atlasCanvas } from './atlas.js';
-import { setAssistTargets } from './camera-assist.js';
+import { setAssistBow, setAssistSight, setAssistTargets } from './camera-assist.js';
 import {
   audioCtx, audioStatus, playMissionCompleteSong, playPickupSound, playSound, playSpawnSong,
   resumeAudioIfUnpaused, setArrivalHold, setAudioMenuPause, setAudioMusicVolume,
@@ -123,7 +123,7 @@ import {
 } from './inventory.js';
 import {
   HOSTILE_CAP, MOB_CAP, MOB_SPAWN_MAX_RADIUS, MOB_SPAWN_MIN_RADIUS, PASSIVE_CAP,
-  PASSIVE_SPAWN_RADIUS, countMobs, damageMob, herdRollReady, hostileSpawnTally, mobs, setMobWorld, spawnMob,
+  PASSIVE_SPAWN_RADIUS, countMobs, damageMob, herdRollReady, hostileSpawnTally, mobs, setMobWorld, sightClear, spawnMob,
   trySpawnHostile, trySpawnPassive, updateMobs, zeroSpawnTally
 } from './mob.js';
 import { markMenuWorldEntered, menuState, padMenuTick, paintMenuCoop, paintMenuMission, setMenuActions } from './menu.js';
@@ -528,6 +528,10 @@ setAimBlocked(() => !!activeScreen || player.dead || introActive());
 setAssistTargets(() => mobs
   .filter((mob) => mob.def.hostile && !mob.dead)
   .map((mob) => ({ x: mob.pos.x, y: mob.pos.y + mob.def.height * 0.5, z: mob.pos.z })));
+/* A drawn bow reaches further and aims high, so the assist also hears how the
+   arrow would fly and what stands between the eye and a far target. */
+setAssistBow(drawnArrowFlight);
+setAssistSight(sightClear);
 
 /* The body spends itself digging, swimming, jumping and swinging; the page says
    which picture of the food bar that moves. */

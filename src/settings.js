@@ -64,9 +64,9 @@ export function setCoopName(name) {
 }
 
 /* Camera assist, for a pad player who finds the right stick hard to work
-   while steering: the view follows the walk, levels its tilt and leans onto a
-   hostile close ahead (see src/camera-assist.js). It belongs to the person
-   holding the pad, not to the world, so it lives here. Off unless asked for. */
+   while steering: the view follows the walk and levels its tilt (see
+   src/camera-assist.js). It belongs to the person holding the pad, not to the
+   world, so it lives here. Off unless asked for. */
 let cameraAssistOn = storageGet(SETTINGS_KEY + ':cameraAssist') === '1';
 
 /** Whether the camera assist turns the view for the pad. */
@@ -75,5 +75,22 @@ export function cameraAssist() { return cameraAssistOn; }
 export function setCameraAssist(on) {
   cameraAssistOn = !!on;
   storageSet(SETTINGS_KEY + ':cameraAssist', cameraAssistOn ? '1' : '0');
+  for (const listener of listeners) listener();
+}
+
+/* Lock-on assist: the view leaning onto a hostile close ahead, so a swing
+   lands without fine aiming. It used to come with the camera assist and is now
+   its own switch, either one working without the other; a browser that never
+   set it starts where its camera assist stands, so turning the two apart
+   takes nothing away from anyone who had the camera assist on. */
+const storedLockOn = storageGet(SETTINGS_KEY + ':lockOnAssist');
+let lockOnAssistOn = storedLockOn === null ? cameraAssistOn : storedLockOn === '1';
+
+/** Whether the pad's view leans onto a hostile close ahead. */
+export function lockOnAssist() { return lockOnAssistOn; }
+
+export function setLockOnAssist(on) {
+  lockOnAssistOn = !!on;
+  storageSet(SETTINGS_KEY + ':lockOnAssist', lockOnAssistOn ? '1' : '0');
   for (const listener of listeners) listener();
 }

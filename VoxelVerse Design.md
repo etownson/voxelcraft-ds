@@ -522,9 +522,18 @@ A first-person controller:
   never while backing up, and not at all inside a quarter-stick band either side of
   straight ahead, so a walk in a straight line stays straight; a lean it steers on
   turns instead of strafing, so a hard push from a standstill turns on the spot), leaves its tilt alone for 2 s after the right stick lets go and then eases it back to -0.18 (held still while standing
-  mining, on a ladder or aiming, with the 2 s wait timed afresh after each hold), and leans onto the nearest hostile within 6 blocks and about
-  35° of the crosshair. Every turn is an ease, and touching the right stick hands the
+  mining, on a ladder or aiming, with the 2 s wait timed afresh after each hold). Every turn is an ease, and touching the right stick hands the
   view straight back
+- Lock-on assist (Settings → Controller, its own switch beside the camera assist, a
+  per-browser preference; a browser that never set it starts where its camera assist
+  stands, since the two used to be one setting) leans the view, on the same 0.8 s
+  rest, onto the nearest hostile within 6 blocks and about 35° of the crosshair. With
+  a bow drawn it reaches 24 blocks, only to a hostile in sight (leaves and water
+  do not block it), and aims high by the drop the arrow will take at the current
+  draw, drag included, as a skeleton aims at the walker; a draw too weak to carry
+  that far reaches no one there, and the aim follows the draw as it strengthens.
+  It does not lead a moving target. It works with the camera assist off, and the
+  camera assist works with it off
 
 Health:
 
