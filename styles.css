@@ -279,6 +279,21 @@ html, body {
 #coop-hold.hidden { display: none; }
 #coop-hold .coop-hold-sub { display: block; font-size: 12px; opacity: 0.75; margin-top: 2px; }
 
+/* A guest joining a room: what the boot is waiting on, over the menu, since
+   nothing else on the page moves until the host's world arrives. A failed
+   join says why in the same place, after the reload home. */
+#join-status {
+  position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 40;
+  max-width: min(92vw, 560px); padding: 10px 18px; border-radius: 4px;
+  background: rgba(10, 16, 22, 0.9);
+  border: 1px solid rgba(127, 227, 239, 0.45);
+  color: #cfeef5; text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  font-size: 15px; text-align: center;
+}
+#join-status.hidden { display: none; }
+#join-status.error { border-color: rgba(255, 140, 120, 0.7); color: #ffd9d0; }
+#join-status .join-status-sub { display: block; font-size: 12px; opacity: 0.75; margin-top: 3px; }
+
 /* The transmission panel: the transmitter talking above the hotbar. It takes
    no clicks and steals no keys — it reads over the world and then leaves. */
 #transmission {

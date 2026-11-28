@@ -1719,6 +1719,22 @@ export function paintCoopHold(names) {
   );
 }
 
+/* A guest's join, over the menu: the step the boot is waiting on, or after a
+   failed join the reason it came home. Null hides it. */
+const joinStatusEl = document.getElementById('join-status');
+
+export function paintJoinStatus(line, { error = false, sub = '' } = {}) {
+  if (!joinStatusEl) return;
+  joinStatusEl.classList.toggle('hidden', !line);
+  joinStatusEl.classList.toggle('error', !!error);
+  if (!line) return;
+  const parts = [document.createTextNode(line)];
+  if (sub) {
+    parts.push(Object.assign(document.createElement('span'), { className: 'join-status-sub', textContent: sub }));
+  }
+  joinStatusEl.replaceChildren(...parts);
+}
+
 export function showToast(text) {
   toastEl.textContent = text;
   toastEl.classList.add('show');

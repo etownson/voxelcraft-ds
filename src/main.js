@@ -97,7 +97,7 @@ import {
   GIVE_ITEMS, activeScreen, activeScreenAt, clearDamageFlash, closeScreen, controlHintEl,
   deathCauseEl, deathPenaltyEl, deathScreenEl, dismissTransmission, fadeDamageFlash, fps, handlePadScreenTap, hungerBarEl,
   openScreen, padCursor, padSensitivityEl, padStatusEl, paintBurning, renderArmorBar, renderEssence, updateEnchanterGauges,
-  paintCoopHold, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
+  paintCoopHold, paintJoinStatus, paintThreat, paintWaypoint, renderHealth, renderHotbar, renderHunger, renderScreen, sampleFrameRate,
   selectHotbarSlot, setBeaconJumper, setTransmissionFinisher, showDamageFlash, showToast,
   showTransmission, sleepFadeEl, sprintStateEl,
   toggleInventory, toggleJournal, updateCursorVisual, updateDebug, paintPosition,
@@ -294,6 +294,36 @@ const COOP_HOSTING_KEY = worldKey(COOP_HOSTING_BASE);
 /* A visit whose join failed reloads into the visitor's own world, and this
    note carries the reason across the reload. */
 const COOP_JOIN_FAILED_KEY = 'voxelcraft:coop:joinFailed';
+
+/* While a guest's boot waits on the host, the menu is up but nothing behind
+   it is built yet, so START and the pad do nothing. The co-op layer's status
+   line is said over the menu instead, with how long it has been waiting, so a
+   black screen never looks like a frozen one. */
+let joinStartedAt = 0;
+let joinTicker = 0;
+let joinRoomShown = null;
+
+function paintJoining(room = joinRoomShown) {
+  if (!joinStartedAt || !room) return;
+  joinRoomShown = room;
+  const waited = Math.floor((performance.now() - joinStartedAt) / 1000);
+  paintJoinStatus(room.status || 'Joining…', {
+    error: room.error,
+    sub: 'The game starts once the host’s world arrives \u00b7 ' + waited + ' s'
+  });
+}
+
+function beginJoining() {
+  joinStartedAt = performance.now();
+  joinTicker = window.setInterval(() => paintJoining(), 1000);
+}
+
+function endJoining() {
+  joinStartedAt = 0;
+  window.clearInterval(joinTicker);
+  joinRoomShown = null;
+  paintJoinStatus(null);
+}
 
 function storedValue(key) {
   try { return localStorage.getItem(key); } catch (unavailable) { return null; }
@@ -616,7 +646,10 @@ setCoopView({
   swinging: () => isMiningHeld() && !player.dead,
   menuOpen: () => menuOpen(),
   toast: showToast,
-  paintRoom: paintMenuCoop
+  paintRoom: (room) => {
+    paintMenuCoop(room);
+    paintJoining(room);
+  }
 });
 
 /* The waypoint arrow can follow another player in the room: it reads their
@@ -772,6 +805,7 @@ function heldFrame() {
 const coopJoinCode = joinCodeFromLocation();
 let hostWorld = null;
 if (coopJoinCode) {
+  beginJoining();
   hostWorld = await joinHostWorld(coopJoinCode, coopName() || 'Player');
   if (hostWorld && hostWorld.seed !== WORLD_SEED) {
     if (!activeWorld().seedFromLink) {
@@ -784,7 +818,10 @@ if (coopJoinCode) {
     hostWorld = null;
     try { sessionStorage.setItem(COOP_JOIN_FAILED_KEY, 'The host’s world did not match their link.'); } catch (unavailable) {}
   } else if (!hostWorld) {
-    try { sessionStorage.setItem(COOP_JOIN_FAILED_KEY, coopJoinCode); } catch (unavailable) {}
+    // The reason, not just the room: it is the only clue a failed join leaves.
+    const reason = coopReport().status;
+    const note = reason && /\s/.test(reason) ? reason : coopJoinCode;
+    try { sessionStorage.setItem(COOP_JOIN_FAILED_KEY, note); } catch (unavailable) {}
   }
   if (!hostWorld) {
     // A visit's page is built from the host's seed and keeps nothing of its
@@ -887,15 +924,32 @@ initSaveUi(Boolean(loadedSave));
 
 const joinFailure = takeJoinFailure();
 if (hostWorld) {
+  endJoining();
   coopWorldReady();
 } else if (joinFailure) {
-  showToast(joinFailure);
+  showJoinFailure(joinFailure);
 } else if (storedValue(COOP_HOSTING_KEY) === '1') {
   // Hosting when the page went away: open the same room again.
   hostThisWorld(coopName() || 'Player');
 }
 
 markWorldPlayed();
+
+/* A failed join's reason stays up over the menu long enough to read and pass
+   on, until a click, a key or half a minute takes it away. */
+function showJoinFailure(text) {
+  paintJoinStatus(text, { error: true, sub: 'Click or press a key to close' });
+  paintMenuCoop({ status: text, error: true });
+  const close = () => {
+    paintJoinStatus(null);
+    window.clearTimeout(timer);
+    window.removeEventListener('pointerdown', close, true);
+    window.removeEventListener('keydown', close, true);
+  };
+  const timer = window.setTimeout(close, 30000);
+  window.addEventListener('pointerdown', close, true);
+  window.addEventListener('keydown', close, true);
+}
 
 /** The reason a visit came home, said once after the reload that brought it. */
 function takeJoinFailure() {

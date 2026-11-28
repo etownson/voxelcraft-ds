@@ -366,7 +366,9 @@ export async function joinHostWorld(code, name) {
     await net.joinRoom(code, name);
     await net.waitForHost(30000);
   } catch (err) {
-    return failJoin(net.netError() || 'Nobody is hosting room ' + code + ' right now.');
+    return failJoin(net.netError() ||
+      'Couldn\u2019t reach the host of room ' + code + '. Check they are hosting it with their tab in front.' +
+      ' If they are, one of your networks may be blocking the connection.');
   }
   setStatus('Found the host. Fetching their world…', false);
   const shared = await new Promise((resolve) => {
